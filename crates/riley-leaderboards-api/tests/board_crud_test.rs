@@ -97,7 +97,7 @@ async fn board_create_list_get_update_delete() {
     let resp = app.clone().oneshot(json_request("GET", "/boards", None)).await.unwrap();
     assert_eq!(resp.status(), 200);
     let boards = json_body(resp).await;
-    assert_eq!(boards.as_array().unwrap().len(), 1);
+    assert_eq!(boards["items"].as_array().unwrap().len(), 1);
 
     // Get (returns BoardSummary with latest_version and entry_count)
     let resp = app.clone().oneshot(json_request("GET", "/boards/test-board", None)).await.unwrap();
@@ -211,7 +211,7 @@ async fn entry_create_list_get_update_delete() {
     )).await.unwrap();
     assert_eq!(resp.status(), 200);
     let entries = json_body(resp).await;
-    assert_eq!(entries.as_array().unwrap().len(), 1);
+    assert_eq!(entries["items"].as_array().unwrap().len(), 1);
 
     // Get entry
     let resp = app.clone().oneshot(json_request(
@@ -358,10 +358,10 @@ async fn ordered_version_create_and_fetch() {
     )).await.unwrap();
     assert_eq!(resp.status(), 200);
     let versions = json_body(resp).await;
-    assert_eq!(versions.as_array().unwrap().len(), 2);
+    assert_eq!(versions["items"].as_array().unwrap().len(), 2);
     // Newest first
-    assert_eq!(versions[0]["version_number"], 2);
-    assert_eq!(versions[1]["version_number"], 1);
+    assert_eq!(versions["items"][0]["version_number"], 2);
+    assert_eq!(versions["items"][1]["version_number"], 1);
 
     // Latest should now be version 2
     let resp = app.clone().oneshot(json_request(
@@ -1772,7 +1772,7 @@ async fn reference_create_list_delete() {
     )).await.unwrap();
     assert_eq!(resp.status(), 200);
     let refs = json_body(resp).await;
-    assert_eq!(refs.as_array().unwrap().len(), 2);
+    assert_eq!(refs["items"].as_array().unwrap().len(), 2);
 
     // Delete first reference
     let resp = app.clone().oneshot(json_request(
@@ -1789,7 +1789,7 @@ async fn reference_create_list_delete() {
         None,
     )).await.unwrap();
     let refs = json_body(resp).await;
-    assert_eq!(refs.as_array().unwrap().len(), 1);
+    assert_eq!(refs["items"].as_array().unwrap().len(), 1);
 
     cleanup(&state, schema).await;
 }
@@ -2061,7 +2061,7 @@ async fn accumulative_score_submit_and_snapshot() {
         None,
     )).await.unwrap();
     let entries = json_body(resp).await;
-    assert_eq!(entries.as_array().unwrap().len(), 3);
+    assert_eq!(entries["items"].as_array().unwrap().len(), 3);
 
     cleanup(&state, schema).await;
 }
@@ -2363,7 +2363,7 @@ async fn accumulative_multiple_snapshots() {
         None,
     )).await.unwrap();
     let versions = json_body(resp).await;
-    assert_eq!(versions.as_array().unwrap().len(), 2);
+    assert_eq!(versions["items"].as_array().unwrap().len(), 2);
 
     cleanup(&state, schema).await;
 }

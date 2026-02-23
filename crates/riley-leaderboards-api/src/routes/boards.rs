@@ -1,11 +1,11 @@
 use std::sync::Arc;
 
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use axum::Json;
 
-use riley_leaderboards_core::models::{CreateBoard, UpdateBoard};
+use riley_leaderboards_core::models::{CreateBoard, PaginationParams, UpdateBoard};
 use riley_leaderboards_core::repo::boards;
 
 use crate::AppState;
@@ -19,9 +19,12 @@ pub async fn create(
     Ok((StatusCode::CREATED, Json(board)))
 }
 
-pub async fn list(State(state): State<Arc<AppState>>) -> ApiResult<impl IntoResponse> {
-    let boards = boards::list(&state.pool).await?;
-    Ok(Json(boards))
+pub async fn list(
+    State(state): State<Arc<AppState>>,
+    Query(params): Query<PaginationParams>,
+) -> ApiResult<impl IntoResponse> {
+    let page = boards::list_paginated(&state.pool, &params).await?;
+    Ok(Json(page))
 }
 
 pub async fn get(

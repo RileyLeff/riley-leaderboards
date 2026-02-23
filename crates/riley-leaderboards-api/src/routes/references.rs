@@ -1,12 +1,12 @@
 use std::sync::Arc;
 
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use axum::Json;
 use uuid::Uuid;
 
-use riley_leaderboards_core::models::CreateReference;
+use riley_leaderboards_core::models::{CreateReference, PaginationParams};
 use riley_leaderboards_core::repo::{boards, references};
 
 use crate::AppState;
@@ -25,10 +25,11 @@ pub async fn create(
 pub async fn list(
     State(state): State<Arc<AppState>>,
     Path(board_slug): Path<String>,
+    Query(params): Query<PaginationParams>,
 ) -> ApiResult<impl IntoResponse> {
     let board = boards::get_by_slug(&state.pool, &board_slug).await?;
-    let refs = references::list(&state.pool, board.id).await?;
-    Ok(Json(refs))
+    let page = references::list_paginated(&state.pool, board.id, &params).await?;
+    Ok(Json(page))
 }
 
 pub async fn delete(

@@ -1563,6 +1563,7 @@ dependencies = [
  "clap",
  "riley-leaderboards-api",
  "riley-leaderboards-core",
+ "serde_json",
  "sqlx",
  "tokio",
  "tracing",

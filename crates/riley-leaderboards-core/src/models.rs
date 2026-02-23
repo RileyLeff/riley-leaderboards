@@ -279,3 +279,58 @@ pub struct SubmitScore {
 pub struct SnapshotInput {
     pub note: Option<String>,
 }
+
+// ── Pagination ──────────────────────────────────────────────────────────
+
+const DEFAULT_PAGE_LIMIT: i64 = 50;
+const MAX_PAGE_LIMIT: i64 = 200;
+
+/// Cursor-based pagination parameters.
+#[derive(Debug, Deserialize)]
+pub struct PaginationParams {
+    /// Maximum number of items to return.
+    pub limit: Option<i64>,
+    /// Opaque cursor from a previous response's `next_cursor`.
+    pub cursor: Option<String>,
+}
+
+impl PaginationParams {
+    pub fn effective_limit(&self) -> i64 {
+        self.limit
+            .unwrap_or(DEFAULT_PAGE_LIMIT)
+            .clamp(1, MAX_PAGE_LIMIT)
+    }
+
+    /// Decode the cursor into (created_at, id). Returns None if no cursor.
+    pub fn decode_cursor(&self) -> crate::error::Result<Option<(DateTime<Utc>, Uuid)>> {
+        let Some(cursor) = &self.cursor else {
+            return Ok(None);
+        };
+        let parts: Vec<&str> = cursor.splitn(2, ',').collect();
+        if parts.len() != 2 {
+            return Err(crate::error::Error::Validation(
+                "invalid cursor format".to_string(),
+            ));
+        }
+        let ts: DateTime<Utc> = parts[0]
+            .parse()
+            .map_err(|_| crate::error::Error::Validation("invalid cursor timestamp".to_string()))?;
+        let id: Uuid = parts[1]
+            .parse()
+            .map_err(|_| crate::error::Error::Validation("invalid cursor id".to_string()))?;
+        Ok(Some((ts, id)))
+    }
+}
+
+/// Paginated response wrapper.
+#[derive(Debug, Serialize)]
+pub struct PaginatedResponse<T: Serialize> {
+    pub items: Vec<T>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub next_cursor: Option<String>,
+}
+
+/// Encode a cursor from created_at + id.
+pub fn encode_cursor(created_at: &DateTime<Utc>, id: &Uuid) -> String {
+    format!("{},{}", created_at.to_rfc3339(), id)
+}

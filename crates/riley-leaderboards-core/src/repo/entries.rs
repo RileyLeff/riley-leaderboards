@@ -42,6 +42,50 @@ pub async fn list(pool: &PgPool, board_id: Uuid) -> Result<Vec<Entry>> {
     Ok(entries)
 }
 
+pub async fn list_paginated(
+    pool: &PgPool,
+    board_id: Uuid,
+    params: &crate::models::PaginationParams,
+) -> Result<crate::models::PaginatedResponse<Entry>> {
+    let limit = params.effective_limit();
+    let cursor = params.decode_cursor()?;
+
+    let entries = if let Some((ts, id)) = cursor {
+        sqlx::query_as::<_, Entry>(
+            r#"SELECT * FROM entries
+               WHERE board_id = $1 AND (created_at, id) > ($2, $3)
+               ORDER BY created_at ASC, id ASC
+               LIMIT $4"#,
+        )
+        .bind(board_id)
+        .bind(ts)
+        .bind(id)
+        .bind(limit + 1)
+        .fetch_all(pool)
+        .await?
+    } else {
+        sqlx::query_as::<_, Entry>(
+            "SELECT * FROM entries WHERE board_id = $1 ORDER BY created_at ASC, id ASC LIMIT $2",
+        )
+        .bind(board_id)
+        .bind(limit + 1)
+        .fetch_all(pool)
+        .await?
+    };
+
+    let has_more = entries.len() as i64 > limit;
+    let items: Vec<Entry> = entries.into_iter().take(limit as usize).collect();
+    let next_cursor = if has_more {
+        items
+            .last()
+            .map(|e| crate::models::encode_cursor(&e.created_at, &e.id))
+    } else {
+        None
+    };
+
+    Ok(crate::models::PaginatedResponse { items, next_cursor })
+}
+
 pub async fn get_by_slug(pool: &PgPool, board_id: Uuid, slug: &str) -> Result<Entry> {
     sqlx::query_as::<_, Entry>(
         "SELECT * FROM entries WHERE board_id = $1 AND slug = $2",

@@ -6,7 +6,7 @@ use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use axum::Json;
 
-use riley_leaderboards_core::models::CreateVersion;
+use riley_leaderboards_core::models::{CreateVersion, PaginationParams};
 use riley_leaderboards_core::repo::{boards, versions};
 
 use crate::AppState;
@@ -25,10 +25,11 @@ pub async fn create(
 pub async fn list(
     State(state): State<Arc<AppState>>,
     Path(board_slug): Path<String>,
+    Query(params): Query<PaginationParams>,
 ) -> ApiResult<impl IntoResponse> {
     let board = boards::get_by_slug(&state.pool, &board_slug).await?;
-    let versions = versions::list(&state.pool, board.id).await?;
-    Ok(Json(versions))
+    let page = versions::list_paginated(&state.pool, board.id, &params).await?;
+    Ok(Json(page))
 }
 
 pub async fn get(

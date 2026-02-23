@@ -71,6 +71,61 @@ pub async fn list(pool: &PgPool, board_id: Uuid) -> Result<Vec<BoardReference>> 
     Ok(refs)
 }
 
+pub async fn list_paginated(
+    pool: &PgPool,
+    board_id: Uuid,
+    params: &crate::models::PaginationParams,
+) -> Result<crate::models::PaginatedResponse<BoardReference>> {
+    let limit = params.effective_limit();
+    let cursor = params.decode_cursor()?;
+
+    let refs = if let Some((ts, id)) = cursor {
+        sqlx::query_as::<_, BoardReference>(
+            r#"SELECT br.id, br.board_id, br.pinned_version_id,
+                      v.version_number AS pinned_version_number,
+                      br.uri, br.ref_type, br.label, br.created_at
+               FROM board_references br
+               LEFT JOIN versions v ON v.id = br.pinned_version_id
+               WHERE br.board_id = $1 AND (br.created_at, br.id) > ($2, $3)
+               ORDER BY br.created_at ASC, br.id ASC
+               LIMIT $4"#,
+        )
+        .bind(board_id)
+        .bind(ts)
+        .bind(id)
+        .bind(limit + 1)
+        .fetch_all(pool)
+        .await?
+    } else {
+        sqlx::query_as::<_, BoardReference>(
+            r#"SELECT br.id, br.board_id, br.pinned_version_id,
+                      v.version_number AS pinned_version_number,
+                      br.uri, br.ref_type, br.label, br.created_at
+               FROM board_references br
+               LEFT JOIN versions v ON v.id = br.pinned_version_id
+               WHERE br.board_id = $1
+               ORDER BY br.created_at ASC, br.id ASC
+               LIMIT $2"#,
+        )
+        .bind(board_id)
+        .bind(limit + 1)
+        .fetch_all(pool)
+        .await?
+    };
+
+    let has_more = refs.len() as i64 > limit;
+    let items: Vec<BoardReference> = refs.into_iter().take(limit as usize).collect();
+    let next_cursor = if has_more {
+        items
+            .last()
+            .map(|r| crate::models::encode_cursor(&r.created_at, &r.id))
+    } else {
+        None
+    };
+
+    Ok(crate::models::PaginatedResponse { items, next_cursor })
+}
+
 pub async fn delete(pool: &PgPool, board_id: Uuid, reference_id: Uuid) -> Result<()> {
     let result =
         sqlx::query("DELETE FROM board_references WHERE id = $1 AND board_id = $2")
