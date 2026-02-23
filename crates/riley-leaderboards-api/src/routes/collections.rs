@@ -6,17 +6,21 @@ use axum::response::IntoResponse;
 use axum::Json;
 
 use riley_leaderboards_core::models::{
-    AddBoardToCollection, CreateCollection, PaginationParams, UpdateCollection,
+    AddBoardToCollection, CreateCollection, Nullable, PaginationParams, UpdateCollection,
 };
 use riley_leaderboards_core::repo::collections;
 
 use crate::AppState;
 use crate::error::ApiResult;
 
+use super::check_metadata_size;
+
 pub async fn create(
     State(state): State<Arc<AppState>>,
     Json(input): Json<CreateCollection>,
 ) -> ApiResult<impl IntoResponse> {
+    let limits = state.config.effective_limits();
+    check_metadata_size(input.metadata.as_ref(), limits.max_metadata_size_bytes)?;
     let collection = collections::create(&state.pool, &input).await?;
     Ok((StatusCode::CREATED, Json(collection)))
 }
@@ -42,6 +46,10 @@ pub async fn update(
     Path(slug): Path<String>,
     Json(input): Json<UpdateCollection>,
 ) -> ApiResult<impl IntoResponse> {
+    let limits = state.config.effective_limits();
+    if let Nullable::Value(ref meta) = input.metadata {
+        check_metadata_size(Some(meta), limits.max_metadata_size_bytes)?;
+    }
     let collection = collections::update(&state.pool, &slug, &input).await?;
     Ok(Json(collection))
 }

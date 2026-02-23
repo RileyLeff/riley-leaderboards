@@ -65,11 +65,16 @@ pub async fn submit(
 }
 
 /// Snapshot current accumulated scores as a new version.
+///
+/// `max_versions`/`max_entries`: safety limits checked inside the transaction.
+/// Pass `None` to skip (e.g., from operator-initiated sync).
 pub async fn snapshot(
     pool: &PgPool,
     board: &Board,
     note: Option<&str>,
     metadata: Option<&serde_json::Value>,
+    max_versions: Option<i64>,
+    max_entries: Option<usize>,
 ) -> Result<VersionWithPlacements> {
     if !board.accumulative {
         return Err(Error::Validation(
@@ -90,6 +95,22 @@ pub async fn snapshot(
         .fetch_one(&mut *tx)
         .await?;
 
+    // Safety limit: max versions per board (checked inside tx after FOR UPDATE)
+    if let Some(max) = max_versions {
+        let version_count: (i64,) =
+            sqlx::query_as("SELECT count(*) FROM versions WHERE board_id = $1")
+                .bind(board.id)
+                .fetch_one(&mut *tx)
+                .await
+                .map_err(Error::Database)?;
+        if version_count.0 >= max {
+            return Err(Error::Validation(format!(
+                "board has too many versions ({}, max {max})",
+                version_count.0,
+            )));
+        }
+    }
+
     // Read accumulated scores with entry info
     let scores: Vec<(Uuid, f64, String, String)> = sqlx::query_as(
         r#"SELECT a.entry_id, a.score, e.slug, e.name
@@ -105,6 +126,16 @@ pub async fn snapshot(
         return Err(Error::Validation(
             "no accumulated scores to snapshot".to_string(),
         ));
+    }
+
+    // Safety limit: max entries per version
+    if let Some(max) = max_entries {
+        if scores.len() > max {
+            return Err(Error::Validation(format!(
+                "too many entries to snapshot ({}, max {max})",
+                scores.len(),
+            )));
+        }
     }
 
     // Get next version number

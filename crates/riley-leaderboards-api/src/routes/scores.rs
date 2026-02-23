@@ -14,6 +14,8 @@ use crate::AppState;
 use crate::error::ApiResult;
 use crate::outbound_webhooks;
 
+use super::check_metadata_size;
+
 pub async fn submit(
     State(state): State<Arc<AppState>>,
     Path(board_slug): Path<String>,
@@ -50,7 +52,15 @@ pub async fn snapshot(
     Path(board_slug): Path<String>,
     Json(input): Json<SnapshotInput>,
 ) -> ApiResult<impl IntoResponse> {
+    let limits = state.config.effective_limits();
+
+    // Safety limit: metadata size
+    check_metadata_size(input.metadata.as_ref(), limits.max_metadata_size_bytes)?;
+
     let board = boards::get_by_slug(&state.pool, &board_slug).await?;
+
+    let max_versions = Some(limits.max_versions_per_board);
+    let max_entries = Some(limits.max_entries_per_version);
 
     let version = if board.realtime {
         let mut redis = state.redis.clone().ok_or(CoreError::ServiceUnavailable(
@@ -64,6 +74,8 @@ pub async fn snapshot(
             input.note.as_deref(),
             input.metadata.as_ref(),
             prefix,
+            max_versions,
+            max_entries,
         )
         .await?
     } else {
@@ -72,6 +84,8 @@ pub async fn snapshot(
             &board,
             input.note.as_deref(),
             input.metadata.as_ref(),
+            max_versions,
+            max_entries,
         )
         .await?
     };

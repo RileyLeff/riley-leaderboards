@@ -5,17 +5,21 @@ use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use axum::Json;
 
-use riley_leaderboards_core::models::{CreateEntry, PaginationParams, UpdateEntry};
+use riley_leaderboards_core::models::{CreateEntry, Nullable, PaginationParams, UpdateEntry};
 use riley_leaderboards_core::repo::{boards, entries};
 
 use crate::AppState;
 use crate::error::ApiResult;
+
+use super::check_metadata_size;
 
 pub async fn create(
     State(state): State<Arc<AppState>>,
     Path(board_slug): Path<String>,
     Json(input): Json<CreateEntry>,
 ) -> ApiResult<impl IntoResponse> {
+    let limits = state.config.effective_limits();
+    check_metadata_size(input.metadata.as_ref(), limits.max_metadata_size_bytes)?;
     let board = boards::get_by_slug(&state.pool, &board_slug).await?;
     let entry = entries::create(&state.pool, board.id, &input).await?;
     Ok((StatusCode::CREATED, Json(entry)))
@@ -45,6 +49,10 @@ pub async fn update(
     Path((board_slug, entry_slug)): Path<(String, String)>,
     Json(input): Json<UpdateEntry>,
 ) -> ApiResult<impl IntoResponse> {
+    let limits = state.config.effective_limits();
+    if let Nullable::Value(ref meta) = input.metadata {
+        check_metadata_size(Some(meta), limits.max_metadata_size_bytes)?;
+    }
     let board = boards::get_by_slug(&state.pool, &board_slug).await?;
     let entry = entries::update(&state.pool, board.id, &entry_slug, &input).await?;
     Ok(Json(entry))

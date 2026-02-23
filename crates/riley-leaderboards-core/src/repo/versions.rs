@@ -11,6 +11,7 @@ pub async fn create(
     pool: &PgPool,
     board: &Board,
     input: &CreateVersion,
+    max_versions: Option<i64>,
 ) -> Result<VersionWithPlacements> {
     if board.accumulative {
         return Err(Error::Validation(
@@ -30,6 +31,22 @@ pub async fn create(
         .bind(board.id)
         .fetch_one(&mut *tx)
         .await?;
+
+    // Safety limit: max versions per board (checked inside tx after FOR UPDATE to avoid TOCTOU)
+    if let Some(max) = max_versions {
+        let version_count: (i64,) =
+            sqlx::query_as("SELECT count(*) FROM versions WHERE board_id = $1")
+                .bind(board.id)
+                .fetch_one(&mut *tx)
+                .await
+                .map_err(Error::Database)?;
+        if version_count.0 >= max {
+            return Err(Error::Validation(format!(
+                "board has too many versions ({}, max {max})",
+                version_count.0,
+            )));
+        }
+    }
 
     // Re-validate with the locked board state in case tier_config or other
     // validation-relevant fields changed since the pre-check.

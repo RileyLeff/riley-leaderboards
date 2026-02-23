@@ -6,7 +6,6 @@ use axum::response::IntoResponse;
 use axum::Json;
 
 use riley_leaderboards_core::config::WebhookEvent;
-use riley_leaderboards_core::error::Error as CoreError;
 use riley_leaderboards_core::models::{CreateBoard, Nullable, PaginationParams, UpdateBoard};
 use riley_leaderboards_core::repo::{boards, realtime};
 
@@ -14,22 +13,7 @@ use crate::AppState;
 use crate::error::ApiResult;
 use crate::outbound_webhooks;
 
-fn check_metadata_size(
-    metadata: Option<&serde_json::Value>,
-    max_bytes: usize,
-) -> Result<(), CoreError> {
-    if let Some(meta) = metadata {
-        let size = serde_json::to_string(meta)
-            .map(|s| s.len())
-            .unwrap_or(0);
-        if size > max_bytes {
-            return Err(CoreError::Validation(format!(
-                "metadata too large ({size} bytes, max {max_bytes})",
-            )));
-        }
-    }
-    Ok(())
-}
+use super::check_metadata_size;
 
 pub async fn create(
     State(state): State<Arc<AppState>>,

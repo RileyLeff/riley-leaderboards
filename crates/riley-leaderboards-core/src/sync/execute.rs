@@ -290,7 +290,7 @@ async fn sync_board(
         metadata: parsed.version_metadata,
         placements,
     };
-    let version = versions::create(pool, &board, &create_version).await?;
+    let version = versions::create(pool, &board, &create_version, None).await?;
     let vnum = version.version.version_number;
 
     // Determine if this was a create (v1) or update (v2+)

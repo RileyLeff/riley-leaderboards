@@ -16,6 +16,8 @@ use crate::AppState;
 use crate::error::ApiResult;
 use crate::outbound_webhooks;
 
+use super::check_metadata_size;
+
 #[derive(Deserialize)]
 pub struct DiffParams {
     pub from: i32,
@@ -40,37 +42,18 @@ pub async fn create(
     }
 
     // Safety limit: metadata size
-    if let Some(ref meta) = input.metadata {
-        let size = serde_json::to_string(meta)
-            .map(|s| s.len())
-            .unwrap_or(0);
-        if size > limits.max_metadata_size_bytes {
-            return Err(CoreError::Validation(format!(
-                "metadata too large ({size} bytes, max {})",
-                limits.max_metadata_size_bytes,
-            ))
-            .into());
-        }
-    }
+    check_metadata_size(input.metadata.as_ref(), limits.max_metadata_size_bytes)?;
 
     let board = boards::get_by_slug(&state.pool, &board_slug).await?;
 
-    // Safety limit: max versions per board
-    let version_count: (i64,) =
-        sqlx::query_as("SELECT count(*) FROM versions WHERE board_id = $1")
-            .bind(board.id)
-            .fetch_one(&state.pool)
-            .await
-            .map_err(CoreError::Database)?;
-    if version_count.0 >= limits.max_versions_per_board {
-        return Err(CoreError::Validation(format!(
-            "board has too many versions ({}, max {})",
-            version_count.0, limits.max_versions_per_board,
-        ))
-        .into());
-    }
-
-    let version = versions::create(&state.pool, &board, &input).await?;
+    // max_versions_per_board is checked inside versions::create (after FOR UPDATE lock)
+    let version = versions::create(
+        &state.pool,
+        &board,
+        &input,
+        Some(limits.max_versions_per_board),
+    )
+    .await?;
     let _ = outbound_webhooks::fire(
         &state.config.webhooks,
         WebhookEvent::VersionCreated,
