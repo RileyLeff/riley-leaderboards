@@ -11,17 +11,22 @@ pub async fn create(
     board: &Board,
     input: &CreateVersion,
 ) -> Result<VersionWithPlacements> {
+    // Pre-validate with the snapshot we have (fast-fail before opening a tx).
     validate_placements(board, &input.placements)?;
 
     let mut tx = pool.begin().await?;
 
-    // Lock the board row to serialize concurrent version creation.
-    // Without this, two transactions could read the same MAX(version_number)
-    // and both try to insert the same next number.
-    sqlx::query("SELECT id FROM boards WHERE id = $1 FOR UPDATE")
+    // Lock and re-fetch the board row. This serializes concurrent version
+    // creation AND ensures we use the latest board state (sort_direction,
+    // tier_config) in case a concurrent PATCH updated the board.
+    let board = sqlx::query_as::<_, Board>("SELECT * FROM boards WHERE id = $1 FOR UPDATE")
         .bind(board.id)
         .fetch_one(&mut *tx)
         .await?;
+
+    // Re-validate with the locked board state in case tier_config or other
+    // validation-relevant fields changed since the pre-check.
+    validate_placements(&board, &input.placements)?;
 
     // Get next version number (now safe — board row is locked)
     let next_number: i32 = sqlx::query_scalar(
@@ -235,20 +240,25 @@ fn validate_placements(board: &Board, placements: &[CreatePlacement]) -> Result<
         }
     }
 
+    // Validate explicit positions across all board types: must be >= 1
+    for p in placements {
+        if let Some(pos) = p.position {
+            if pos < 1 {
+                return Err(Error::Validation(format!(
+                    "position must be >= 1, got {pos} for entry '{}'",
+                    p.entry_slug
+                )));
+            }
+        }
+    }
+
     match board.board_type.as_str() {
         "ordered" => {
             // Ordered boards: resolve all positions (explicit or implicit from
-            // array order) then validate positivity and uniqueness across the
-            // full set. This prevents collisions between explicit and implicit.
+            // array order) then validate uniqueness across the full set.
             let mut seen_positions = std::collections::HashSet::new();
             for (i, p) in placements.iter().enumerate() {
                 let resolved = p.position.unwrap_or((i as i32) + 1);
-                if resolved < 1 {
-                    return Err(Error::Validation(format!(
-                        "position must be >= 1, got {resolved} for entry '{}'",
-                        p.entry_slug
-                    )));
-                }
                 if !seen_positions.insert(resolved) {
                     return Err(Error::Validation(format!(
                         "duplicate position {resolved} in ordered board placements"
@@ -257,13 +267,22 @@ fn validate_placements(board: &Board, placements: &[CreatePlacement]) -> Result<
             }
         }
         "scored" => {
-            // Scored boards: score is required
+            // Scored boards: score is required and must be finite
             for p in placements {
-                if p.score.is_none() {
-                    return Err(Error::Validation(format!(
-                        "score is required for scored board, missing for entry '{}'",
-                        p.entry_slug
-                    )));
+                match p.score {
+                    None => {
+                        return Err(Error::Validation(format!(
+                            "score is required for scored board, missing for entry '{}'",
+                            p.entry_slug
+                        )));
+                    }
+                    Some(s) if s.is_nan() || s.is_infinite() => {
+                        return Err(Error::Validation(format!(
+                            "score must be a finite number for entry '{}'",
+                            p.entry_slug
+                        )));
+                    }
+                    _ => {}
                 }
             }
         }

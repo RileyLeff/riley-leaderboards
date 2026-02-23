@@ -192,14 +192,21 @@ fn validate_tier_config(tier_config: Option<&serde_json::Value>) -> Result<()> {
                 "tier_config.tiers[{i}] must have a string 'key'"
             )));
         }
-        if tier
+        let pos = tier
             .get("position")
-            .and_then(|p| p.as_i64())
-            .is_none()
-        {
-            return Err(Error::Validation(format!(
-                "tier_config.tiers[{i}] must have an integer 'position'"
-            )));
+            .and_then(|p| p.as_i64());
+        match pos {
+            None => {
+                return Err(Error::Validation(format!(
+                    "tier_config.tiers[{i}] must have an integer 'position'"
+                )));
+            }
+            Some(v) if !(i32::MIN as i64..=i32::MAX as i64).contains(&v) => {
+                return Err(Error::Validation(format!(
+                    "tier_config.tiers[{i}] position {v} is out of 32-bit integer range"
+                )));
+            }
+            _ => {}
         }
     }
 
