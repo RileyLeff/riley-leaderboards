@@ -400,7 +400,7 @@ CREATE TABLE board_references (
   board_id uuid NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
   pinned_version_id uuid REFERENCES versions(id) ON DELETE SET NULL,
   uri text NOT NULL,                    -- "/blog/sandwich-rankings", "https://forestroyale.rileyleff.com"
-  ref_type text NOT NULL,               -- "blog_post", "game", "page", etc.
+  ref_type text NOT NULL CHECK (ref_type IN ('embed', 'citation', 'context')),
   label text,                           -- optional display name for this reference
   created_at timestamptz NOT NULL DEFAULT now()
 );
@@ -540,7 +540,7 @@ This keeps score submission as a fast single-row upsert (no version creation ove
 3. Blog post publishes, registers a reference pinned to version 1:
    ```
    POST /boards/dc-sandwiches/references
-   { "pinned_version_number": 1, "uri": "/blog/dc-sandwiches", "type": "blog_post" }
+   { "pinned_version_number": 1, "uri": "/blog/dc-sandwiches", "ref_type": "embed" }
    ```
 
 4. Months later, you update `rankings.toml` — put Crunchy Boi at #1, add Mangialardo's:

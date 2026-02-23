@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use riley_leaderboards_api::AppState;
 use riley_leaderboards_core::{config, db};
@@ -40,7 +40,7 @@ async fn main() -> Result<()> {
     let cli = Cli::parse();
 
     let config = config::load_config(cli.config.as_deref())
-        .map_err(|e| anyhow::anyhow!(e))?;
+        .context("failed to load config")?;
 
     match cli.command {
         Command::Serve => {
@@ -62,7 +62,7 @@ async fn main() -> Result<()> {
             sqlx::query("SELECT 1")
                 .execute(&pool)
                 .await
-                .map_err(|e| anyhow::anyhow!("database connection failed: {e}"))?;
+                .context("database connection failed")?;
             tracing::info!("database connection successful");
 
             if let Some(schema) = &config.database.schema {
