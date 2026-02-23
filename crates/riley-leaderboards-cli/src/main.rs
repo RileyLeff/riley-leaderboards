@@ -26,6 +26,14 @@ enum Command {
     Migrate,
     /// Check config and database connectivity
     Validate,
+    /// Sync boards from a directory of TOML files
+    Sync {
+        /// Path to boards directory (defaults to [sync] repo_path from config)
+        path: Option<PathBuf>,
+        /// Version note for any boards updated during sync
+        #[arg(long)]
+        note: Option<String>,
+    },
 }
 
 #[tokio::main]
@@ -67,6 +75,52 @@ async fn main() -> Result<()> {
 
             if let Some(schema) = &config.database.schema {
                 tracing::info!("database schema: {schema}");
+            }
+        }
+        Command::Sync { path, note } => {
+            let dir = path
+                .or_else(|| {
+                    config
+                        .sync
+                        .as_ref()
+                        .and_then(|s| s.repo_path.as_ref())
+                        .map(PathBuf::from)
+                })
+                .context("no path provided and no [sync] repo_path in config")?;
+
+            let pool = db::connect(&config.database).await?;
+            db::migrate(&pool).await?;
+
+            let results =
+                riley_leaderboards_core::sync::execute::sync_dir(&pool, &dir, note.as_deref())
+                    .await
+                    .context("sync failed")?;
+
+            for result in &results {
+                match &result.action {
+                    riley_leaderboards_core::sync::execute::SyncAction::Created {
+                        version_number,
+                    } => {
+                        tracing::info!(
+                            "board '{}': created (version {version_number})",
+                            result.slug
+                        );
+                    }
+                    riley_leaderboards_core::sync::execute::SyncAction::Updated {
+                        version_number,
+                    } => {
+                        tracing::info!(
+                            "board '{}': updated (version {version_number})",
+                            result.slug
+                        );
+                    }
+                    riley_leaderboards_core::sync::execute::SyncAction::NoChange => {
+                        tracing::info!("board '{}': no changes", result.slug);
+                    }
+                    riley_leaderboards_core::sync::execute::SyncAction::Skipped { reason } => {
+                        tracing::warn!("board '{}': skipped — {reason}", result.slug);
+                    }
+                }
             }
         }
     }

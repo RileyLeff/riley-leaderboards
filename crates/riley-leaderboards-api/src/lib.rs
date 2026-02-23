@@ -20,6 +20,10 @@ pub struct AppState {
 pub fn build_router(state: Arc<AppState>) -> Router {
     Router::new()
         .route("/health", get(health))
+        .route(
+            "/webhooks/github",
+            axum::routing::post(routes::webhooks::github),
+        )
         .nest("/boards", board_routes())
         .with_state(state)
 }

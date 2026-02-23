@@ -26,6 +26,7 @@ async fn setup(schema: &str) -> (Arc<AppState>, axum::Router) {
             max_connections: 2,
             schema: Some(schema.to_string()),
         },
+        sync: None,
     };
 
     let pool = db::connect(&config.database).await.expect("connect failed");
@@ -2416,4 +2417,686 @@ async fn accumulative_non_scored_board_rejected() {
     assert_eq!(resp.status(), 400);
 
     cleanup(&state, schema).await;
+}
+
+// ── Phase 6: File Sync ───────────────────────────────────────────────────
+
+async fn setup_with_sync(schema: &str) -> (Arc<AppState>, axum::Router) {
+    let config = RileyLeaderboardsConfig {
+        server: None,
+        database: DatabaseConfig {
+            url: ConfigValue::new(test_db_url()),
+            max_connections: 2,
+            schema: Some(schema.to_string()),
+        },
+        sync: None,
+    };
+
+    let pool = db::connect(&config.database).await.expect("connect failed");
+    db::migrate(&pool).await.expect("migrate failed");
+
+    let state = Arc::new(AppState { pool, config });
+    let router = build_router(state.clone());
+    (state, router)
+}
+
+fn create_temp_boards_dir() -> tempfile::TempDir {
+    tempfile::TempDir::new().expect("failed to create temp dir")
+}
+
+fn write_board_files(
+    dir: &std::path::Path,
+    slug: &str,
+    board_toml: &str,
+    rankings_toml: Option<&str>,
+) {
+    let board_dir = dir.join(slug);
+    std::fs::create_dir_all(&board_dir).expect("failed to create board dir");
+    std::fs::write(board_dir.join("board.toml"), board_toml).expect("failed to write board.toml");
+    if let Some(rankings) = rankings_toml {
+        std::fs::write(board_dir.join("rankings.toml"), rankings)
+            .expect("failed to write rankings.toml");
+    }
+}
+
+#[tokio::test]
+async fn sync_ordered_board_creates_version() {
+    let schema = "test_sync_ordered";
+    let (state, _app) = setup_with_sync(schema).await;
+    let tmp = create_temp_boards_dir();
+
+    write_board_files(
+        tmp.path(),
+        "dc-sandwiches",
+        r#"
+name = "Best Sandwiches in DC"
+board_type = "ordered"
+"#,
+        Some(r#"
+[[entries]]
+slug = "crunchy-boi"
+name = "Compliments Only Crunchy Boi"
+position = 1
+
+[[entries]]
+slug = "humberto"
+name = "Dupont Market Humberto"
+position = 2
+
+[[entries]]
+slug = "a-litteri"
+name = "A. Litteri Italian"
+position = 3
+"#),
+    );
+
+    let results = riley_leaderboards_core::sync::execute::sync_dir(
+        &state.pool,
+        tmp.path(),
+        Some("Initial sync"),
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(results.len(), 1);
+    assert_eq!(results[0].slug, "dc-sandwiches");
+    assert!(matches!(
+        results[0].action,
+        riley_leaderboards_core::sync::execute::SyncAction::Created { version_number: 1 }
+    ));
+
+    // Verify the board exists
+    let board = riley_leaderboards_core::repo::boards::get_by_slug(&state.pool, "dc-sandwiches")
+        .await
+        .unwrap();
+    assert_eq!(board.name, "Best Sandwiches in DC");
+    assert_eq!(board.board_type, "ordered");
+
+    // Verify version has correct placements
+    let version =
+        riley_leaderboards_core::repo::versions::get_latest(&state.pool, board.id).await.unwrap();
+    assert_eq!(version.version.version_number, 1);
+    assert_eq!(version.placements.len(), 3);
+    assert_eq!(version.placements[0].entry_slug, "crunchy-boi");
+    assert_eq!(version.placements[0].position, Some(1));
+    assert_eq!(version.placements[1].entry_slug, "humberto");
+    assert_eq!(version.placements[2].entry_slug, "a-litteri");
+
+    cleanup(&state, schema).await;
+}
+
+#[tokio::test]
+async fn sync_tiered_board_creates_version() {
+    let schema = "test_sync_tiered";
+    let (state, _app) = setup_with_sync(schema).await;
+    let tmp = create_temp_boards_dir();
+
+    write_board_files(
+        tmp.path(),
+        "nfl-draft",
+        r#"
+name = "2026 NFL Draft Prospects"
+board_type = "tiered"
+
+[[tiers]]
+key = "elite"
+label = "Elite (Top 5 Pick)"
+
+[[tiers]]
+key = "first_round"
+label = "First Round"
+"#,
+        Some(r#"
+[[entries]]
+slug = "travis-hunter"
+name = "Travis Hunter"
+tier = "elite"
+position = 1
+
+[[entries]]
+slug = "cam-ward"
+name = "Cam Ward"
+tier = "elite"
+position = 2
+
+[[entries]]
+slug = "tetairoa-mcmillan"
+name = "Tetairoa McMillan"
+tier = "first_round"
+position = 1
+"#),
+    );
+
+    let results = riley_leaderboards_core::sync::execute::sync_dir(
+        &state.pool,
+        tmp.path(),
+        None,
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(results.len(), 1);
+    assert!(matches!(
+        results[0].action,
+        riley_leaderboards_core::sync::execute::SyncAction::Created { .. }
+    ));
+
+    let board = riley_leaderboards_core::repo::boards::get_by_slug(&state.pool, "nfl-draft")
+        .await
+        .unwrap();
+    assert_eq!(board.board_type, "tiered");
+    assert!(board.tier_config.is_some());
+
+    let version =
+        riley_leaderboards_core::repo::versions::get_latest(&state.pool, board.id).await.unwrap();
+    assert_eq!(version.placements.len(), 3);
+    assert_eq!(version.placements[0].entry_slug, "travis-hunter");
+    assert_eq!(version.placements[0].tier.as_deref(), Some("elite"));
+
+    cleanup(&state, schema).await;
+}
+
+#[tokio::test]
+async fn sync_scored_board_creates_version() {
+    let schema = "test_sync_scored";
+    let (state, _app) = setup_with_sync(schema).await;
+    let tmp = create_temp_boards_dir();
+
+    write_board_files(
+        tmp.path(),
+        "prog-langs",
+        r#"
+name = "Best Programming Languages"
+board_type = "scored"
+sort_direction = "desc"
+"#,
+        Some(r#"
+[[entries]]
+slug = "rust"
+name = "Rust"
+score = 95.0
+
+[[entries]]
+slug = "python"
+name = "Python"
+score = 88.0
+
+[[entries]]
+slug = "go"
+name = "Go"
+score = 82.0
+"#),
+    );
+
+    let results = riley_leaderboards_core::sync::execute::sync_dir(
+        &state.pool,
+        tmp.path(),
+        None,
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(results.len(), 1);
+    let board = riley_leaderboards_core::repo::boards::get_by_slug(&state.pool, "prog-langs")
+        .await
+        .unwrap();
+    let version =
+        riley_leaderboards_core::repo::versions::get_latest(&state.pool, board.id).await.unwrap();
+    assert_eq!(version.placements.len(), 3);
+    // Positions derived: Rust #1 (95), Python #2 (88), Go #3 (82)
+    assert_eq!(version.placements[0].entry_slug, "rust");
+    assert_eq!(version.placements[0].position, Some(1));
+    assert_eq!(version.placements[1].entry_slug, "python");
+    assert_eq!(version.placements[1].position, Some(2));
+
+    cleanup(&state, schema).await;
+}
+
+#[tokio::test]
+async fn sync_no_change_skips_version() {
+    let schema = "test_sync_noop";
+    let (state, _app) = setup_with_sync(schema).await;
+    let tmp = create_temp_boards_dir();
+
+    let board_toml = r#"
+name = "Board"
+board_type = "ordered"
+"#;
+    let rankings_toml = r#"
+[[entries]]
+slug = "alpha"
+name = "Alpha"
+position = 1
+
+[[entries]]
+slug = "beta"
+name = "Beta"
+position = 2
+"#;
+
+    write_board_files(tmp.path(), "board", board_toml, Some(rankings_toml));
+
+    // First sync — creates version 1
+    let results = riley_leaderboards_core::sync::execute::sync_dir(
+        &state.pool,
+        tmp.path(),
+        None,
+    )
+    .await
+    .unwrap();
+    assert!(matches!(
+        results[0].action,
+        riley_leaderboards_core::sync::execute::SyncAction::Created { version_number: 1 }
+    ));
+
+    // Second sync with same content — should be NoChange
+    let results = riley_leaderboards_core::sync::execute::sync_dir(
+        &state.pool,
+        tmp.path(),
+        None,
+    )
+    .await
+    .unwrap();
+    assert!(matches!(
+        results[0].action,
+        riley_leaderboards_core::sync::execute::SyncAction::NoChange
+    ));
+
+    // Verify still only version 1
+    let board = riley_leaderboards_core::repo::boards::get_by_slug(&state.pool, "board")
+        .await
+        .unwrap();
+    let versions = riley_leaderboards_core::repo::versions::list(&state.pool, board.id)
+        .await
+        .unwrap();
+    assert_eq!(versions.len(), 1);
+
+    cleanup(&state, schema).await;
+}
+
+#[tokio::test]
+async fn sync_change_creates_new_version() {
+    let schema = "test_sync_update";
+    let (state, _app) = setup_with_sync(schema).await;
+    let tmp = create_temp_boards_dir();
+
+    let board_toml = r#"
+name = "Board"
+board_type = "ordered"
+"#;
+
+    write_board_files(
+        tmp.path(),
+        "board",
+        board_toml,
+        Some(r#"
+[[entries]]
+slug = "alpha"
+name = "Alpha"
+position = 1
+
+[[entries]]
+slug = "beta"
+name = "Beta"
+position = 2
+"#),
+    );
+
+    // First sync
+    riley_leaderboards_core::sync::execute::sync_dir(&state.pool, tmp.path(), None)
+        .await
+        .unwrap();
+
+    // Update rankings: swap positions
+    write_board_files(
+        tmp.path(),
+        "board",
+        board_toml,
+        Some(r#"
+[[entries]]
+slug = "beta"
+name = "Beta"
+position = 1
+
+[[entries]]
+slug = "alpha"
+name = "Alpha"
+position = 2
+"#),
+    );
+
+    // Second sync
+    let results = riley_leaderboards_core::sync::execute::sync_dir(
+        &state.pool,
+        tmp.path(),
+        Some("Swapped positions"),
+    )
+    .await
+    .unwrap();
+    assert!(matches!(
+        results[0].action,
+        riley_leaderboards_core::sync::execute::SyncAction::Updated { version_number: 2 }
+    ));
+
+    // Verify version 2 has new order
+    let board = riley_leaderboards_core::repo::boards::get_by_slug(&state.pool, "board")
+        .await
+        .unwrap();
+    let version =
+        riley_leaderboards_core::repo::versions::get_latest(&state.pool, board.id).await.unwrap();
+    assert_eq!(version.version.version_number, 2);
+    assert_eq!(version.placements[0].entry_slug, "beta");
+    assert_eq!(version.placements[0].position, Some(1));
+    assert_eq!(version.version.note.as_deref(), Some("Swapped positions"));
+
+    cleanup(&state, schema).await;
+}
+
+#[tokio::test]
+async fn sync_accumulative_board_skipped() {
+    let schema = "test_sync_skip_accum";
+    let (state, _app) = setup_with_sync(schema).await;
+    let tmp = create_temp_boards_dir();
+
+    write_board_files(
+        tmp.path(),
+        "game-scores",
+        r#"
+name = "Game Scores"
+board_type = "scored"
+accumulative = true
+"#,
+        Some(r#"
+[[entries]]
+slug = "player1"
+name = "Player 1"
+score = 100.0
+"#),
+    );
+
+    let results = riley_leaderboards_core::sync::execute::sync_dir(
+        &state.pool,
+        tmp.path(),
+        None,
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(results.len(), 1);
+    assert!(matches!(
+        results[0].action,
+        riley_leaderboards_core::sync::execute::SyncAction::Skipped { .. }
+    ));
+
+    cleanup(&state, schema).await;
+}
+
+#[tokio::test]
+async fn sync_board_metadata_from_toml() {
+    let schema = "test_sync_metadata";
+    let (state, _app) = setup_with_sync(schema).await;
+    let tmp = create_temp_boards_dir();
+
+    write_board_files(
+        tmp.path(),
+        "sandwiches",
+        r#"
+name = "Best Sandwiches"
+board_type = "ordered"
+
+[metadata]
+description = "A definitive ranking."
+author = "Riley"
+"#,
+        Some(r#"
+[[entries]]
+slug = "crunchy-boi"
+name = "Crunchy Boi"
+position = 1
+
+[entries.metadata]
+address = "1026 Vermont Ave NW"
+image_url = "https://example.com/crunchy.jpg"
+"#),
+    );
+
+    let results = riley_leaderboards_core::sync::execute::sync_dir(
+        &state.pool,
+        tmp.path(),
+        None,
+    )
+    .await
+    .unwrap();
+    assert_eq!(results.len(), 1);
+
+    let board = riley_leaderboards_core::repo::boards::get_by_slug(&state.pool, "sandwiches")
+        .await
+        .unwrap();
+    let meta = board.metadata.unwrap();
+    assert_eq!(meta["description"], "A definitive ranking.");
+    assert_eq!(meta["author"], "Riley");
+
+    let version =
+        riley_leaderboards_core::repo::versions::get_latest(&state.pool, board.id).await.unwrap();
+    let entry_meta = version.placements[0].metadata.as_ref().unwrap();
+    assert_eq!(entry_meta["address"], "1026 Vermont Ave NW");
+
+    cleanup(&state, schema).await;
+}
+
+#[tokio::test]
+async fn sync_multiple_boards() {
+    let schema = "test_sync_multi";
+    let (state, _app) = setup_with_sync(schema).await;
+    let tmp = create_temp_boards_dir();
+
+    write_board_files(
+        tmp.path(),
+        "board-a",
+        r#"
+name = "Board A"
+board_type = "ordered"
+"#,
+        Some(r#"
+[[entries]]
+slug = "item"
+name = "Item"
+position = 1
+"#),
+    );
+
+    write_board_files(
+        tmp.path(),
+        "board-b",
+        r#"
+name = "Board B"
+board_type = "ordered"
+"#,
+        Some(r#"
+[[entries]]
+slug = "item"
+name = "Item"
+position = 1
+"#),
+    );
+
+    let results = riley_leaderboards_core::sync::execute::sync_dir(
+        &state.pool,
+        tmp.path(),
+        None,
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(results.len(), 2);
+
+    cleanup(&state, schema).await;
+}
+
+#[tokio::test]
+async fn webhook_missing_signature_returns_400() {
+    let schema = "test_webhook_no_sig";
+    let config = RileyLeaderboardsConfig {
+        server: None,
+        database: DatabaseConfig {
+            url: ConfigValue::new(test_db_url()),
+            max_connections: 2,
+            schema: Some(schema.to_string()),
+        },
+        sync: Some(riley_leaderboards_core::config::SyncConfig {
+            repo_path: Some("/tmp/nonexistent".to_string()),
+            webhook_secret: Some(ConfigValue::new("test-secret")),
+        }),
+    };
+    let pool = db::connect(&config.database).await.expect("connect failed");
+    db::migrate(&pool).await.expect("migrate failed");
+    let state = Arc::new(AppState { pool: pool.clone(), config });
+    let app = build_router(state);
+
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/webhooks/github")
+                .header("content-type", "application/json")
+                .body(Body::from(r#"{"ref": "refs/heads/main"}"#))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 400);
+    let body = json_body(resp).await;
+    assert!(body["error"].as_str().unwrap().contains("missing"));
+
+    sqlx::query(&format!("DROP SCHEMA IF EXISTS \"{schema}\" CASCADE"))
+        .execute(&pool)
+        .await
+        .unwrap();
+    pool.close().await;
+}
+
+#[tokio::test]
+async fn webhook_invalid_signature_returns_401() {
+    let schema = "test_webhook_bad_sig";
+    let config = RileyLeaderboardsConfig {
+        server: None,
+        database: DatabaseConfig {
+            url: ConfigValue::new(test_db_url()),
+            max_connections: 2,
+            schema: Some(schema.to_string()),
+        },
+        sync: Some(riley_leaderboards_core::config::SyncConfig {
+            repo_path: Some("/tmp/nonexistent".to_string()),
+            webhook_secret: Some(ConfigValue::new("test-secret")),
+        }),
+    };
+    let pool = db::connect(&config.database).await.expect("connect failed");
+    db::migrate(&pool).await.expect("migrate failed");
+    let state = Arc::new(AppState { pool: pool.clone(), config });
+    let app = build_router(state);
+
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/webhooks/github")
+                .header("content-type", "application/json")
+                .header("x-hub-signature-256", "sha256=deadbeef")
+                .body(Body::from(r#"{"ref": "refs/heads/main"}"#))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 401);
+
+    sqlx::query(&format!("DROP SCHEMA IF EXISTS \"{schema}\" CASCADE"))
+        .execute(&pool)
+        .await
+        .unwrap();
+    pool.close().await;
+}
+
+#[tokio::test]
+async fn webhook_valid_signature_triggers_sync() {
+    let schema = "test_webhook_valid";
+    let tmp = create_temp_boards_dir();
+
+    write_board_files(
+        tmp.path(),
+        "webhook-board",
+        r#"
+name = "Webhook Board"
+board_type = "ordered"
+"#,
+        Some(r#"
+[[entries]]
+slug = "item"
+name = "Item"
+position = 1
+"#),
+    );
+
+    let config = RileyLeaderboardsConfig {
+        server: None,
+        database: DatabaseConfig {
+            url: ConfigValue::new(test_db_url()),
+            max_connections: 2,
+            schema: Some(schema.to_string()),
+        },
+        sync: Some(riley_leaderboards_core::config::SyncConfig {
+            repo_path: Some(tmp.path().to_string_lossy().to_string()),
+            webhook_secret: Some(ConfigValue::new("test-secret")),
+        }),
+    };
+    let pool = db::connect(&config.database).await.expect("connect failed");
+    db::migrate(&pool).await.expect("migrate failed");
+    let state = Arc::new(AppState { pool: pool.clone(), config });
+    let app = build_router(state);
+
+    // Compute valid HMAC signature
+    let body_bytes = serde_json::to_vec(&serde_json::json!({
+        "ref": "refs/heads/main",
+        "head_commit": {
+            "message": "Update rankings"
+        }
+    }))
+    .unwrap();
+
+    use hmac::{Hmac, Mac};
+    use sha2::Sha256;
+    let mut mac = Hmac::<Sha256>::new_from_slice(b"test-secret").unwrap();
+    mac.update(&body_bytes);
+    let signature = format!("sha256={}", hex::encode(mac.finalize().into_bytes()));
+
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/webhooks/github")
+                .header("content-type", "application/json")
+                .header("x-hub-signature-256", &signature)
+                .body(Body::from(body_bytes))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200);
+    let body = json_body(resp).await;
+    assert!(body["synced"].is_array());
+
+    // Verify the board was created
+    let board = riley_leaderboards_core::repo::boards::get_by_slug(&pool, "webhook-board")
+        .await
+        .unwrap();
+    let version = riley_leaderboards_core::repo::versions::get_latest(&pool, board.id)
+        .await
+        .unwrap();
+    assert_eq!(version.version.version_number, 1);
+    assert_eq!(version.version.note.as_deref(), Some("Update rankings"));
+
+    sqlx::query(&format!("DROP SCHEMA IF EXISTS \"{schema}\" CASCADE"))
+        .execute(&pool)
+        .await
+        .unwrap();
+    pool.close().await;
 }

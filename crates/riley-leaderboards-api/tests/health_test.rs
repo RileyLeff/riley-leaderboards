@@ -26,6 +26,7 @@ async fn health_returns_ok() {
             max_connections: 2,
             schema: Some("test_health_endpoint".to_string()),
         },
+        sync: None,
     };
 
     let pool = db::connect(&config.database).await.expect("connect failed");

@@ -1,0 +1,275 @@
+//! Sync execution: compare parsed board files against DB state, create/update as needed.
+
+use std::path::Path;
+
+use sqlx::PgPool;
+use tracing::info;
+
+use crate::error::{Error, Result};
+use crate::models::{CreateBoard, CreateEntry, CreatePlacement, CreateVersion, UpdateBoard};
+use crate::repo::{boards, entries, versions};
+
+use super::parse::{self, ParsedBoard, toml_to_json};
+
+/// Result of syncing a single board.
+#[derive(Debug)]
+pub struct BoardSyncResult {
+    pub slug: String,
+    pub action: SyncAction,
+}
+
+#[derive(Debug)]
+pub enum SyncAction {
+    Created { version_number: i32 },
+    Updated { version_number: i32 },
+    NoChange,
+    Skipped { reason: String },
+}
+
+/// Sync all boards from a directory against the database.
+pub async fn sync_dir(
+    pool: &PgPool,
+    dir: &Path,
+    note: Option<&str>,
+) -> Result<Vec<BoardSyncResult>> {
+    let parsed = parse::parse_boards_dir(dir)?;
+
+    if parsed.is_empty() {
+        info!("no board directories found in {}", dir.display());
+        return Ok(Vec::new());
+    }
+
+    let mut results = Vec::new();
+    for board in parsed {
+        let result = sync_board(pool, board, note).await?;
+        results.push(result);
+    }
+
+    Ok(results)
+}
+
+/// Sync a single parsed board against the database.
+async fn sync_board(
+    pool: &PgPool,
+    parsed: ParsedBoard,
+    note: Option<&str>,
+) -> Result<BoardSyncResult> {
+    // Skip accumulative boards — they're managed via score submission, not files
+    if parsed.board.accumulative {
+        return Ok(BoardSyncResult {
+            slug: parsed.slug,
+            action: SyncAction::Skipped {
+                reason: "accumulative boards are managed via score submission, not file sync"
+                    .to_string(),
+            },
+        });
+    }
+
+    // Convert tier config from TOML to JSON
+    let tier_config = if !parsed.board.tiers.is_empty() {
+        let tiers: Vec<serde_json::Value> = parsed
+            .board
+            .tiers
+            .iter()
+            .enumerate()
+            .map(|(i, t)| {
+                let mut obj = serde_json::Map::new();
+                obj.insert("key".to_string(), serde_json::Value::String(t.key.clone()));
+                obj.insert("position".to_string(), serde_json::json!(i as i32));
+                if let Some(ref label) = t.label {
+                    obj.insert(
+                        "label".to_string(),
+                        serde_json::Value::String(label.clone()),
+                    );
+                }
+                serde_json::Value::Object(obj)
+            })
+            .collect();
+        Some(serde_json::json!({ "tiers": tiers }))
+    } else {
+        None
+    };
+
+    let metadata = parsed.board.metadata.as_ref().map(toml_to_json);
+
+    // Create or update the board
+    let board = match boards::get_by_slug(pool, &parsed.slug).await {
+        Ok(existing) => {
+            // Update board metadata if changed
+            let name_changed = existing.name != parsed.board.name;
+            let sd_changed = existing.sort_direction != parsed.board.sort_direction;
+            let tc_changed = existing.tier_config != tier_config;
+            let meta_changed = existing.metadata != metadata;
+
+            if name_changed || sd_changed || tc_changed || meta_changed {
+                let update = UpdateBoard {
+                    name: if name_changed {
+                        Some(parsed.board.name.clone())
+                    } else {
+                        None
+                    },
+                    sort_direction: if sd_changed {
+                        Some(parsed.board.sort_direction.clone())
+                    } else {
+                        None
+                    },
+                    tier_config: if tc_changed {
+                        match &tier_config {
+                            Some(v) => crate::models::Nullable::Value(v.clone()),
+                            None => crate::models::Nullable::Null,
+                        }
+                    } else {
+                        crate::models::Nullable::Absent
+                    },
+                    metadata: if meta_changed {
+                        match &metadata {
+                            Some(v) => crate::models::Nullable::Value(v.clone()),
+                            None => crate::models::Nullable::Null,
+                        }
+                    } else {
+                        crate::models::Nullable::Absent
+                    },
+                };
+                boards::update(pool, &parsed.slug, &update).await?
+            } else {
+                existing
+            }
+        }
+        Err(Error::NotFound(_)) => {
+            let create = CreateBoard {
+                slug: parsed.slug.clone(),
+                name: parsed.board.name.clone(),
+                board_type: parsed.board.board_type.clone(),
+                sort_direction: parsed.board.sort_direction.clone(),
+                tier_config,
+                metadata,
+                accumulative: false,
+            };
+            boards::create(pool, &create).await?
+        }
+        Err(e) => return Err(e),
+    };
+
+    // If no entries in the file, nothing to version
+    if parsed.entries.is_empty() {
+        info!("board '{}': no entries in rankings.toml, skipping version creation", parsed.slug);
+        return Ok(BoardSyncResult {
+            slug: parsed.slug,
+            action: SyncAction::NoChange,
+        });
+    }
+
+    // Ensure all entries exist
+    let existing_entries = entries::list(pool, board.id).await?;
+    let existing_slugs: std::collections::HashSet<&str> = existing_entries
+        .iter()
+        .map(|e| e.slug.as_str())
+        .collect();
+
+    for entry in &parsed.entries {
+        if !existing_slugs.contains(entry.slug.as_str()) {
+            let create = CreateEntry {
+                slug: entry.slug.clone(),
+                name: entry.name.clone(),
+                metadata: entry.metadata.as_ref().map(toml_to_json),
+            };
+            entries::create(pool, board.id, &create).await?;
+        }
+    }
+
+    // Build placements from the parsed entries
+    let placements: Vec<CreatePlacement> = parsed
+        .entries
+        .iter()
+        .map(|e| CreatePlacement {
+            entry_slug: e.slug.clone(),
+            position: e.position,
+            score: e.score,
+            tier: e.tier.clone(),
+            metadata: e.metadata.as_ref().map(toml_to_json),
+        })
+        .collect();
+
+    // Check if a new version is needed by diffing against the latest
+    let needs_version = match versions::get_latest(pool, board.id).await {
+        Ok(latest) => placements_changed(&latest.placements, &placements),
+        Err(Error::NotFound(_)) => true, // No versions yet
+        Err(e) => return Err(e),
+    };
+
+    if !needs_version {
+        info!("board '{}': no changes detected, skipping version creation", parsed.slug);
+        return Ok(BoardSyncResult {
+            slug: parsed.slug,
+            action: SyncAction::NoChange,
+        });
+    }
+
+    // Create the new version
+    let version_note = note.unwrap_or("Synced from file");
+    let create_version = CreateVersion {
+        note: Some(version_note.to_string()),
+        placements,
+    };
+    let version = versions::create(pool, &board, &create_version).await?;
+    let vnum = version.version.version_number;
+
+    // Determine if this was a create (v1) or update (v2+)
+    let action = if vnum == 1 {
+        info!("board '{}': created version {vnum}", parsed.slug);
+        SyncAction::Created {
+            version_number: vnum,
+        }
+    } else {
+        info!("board '{}': updated to version {vnum}", parsed.slug);
+        SyncAction::Updated {
+            version_number: vnum,
+        }
+    };
+
+    Ok(BoardSyncResult {
+        slug: parsed.slug,
+        action,
+    })
+}
+
+/// Compare current placements against proposed placements to detect changes.
+fn placements_changed(
+    current: &[crate::models::PlacementWithEntry],
+    proposed: &[crate::models::CreatePlacement],
+) -> bool {
+    if current.len() != proposed.len() {
+        return true;
+    }
+
+    // Build a lookup of current placements by entry slug
+    let current_map: std::collections::HashMap<&str, &crate::models::PlacementWithEntry> = current
+        .iter()
+        .map(|p| (p.entry_slug.as_str(), p))
+        .collect();
+
+    for p in proposed {
+        match current_map.get(p.entry_slug.as_str()) {
+            None => return true, // New entry
+            Some(current_p) => {
+                // Check if position, score, or tier changed
+                if current_p.position != p.position {
+                    return true;
+                }
+                if current_p.score != p.score {
+                    return true;
+                }
+                if current_p.tier != p.tier {
+                    return true;
+                }
+                // Check metadata
+                let proposed_meta = p.metadata.as_ref();
+                if current_p.metadata.as_ref() != proposed_meta {
+                    return true;
+                }
+            }
+        }
+    }
+
+    false
+}

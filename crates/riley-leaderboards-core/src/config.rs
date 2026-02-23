@@ -7,6 +7,13 @@ use crate::error::{Error, Result};
 pub struct RileyLeaderboardsConfig {
     pub server: Option<ServerConfig>,
     pub database: DatabaseConfig,
+    pub sync: Option<SyncConfig>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct SyncConfig {
+    pub repo_path: Option<String>,
+    pub webhook_secret: Option<ConfigValue>,
 }
 
 #[derive(Debug, Clone, Deserialize)]

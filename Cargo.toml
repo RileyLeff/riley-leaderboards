@@ -48,6 +48,14 @@ http = "1"
 tower = { version = "0.5", features = ["util"] }
 http-body-util = "0.1"
 
+# Crypto (for webhook HMAC-SHA256 verification)
+hmac = "0.12"
+sha2 = "0.10"
+hex = "0.4"
+
+# Temp files (for testing)
+tempfile = "3"
+
 # Internal crates
 riley-leaderboards-core = { path = "crates/riley-leaderboards-core" }
 riley-leaderboards-api = { path = "crates/riley-leaderboards-api" }
