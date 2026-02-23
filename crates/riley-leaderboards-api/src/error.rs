@@ -41,7 +41,13 @@ impl IntoResponse for ApiError {
                     "internal server error".to_string(),
                 )
             }
-            CoreError::ServiceUnavailable(msg) => (StatusCode::SERVICE_UNAVAILABLE, msg.clone()),
+            CoreError::ServiceUnavailable(msg) => {
+                tracing::error!("service unavailable: {msg}");
+                (
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    "service temporarily unavailable".to_string(),
+                )
+            }
         };
 
         (status, Json(json!({ "error": message }))).into_response()

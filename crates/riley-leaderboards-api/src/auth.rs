@@ -312,6 +312,13 @@ pub async fn require_auth(
                 return Ok(next.run(request).await);
             }
 
+            // Provide a specific error when a read-only token is used on a write endpoint
+            if !is_read && is_read_token(token, read_token_hashes) {
+                return Err(auth_error(
+                    "read-only tokens cannot perform write operations",
+                ));
+            }
+
             Err(auth_error(if is_read {
                 "invalid API token"
             } else {
@@ -335,6 +342,13 @@ pub async fn require_auth(
             // For reads, check read-only tokens first (cheaper than JWT validation)
             if is_read && is_read_token(token, read_token_hashes) {
                 return Ok(next.run(request).await);
+            }
+
+            // Provide a specific error when a read-only token is used on a write endpoint
+            if !is_read && is_read_token(token, read_token_hashes) {
+                return Err(auth_error(
+                    "read-only tokens cannot perform write operations",
+                ));
             }
 
             // Validate JWT — for writes, enforce required_role; for reads, any valid JWT
