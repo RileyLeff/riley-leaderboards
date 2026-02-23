@@ -172,3 +172,54 @@ row to return — scores go directly to Redis. The difference is intentional.
 The `tests/integration/` Docker smoke tests don't start a Redis container or test
 realtime endpoints. Deferred to Phase 6 cleanup. The integration tests are for
 verifying the core API works in a container.
+
+## Phase 6: Live Updates (SSE)
+
+### CLI sync does not publish SSE events (accepted)
+
+The `riley-leaderboards sync` CLI command runs without a server and does not
+create an EventBus. No SSE events are published for CLI-synced versions. This is
+acceptable because there are no SSE subscribers when no server is running. If a
+separate server instance is running, it won't receive events from CLI sync — this
+is the same limitation that exists for outbound webhooks in CLI context (see Phase
+3 note). Webhook-triggered sync (M2) does publish SSE events.
+
+### Redundant "type" field in SSE JSON (accepted)
+
+SseEvent uses `#[serde(tag = "type")]` which puts a "type" field in the JSON data
+payload. The SSE wire format also sets the `event:` field. Both carry the event
+type. This is harmless and provides convenience for clients that parse only the
+JSON data without the SSE framing. Keeping it is simpler than custom serialization.
+
+### score.updated event deviates from plan (intentional)
+
+The plan specifies `{entry_slug, score, position}` for score.updated events. The
+implementation uses `{entry_slug, entry_name, score}`. Computing position at
+publish time would require reading the full sorted set from Redis, which is
+expensive for high-throughput boards. `entry_name` is more useful for display.
+Clients that need position should poll the latest endpoint.
+
+### No SSE connection timeout (deferred)
+
+The plan mentions a 30-minute inactivity timeout for SSE connections. The
+implementation uses KeepAlive but no max-duration timeout. SSE connections stay
+open until the client disconnects or TCP drops. For most deployments behind a
+reverse proxy (nginx, Caddy), the proxy enforces upstream timeouts. Adding a
+server-side timeout would require a timer-based stream wrapper. Deferred as a
+potential future enhancement.
+
+### Broadcast channel buffer size 256 (accepted)
+
+The broadcast channel capacity is hardcoded at 256. With default 1000ms debounce,
+a subscriber would need to fall behind by 256 seconds of events to lag — extremely
+unlikely. Lagged events are silently dropped (correct for SSE). Could be made
+configurable if needed.
+
+### RwLock poisoning uses unwrap() (accepted)
+
+The EventBus uses `std::sync::RwLock` with `.unwrap()` on lock acquisition. Lock
+poisoning only occurs if a thread panics while holding the lock, which would
+require a panic during HashMap insert — extremely unlikely. Using
+`unwrap_or_else(|e| e.into_inner())` would recover from poisoning but could mask
+bugs. The unwrap() approach is acceptable for a service that should restart on
+panic.

@@ -1,8 +1,8 @@
 # v2 Workflow State
 
-**Current Phase:** 5 — Realtime Boards (COMPLETE)
-**Current Step:** Starting Phase 6
-**Status:** Phase 5 converged after 3 review rounds (R1: 2 major fixed, R2: 1 minor fixed, R3: 0 issues). 148 tests pass. Ready for Phase 6.
+**Current Phase:** ALL PHASES COMPLETE
+**Current Step:** N/A
+**Status:** All 6 phases implemented, tested, and reviewed. 159 tests pass. v2 is complete.
 
 ## Progress
 
@@ -22,8 +22,9 @@
 | 5 | 5.3-5.6 | Redis realtime module, route handlers, fallback | Done |
 | 5 | 5.7 | 12 integration tests (Redis + Postgres) | Done |
 | 5 | review | Exhaustive review (3 rounds, converged, Claude+Codex partial) | Done |
-| 6 | 6.1-6.6 | Live Updates (SSE) | Pending |
-| 6 | review | Exhaustive review | Pending |
+| 6 | 6.1-6.5 | SSE infrastructure, endpoint, publishing, debounce, config | Done |
+| 6 | 6.6 | 11 SSE tests (endpoint, EventBus unit, integration) | Done |
+| 6 | review | Exhaustive review (3 rounds, converged, Claude only) | Done |
 
 ## Blockers
 
@@ -31,10 +32,9 @@ None.
 
 ## Recent Activity
 
-- 5.1: Redis config + optional ConnectionManager (a3c5fb5)
-- 5.2: Realtime + clear_on_snapshot board fields + migration 005 (9df2011)
-- 5.3-5.6: Redis realtime module, route handler dispatch, 503 fallback (63543b3)
-- 5.7: Redis in docker-compose + 11 realtime integration tests (08ed6c8)
-- R1 fixes: Redis cleanup on delete, snapshot TOCTOU, 503 errors, batched lookups, health Redis check (efba405)
-- R2 fix: clear_on_snapshot Redis failure now non-fatal (758d7a6)
-- R3: 0 issues, Phase 5 converged
+- 6.1-6.5: SSE infrastructure + EventBus + publishing + config (636f121)
+- 6.6: 11 SSE tests (eaf2933)
+- R1 fixes: Atomic connection limit, sync SSE publishing, example config, debounce ordering (2ec627c)
+- R2: 0 major, 0 minor — all R1 fixes verified
+- R3: 0 major, 0 minor — Phase 6 converged
+- All 6 v2 phases complete. 159 tests pass.
