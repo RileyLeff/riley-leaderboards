@@ -5154,3 +5154,430 @@ async fn outbound_webhook_fires_on_board_delete() {
 
     cleanup_schema(&pool, schema).await;
 }
+
+// ── Collection CRUD ──────────────────────────────────────────────────────
+
+#[tokio::test]
+async fn collection_create_list_get_update_delete() {
+    let schema = "test_collection_crud";
+    let (state, app) = setup(schema).await;
+
+    // Create collection
+    let resp = app.clone().oneshot(json_request("POST", "/collections", Some(serde_json::json!({
+        "slug": "food-rankings",
+        "name": "Riley's Food Rankings",
+        "metadata": { "description": "All my DC food lists" }
+    })))).await.unwrap();
+    assert_eq!(resp.status(), 201);
+    let body = json_body(resp).await;
+    assert_eq!(body["slug"], "food-rankings");
+    assert_eq!(body["name"], "Riley's Food Rankings");
+    assert_eq!(body["metadata"]["description"], "All my DC food lists");
+
+    // List collections
+    let resp = app.clone().oneshot(json_request("GET", "/collections", None)).await.unwrap();
+    assert_eq!(resp.status(), 200);
+    let body = json_body(resp).await;
+    assert_eq!(body["items"].as_array().unwrap().len(), 1);
+
+    // Get collection (empty boards)
+    let resp = app.clone().oneshot(json_request("GET", "/collections/food-rankings", None)).await.unwrap();
+    assert_eq!(resp.status(), 200);
+    let body = json_body(resp).await;
+    assert_eq!(body["slug"], "food-rankings");
+    assert_eq!(body["boards"].as_array().unwrap().len(), 0);
+
+    // Update collection
+    let resp = app.clone().oneshot(json_request("PATCH", "/collections/food-rankings", Some(serde_json::json!({
+        "name": "DC Food Rankings"
+    })))).await.unwrap();
+    assert_eq!(resp.status(), 200);
+    let body = json_body(resp).await;
+    assert_eq!(body["name"], "DC Food Rankings");
+    assert_eq!(body["metadata"]["description"], "All my DC food lists");
+
+    // Delete collection
+    let resp = app.clone().oneshot(json_request("DELETE", "/collections/food-rankings", None)).await.unwrap();
+    assert_eq!(resp.status(), 204);
+
+    // Verify deleted
+    let resp = app.clone().oneshot(json_request("GET", "/collections/food-rankings", None)).await.unwrap();
+    assert_eq!(resp.status(), 404);
+
+    cleanup(&state, schema).await;
+}
+
+#[tokio::test]
+async fn collection_duplicate_slug_returns_409() {
+    let schema = "test_collection_dup";
+    let (state, app) = setup(schema).await;
+
+    app.clone().oneshot(json_request("POST", "/collections", Some(serde_json::json!({
+        "slug": "dupes",
+        "name": "Test"
+    })))).await.unwrap();
+
+    let resp = app.clone().oneshot(json_request("POST", "/collections", Some(serde_json::json!({
+        "slug": "dupes",
+        "name": "Test 2"
+    })))).await.unwrap();
+    assert_eq!(resp.status(), 409);
+
+    cleanup(&state, schema).await;
+}
+
+#[tokio::test]
+async fn collection_invalid_slug_returns_400() {
+    let schema = "test_collection_slug";
+    let (state, app) = setup(schema).await;
+
+    let resp = app.clone().oneshot(json_request("POST", "/collections", Some(serde_json::json!({
+        "slug": "INVALID SLUG",
+        "name": "Test"
+    })))).await.unwrap();
+    assert_eq!(resp.status(), 400);
+
+    cleanup(&state, schema).await;
+}
+
+#[tokio::test]
+async fn collection_empty_name_returns_400() {
+    let schema = "test_collection_name";
+    let (state, app) = setup(schema).await;
+
+    let resp = app.clone().oneshot(json_request("POST", "/collections", Some(serde_json::json!({
+        "slug": "test",
+        "name": ""
+    })))).await.unwrap();
+    assert_eq!(resp.status(), 400);
+
+    cleanup(&state, schema).await;
+}
+
+#[tokio::test]
+async fn collection_patch_can_clear_metadata_to_null() {
+    let schema = "test_collection_meta_null";
+    let (state, app) = setup(schema).await;
+
+    app.clone().oneshot(json_request("POST", "/collections", Some(serde_json::json!({
+        "slug": "meta-test",
+        "name": "Meta Test",
+        "metadata": { "key": "value" }
+    })))).await.unwrap();
+
+    let resp = app.clone().oneshot(json_request("PATCH", "/collections/meta-test", Some(serde_json::json!({
+        "metadata": null
+    })))).await.unwrap();
+    assert_eq!(resp.status(), 200);
+    let body = json_body(resp).await;
+    assert!(body["metadata"].is_null());
+
+    cleanup(&state, schema).await;
+}
+
+// ── Board Membership ─────────────────────────────────────────────────────
+
+#[tokio::test]
+async fn collection_add_remove_boards() {
+    let schema = "test_collection_boards";
+    let (state, app) = setup(schema).await;
+
+    app.clone().oneshot(json_request("POST", "/collections", Some(serde_json::json!({
+        "slug": "food",
+        "name": "Food Rankings"
+    })))).await.unwrap();
+
+    app.clone().oneshot(json_request("POST", "/boards", Some(serde_json::json!({
+        "slug": "sandwiches",
+        "name": "Best Sandwiches",
+        "board_type": "ordered"
+    })))).await.unwrap();
+
+    app.clone().oneshot(json_request("POST", "/boards", Some(serde_json::json!({
+        "slug": "pizza",
+        "name": "Best Pizza",
+        "board_type": "ordered"
+    })))).await.unwrap();
+
+    // Add boards
+    let resp = app.clone().oneshot(json_request("POST", "/collections/food/boards", Some(serde_json::json!({
+        "board_slug": "sandwiches",
+        "display_order": 1
+    })))).await.unwrap();
+    assert_eq!(resp.status(), 201);
+
+    let resp = app.clone().oneshot(json_request("POST", "/collections/food/boards", Some(serde_json::json!({
+        "board_slug": "pizza",
+        "display_order": 2
+    })))).await.unwrap();
+    assert_eq!(resp.status(), 201);
+
+    // Get collection with boards (ordered by display_order)
+    let resp = app.clone().oneshot(json_request("GET", "/collections/food", None)).await.unwrap();
+    let body = json_body(resp).await;
+    let boards = body["boards"].as_array().unwrap();
+    assert_eq!(boards.len(), 2);
+    assert_eq!(boards[0]["slug"], "sandwiches");
+    assert_eq!(boards[0]["display_order"], 1);
+    assert_eq!(boards[1]["slug"], "pizza");
+    assert_eq!(boards[1]["display_order"], 2);
+
+    // Remove a board
+    let resp = app.clone().oneshot(json_request("DELETE", "/collections/food/boards/sandwiches", None)).await.unwrap();
+    assert_eq!(resp.status(), 204);
+
+    let resp = app.clone().oneshot(json_request("GET", "/collections/food", None)).await.unwrap();
+    let body = json_body(resp).await;
+    assert_eq!(body["boards"].as_array().unwrap().len(), 1);
+    assert_eq!(body["boards"][0]["slug"], "pizza");
+
+    cleanup(&state, schema).await;
+}
+
+#[tokio::test]
+async fn collection_add_duplicate_board_returns_409() {
+    let schema = "test_collection_dup_board";
+    let (state, app) = setup(schema).await;
+
+    app.clone().oneshot(json_request("POST", "/collections", Some(serde_json::json!({
+        "slug": "col",
+        "name": "Collection"
+    })))).await.unwrap();
+
+    app.clone().oneshot(json_request("POST", "/boards", Some(serde_json::json!({
+        "slug": "board-a",
+        "name": "Board A",
+        "board_type": "ordered"
+    })))).await.unwrap();
+
+    app.clone().oneshot(json_request("POST", "/collections/col/boards", Some(serde_json::json!({
+        "board_slug": "board-a"
+    })))).await.unwrap();
+
+    let resp = app.clone().oneshot(json_request("POST", "/collections/col/boards", Some(serde_json::json!({
+        "board_slug": "board-a"
+    })))).await.unwrap();
+    assert_eq!(resp.status(), 409);
+
+    cleanup(&state, schema).await;
+}
+
+#[tokio::test]
+async fn collection_add_nonexistent_board_returns_404() {
+    let schema = "test_collection_no_board";
+    let (state, app) = setup(schema).await;
+
+    app.clone().oneshot(json_request("POST", "/collections", Some(serde_json::json!({
+        "slug": "col",
+        "name": "Collection"
+    })))).await.unwrap();
+
+    let resp = app.clone().oneshot(json_request("POST", "/collections/col/boards", Some(serde_json::json!({
+        "board_slug": "nonexistent"
+    })))).await.unwrap();
+    assert_eq!(resp.status(), 404);
+
+    cleanup(&state, schema).await;
+}
+
+#[tokio::test]
+async fn collection_remove_nonexistent_membership_returns_404() {
+    let schema = "test_collection_no_member";
+    let (state, app) = setup(schema).await;
+
+    app.clone().oneshot(json_request("POST", "/collections", Some(serde_json::json!({
+        "slug": "col",
+        "name": "Collection"
+    })))).await.unwrap();
+
+    app.clone().oneshot(json_request("POST", "/boards", Some(serde_json::json!({
+        "slug": "board-a",
+        "name": "Board A",
+        "board_type": "ordered"
+    })))).await.unwrap();
+
+    let resp = app.clone().oneshot(json_request("DELETE", "/collections/col/boards/board-a", None)).await.unwrap();
+    assert_eq!(resp.status(), 404);
+
+    cleanup(&state, schema).await;
+}
+
+// ── Board in multiple collections ────────────────────────────────────────
+
+#[tokio::test]
+async fn board_in_multiple_collections() {
+    let schema = "test_multi_collection";
+    let (state, app) = setup(schema).await;
+
+    app.clone().oneshot(json_request("POST", "/collections", Some(serde_json::json!({
+        "slug": "food",
+        "name": "Food"
+    })))).await.unwrap();
+
+    app.clone().oneshot(json_request("POST", "/collections", Some(serde_json::json!({
+        "slug": "dc",
+        "name": "DC Things"
+    })))).await.unwrap();
+
+    app.clone().oneshot(json_request("POST", "/boards", Some(serde_json::json!({
+        "slug": "sandwiches",
+        "name": "Best Sandwiches",
+        "board_type": "ordered"
+    })))).await.unwrap();
+
+    app.clone().oneshot(json_request("POST", "/collections/food/boards", Some(serde_json::json!({
+        "board_slug": "sandwiches"
+    })))).await.unwrap();
+
+    app.clone().oneshot(json_request("POST", "/collections/dc/boards", Some(serde_json::json!({
+        "board_slug": "sandwiches"
+    })))).await.unwrap();
+
+    let resp = app.clone().oneshot(json_request("GET", "/collections/food", None)).await.unwrap();
+    let body = json_body(resp).await;
+    assert_eq!(body["boards"].as_array().unwrap().len(), 1);
+
+    let resp = app.clone().oneshot(json_request("GET", "/collections/dc", None)).await.unwrap();
+    let body = json_body(resp).await;
+    assert_eq!(body["boards"].as_array().unwrap().len(), 1);
+
+    cleanup(&state, schema).await;
+}
+
+// ── Cascading deletion ───────────────────────────────────────────────────
+
+#[tokio::test]
+async fn collection_delete_does_not_delete_boards() {
+    let schema = "test_collection_cascade";
+    let (state, app) = setup(schema).await;
+
+    app.clone().oneshot(json_request("POST", "/collections", Some(serde_json::json!({
+        "slug": "temp",
+        "name": "Temporary"
+    })))).await.unwrap();
+
+    app.clone().oneshot(json_request("POST", "/boards", Some(serde_json::json!({
+        "slug": "keeper",
+        "name": "Should Survive",
+        "board_type": "ordered"
+    })))).await.unwrap();
+
+    app.clone().oneshot(json_request("POST", "/collections/temp/boards", Some(serde_json::json!({
+        "board_slug": "keeper"
+    })))).await.unwrap();
+
+    let resp = app.clone().oneshot(json_request("DELETE", "/collections/temp", None)).await.unwrap();
+    assert_eq!(resp.status(), 204);
+
+    let resp = app.clone().oneshot(json_request("GET", "/boards/keeper", None)).await.unwrap();
+    assert_eq!(resp.status(), 200);
+
+    cleanup(&state, schema).await;
+}
+
+#[tokio::test]
+async fn board_delete_removes_from_collections() {
+    let schema = "test_board_del_collection";
+    let (state, app) = setup(schema).await;
+
+    app.clone().oneshot(json_request("POST", "/collections", Some(serde_json::json!({
+        "slug": "col",
+        "name": "Collection"
+    })))).await.unwrap();
+
+    app.clone().oneshot(json_request("POST", "/boards", Some(serde_json::json!({
+        "slug": "board-a",
+        "name": "Board A",
+        "board_type": "ordered"
+    })))).await.unwrap();
+
+    app.clone().oneshot(json_request("POST", "/collections/col/boards", Some(serde_json::json!({
+        "board_slug": "board-a"
+    })))).await.unwrap();
+
+    let resp = app.clone().oneshot(json_request("DELETE", "/boards/board-a", None)).await.unwrap();
+    assert_eq!(resp.status(), 204);
+
+    let resp = app.clone().oneshot(json_request("GET", "/collections/col", None)).await.unwrap();
+    let body = json_body(resp).await;
+    assert_eq!(body["boards"].as_array().unwrap().len(), 0);
+
+    cleanup(&state, schema).await;
+}
+
+// ── Pagination ───────────────────────────────────────────────────────────
+
+#[tokio::test]
+async fn pagination_collections_list() {
+    let schema = "test_collection_pagination";
+    let (state, app) = setup(schema).await;
+
+    for i in 0..3 {
+        app.clone().oneshot(json_request("POST", "/collections", Some(serde_json::json!({
+            "slug": format!("col-{i}"),
+            "name": format!("Collection {i}")
+        })))).await.unwrap();
+    }
+
+    let resp = app.clone().oneshot(json_request("GET", "/collections?limit=2", None)).await.unwrap();
+    assert_eq!(resp.status(), 200);
+    let body = json_body(resp).await;
+    assert_eq!(body["items"].as_array().unwrap().len(), 2);
+    assert!(body["next_cursor"].is_string());
+
+    let cursor = body["next_cursor"].as_str().unwrap();
+    let url = format!("/collections?limit=2&cursor={}", urlencoding::encode(cursor));
+    let resp = app.clone().oneshot(json_request("GET", &url, None)).await.unwrap();
+    assert_eq!(resp.status(), 200);
+    let body = json_body(resp).await;
+    assert_eq!(body["items"].as_array().unwrap().len(), 1);
+    assert!(body.get("next_cursor").is_none() || body["next_cursor"].is_null());
+
+    cleanup(&state, schema).await;
+}
+
+// ── Collection board with latest_version ─────────────────────────────────
+
+#[tokio::test]
+async fn collection_board_shows_latest_version() {
+    let schema = "test_collection_latest_ver";
+    let (state, app) = setup(schema).await;
+
+    app.clone().oneshot(json_request("POST", "/collections", Some(serde_json::json!({
+        "slug": "food",
+        "name": "Food"
+    })))).await.unwrap();
+
+    app.clone().oneshot(json_request("POST", "/boards", Some(serde_json::json!({
+        "slug": "sandwiches",
+        "name": "Best Sandwiches",
+        "board_type": "scored"
+    })))).await.unwrap();
+
+    app.clone().oneshot(json_request("POST", "/boards/sandwiches/entries", Some(serde_json::json!({
+        "slug": "bobs",
+        "name": "Bob's Subs"
+    })))).await.unwrap();
+
+    app.clone().oneshot(json_request("POST", "/boards/sandwiches/versions", Some(serde_json::json!({
+        "placements": [{"entry_slug": "bobs", "score": 9.5}]
+    })))).await.unwrap();
+
+    app.clone().oneshot(json_request("POST", "/collections/food/boards", Some(serde_json::json!({
+        "board_slug": "sandwiches"
+    })))).await.unwrap();
+
+    let resp = app.clone().oneshot(json_request("GET", "/collections/food", None)).await.unwrap();
+    let body = json_body(resp).await;
+    assert_eq!(body["boards"][0]["latest_version"], 1);
+
+    app.clone().oneshot(json_request("POST", "/boards/sandwiches/versions", Some(serde_json::json!({
+        "placements": [{"entry_slug": "bobs", "score": 10.0}]
+    })))).await.unwrap();
+
+    let resp = app.clone().oneshot(json_request("GET", "/collections/food", None)).await.unwrap();
+    let body = json_body(resp).await;
+    assert_eq!(body["boards"][0]["latest_version"], 2);
+
+    cleanup(&state, schema).await;
+}
