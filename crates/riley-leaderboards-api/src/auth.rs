@@ -78,12 +78,19 @@ fn verify_token(incoming: &str, expected_hash: &[u8]) -> bool {
 
 // -- JWKS Cache --
 
+/// Maximum age of cached JWKS keys before auth fails closed.
+/// If refresh has been failing for longer than this, reject all JWTs
+/// rather than accepting tokens signed with potentially revoked keys.
+const JWKS_MAX_STALE_SECS: u64 = 7200; // 2 hours
+
 /// Fetches and caches JWKS keys for JWT validation.
 pub struct JwksCache {
     url: String,
     client: reqwest::Client,
     /// Map of kid -> (DecodingKey, Algorithm)
     keys: RwLock<HashMap<String, (DecodingKey, Algorithm)>>,
+    /// Timestamp of last successful refresh.
+    last_refresh: RwLock<std::time::Instant>,
 }
 
 #[derive(Deserialize)]
@@ -107,6 +114,7 @@ impl JwksCache {
             url: url.to_string(),
             client,
             keys: RwLock::new(HashMap::new()),
+            last_refresh: RwLock::new(std::time::Instant::now()),
         };
         cache.refresh().await?;
         Ok(cache)
@@ -120,6 +128,7 @@ impl JwksCache {
             url: String::new(),
             client: reqwest::Client::new(),
             keys: RwLock::new(keys),
+            last_refresh: RwLock::new(std::time::Instant::now()),
         }
     }
 
@@ -150,12 +159,18 @@ impl JwksCache {
         }
 
         *self.keys.write().await = new_keys;
+        *self.last_refresh.write().await = std::time::Instant::now();
         Ok(())
     }
 
-    /// Get a decoding key by kid.
-    pub async fn get_key(&self, kid: &str) -> Option<(DecodingKey, Algorithm)> {
-        self.keys.read().await.get(kid).cloned()
+    /// Get a decoding key by kid. Returns None if the kid is unknown or if
+    /// the cache is stale beyond the maximum allowed age.
+    pub async fn get_key(&self, kid: &str) -> std::result::Result<Option<(DecodingKey, Algorithm)>, &'static str> {
+        let elapsed = self.last_refresh.read().await.elapsed();
+        if elapsed.as_secs() > JWKS_MAX_STALE_SECS {
+            return Err("JWKS cache is stale — refresh has been failing");
+        }
+        Ok(self.keys.read().await.get(kid).cloned())
     }
 
     /// Spawn a background task that refreshes the JWKS every 60 minutes.
@@ -246,13 +261,15 @@ pub async fn require_auth(
 }
 
 /// Extract the Bearer token from the Authorization header.
+/// Per RFC 7235, the scheme is case-insensitive.
 fn extract_bearer_token(request: &Request<axum::body::Body>) -> Option<&str> {
-    request
-        .headers()
-        .get("authorization")?
-        .to_str()
-        .ok()?
-        .strip_prefix("Bearer ")
+    let value = request.headers().get("authorization")?.to_str().ok()?;
+    // Case-insensitive check for "Bearer " prefix (RFC 7235 Section 2.1)
+    if value.len() > 7 && value[..7].eq_ignore_ascii_case("bearer ") {
+        Some(&value[7..])
+    } else {
+        None
+    }
 }
 
 /// Validate a JWT against the JWKS cache.
@@ -269,10 +286,11 @@ async fn validate_jwt(
         .as_deref()
         .ok_or_else(|| auth_error("JWT missing kid header"))?;
 
-    // Look up the key
+    // Look up the key (also checks cache staleness)
     let (key, expected_alg) = jwks_cache
         .get_key(kid)
         .await
+        .map_err(|e| auth_error(e))?
         .ok_or_else(|| auth_error("unknown signing key"))?;
 
     // Validate algorithm matches

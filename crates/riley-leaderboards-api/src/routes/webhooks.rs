@@ -150,17 +150,20 @@ pub async fn github(
         }
     }
 
-    // Pull latest changes from the repository
-    let pull_result = tokio::process::Command::new("git")
-        .args(["-C", &repo_path, "pull"])
-        .output()
-        .await;
+    // Pull latest changes from the repository (with 60-second timeout)
+    let pull_result = tokio::time::timeout(
+        std::time::Duration::from_secs(60),
+        tokio::process::Command::new("git")
+            .args(["-C", &repo_path, "pull"])
+            .output(),
+    )
+    .await;
 
     match pull_result {
-        Ok(output) if output.status.success() => {
+        Ok(Ok(output)) if output.status.success() => {
             tracing::info!("git pull succeeded for {repo_path}");
         }
-        Ok(output) => {
+        Ok(Ok(output)) => {
             let stderr = String::from_utf8_lossy(&output.stderr);
             tracing::error!("git pull failed for {repo_path}: {stderr}");
             return (
@@ -168,11 +171,18 @@ pub async fn github(
                 Json(serde_json::json!({ "error": "failed to update repository" })),
             );
         }
-        Err(e) => {
+        Ok(Err(e)) => {
             tracing::error!("failed to run git pull: {e}");
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(serde_json::json!({ "error": "failed to update repository" })),
+            );
+        }
+        Err(_) => {
+            tracing::error!("git pull timed out for {repo_path}");
+            return (
+                StatusCode::GATEWAY_TIMEOUT,
+                Json(serde_json::json!({ "error": "repository update timed out" })),
             );
         }
     }

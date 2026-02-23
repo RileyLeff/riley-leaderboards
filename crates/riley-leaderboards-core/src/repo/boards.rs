@@ -179,7 +179,11 @@ fn validate_sort_direction(sort_direction: &str) -> Result<()> {
 fn validate_tier_config(tier_config: Option<&serde_json::Value>) -> Result<()> {
     let tc = match tier_config {
         Some(v) => v,
-        None => return Ok(()),
+        None => {
+            return Err(Error::Validation(
+                "tiered boards must have tier_config with a 'tiers' array".to_string(),
+            ));
+        }
     };
 
     let tiers = tc

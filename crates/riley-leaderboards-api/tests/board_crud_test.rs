@@ -631,13 +631,29 @@ async fn tiered_board_requires_tier() {
     let schema = "test_tiered_no_tier";
     let (state, app) = setup(schema).await;
 
-    app.clone().oneshot(json_request(
+    // Creating a tiered board without tier_config should be rejected
+    let resp = app.clone().oneshot(json_request(
         "POST",
         "/boards",
         Some(serde_json::json!({
             "slug": "tiers",
             "name": "Tiers",
             "board_type": "tiered"
+        })),
+    )).await.unwrap();
+    assert_eq!(resp.status(), 400);
+
+    // With tier_config, board creation succeeds but placements missing tier are rejected
+    app.clone().oneshot(json_request(
+        "POST",
+        "/boards",
+        Some(serde_json::json!({
+            "slug": "tiers",
+            "name": "Tiers",
+            "board_type": "tiered",
+            "tier_config": {
+                "tiers": [{ "key": "s", "label": "S Tier", "position": 1 }]
+            }
         })),
     )).await.unwrap();
 
