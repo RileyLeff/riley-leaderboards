@@ -1,0 +1,25 @@
+# Development / test infrastructure for riley_leaderboards
+services:
+  postgres:
+    image: postgres:18
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: riley_leaderboards
+      POSTGRES_PASSWORD: riley_leaderboards_test
+      POSTGRES_DB: riley_leaderboards_test
+    ports:
+      - "15433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U riley_leaderboards -d riley_leaderboards_test"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Uncomment to test interop with riley_auth (uses published GHCR image)
+  # riley-auth:
+  #   image: ghcr.io/rileyleff/auth-service:latest
+  #   environment:
+  #     - DATABASE_URL=postgres://riley_leaderboards:riley_leaderboards_test@postgres/riley_leaderboards_test
+  #   depends_on:
+  #     postgres:
+  #       condition: service_healthy

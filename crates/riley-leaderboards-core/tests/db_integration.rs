@@ -1,14 +1,15 @@
 //! Integration tests for database connection and migration.
 //!
-//! Requires a running Postgres 18 instance. Set TEST_DATABASE_URL to connect.
-//! Default: postgresql://riley_test:riley_test@localhost:15432/riley_leaderboards_test
+//! Requires a running Postgres 18 instance. Run `docker compose up -d` from
+//! the repo root to start one. Set TEST_DATABASE_URL to override.
+//! Default: postgresql://riley_leaderboards:riley_leaderboards_test@localhost:15433/riley_leaderboards_test
 
 use riley_leaderboards_core::config::{ConfigValue, DatabaseConfig};
 use riley_leaderboards_core::db;
 
 fn test_db_url() -> String {
     std::env::var("TEST_DATABASE_URL").unwrap_or_else(|_| {
-        "postgresql://riley_test:riley_test@localhost:15432/riley_leaderboards_test".to_string()
+        "postgresql://riley_leaderboards:riley_leaderboards_test@localhost:15433/riley_leaderboards_test".to_string()
     })
 }
 
