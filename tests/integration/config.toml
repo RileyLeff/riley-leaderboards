@@ -1,4 +1,16 @@
 # Integration test config — mounted into the container
+[server]
+sse_enabled = true
+sse_max_connections = 100
+
 [database]
 url = "env:DATABASE_URL"
 schema = "integration_test"
+
+[redis]
+url = "env:REDIS_URL"
+
+[auth]
+admin_token = "env:LEADERBOARDS_ADMIN_TOKEN"
+read_tokens = ["env:LEADERBOARDS_READ_TOKEN"]
+require_read_auth = false

@@ -11,15 +11,28 @@ services:
       timeout: 5s
       retries: 10
 
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 5s
+      retries: 10
+
   leaderboards:
     image: riley-leaderboards:integration-test
     environment:
       - DATABASE_URL=postgres://leaderboards:testpass@postgres/leaderboards_test
+      - REDIS_URL=redis://redis:6379
       - RILEY_LEADERBOARDS_CONFIG=/app/config.toml
+      - LEADERBOARDS_ADMIN_TOKEN=test-admin-token-12345
+      - LEADERBOARDS_READ_TOKEN=test-read-token-67890
     volumes:
       - ./config.toml:/app/config.toml:ro
     ports:
       - "18082:8082"
     depends_on:
       postgres:
+        condition: service_healthy
+      redis:
         condition: service_healthy
