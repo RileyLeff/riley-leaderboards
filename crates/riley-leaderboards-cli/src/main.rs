@@ -56,6 +56,13 @@ enum Command {
         /// Path to JSON export file
         file: PathBuf,
     },
+    /// List all collections
+    ListCollections,
+    /// Delete a collection (does not delete its boards)
+    DeleteCollection {
+        /// Collection slug to delete
+        slug: String,
+    },
 }
 
 #[tokio::main]
@@ -253,6 +260,28 @@ async fn main() -> Result<()> {
                 None,
             );
             println!("Board '{}' imported successfully.", export.board.slug);
+        }
+        Command::ListCollections => {
+            let pool = db::connect_readonly(&config.database).await?;
+            let params = riley_leaderboards_core::models::PaginationParams {
+                limit: Some(200),
+                cursor: None,
+            };
+            let page = repo::collections::list_paginated(&pool, &params).await?;
+            if page.items.is_empty() {
+                println!("No collections found.");
+            } else {
+                println!("{:<30} {}", "SLUG", "NAME");
+                for c in &page.items {
+                    println!("{:<30} {}", c.slug, c.name);
+                }
+                println!("\n{} collection(s)", page.items.len());
+            }
+        }
+        Command::DeleteCollection { slug } => {
+            let pool = db::connect(&config.database).await?;
+            repo::collections::delete(&pool, &slug).await?;
+            println!("Collection '{slug}' deleted.");
         }
     }
 

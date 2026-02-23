@@ -35,7 +35,8 @@ pub fn build_router(state: Arc<AppState>) -> Router {
 
     let mut app = Router::new()
         .route("/health", get(health))
-        .nest("/boards", board_routes(state.clone()));
+        .nest("/boards", board_routes(state.clone()))
+        .nest("/collections", collection_routes(state.clone()));
 
     // Only register the webhook route when sync config is present
     if state.config.sync.is_some() {
@@ -163,6 +164,32 @@ fn board_routes(state: Arc<AppState>) -> Router<Arc<AppState>> {
         .route(
             "/{slug}/snapshot",
             axum::routing::post(routes::scores::snapshot),
+        )
+        .layer(middleware::from_fn_with_state(
+            state,
+            auth::require_auth,
+        ))
+}
+
+fn collection_routes(state: Arc<AppState>) -> Router<Arc<AppState>> {
+    Router::new()
+        .route(
+            "/",
+            get(routes::collections::list).post(routes::collections::create),
+        )
+        .route(
+            "/{slug}",
+            get(routes::collections::get)
+                .patch(routes::collections::update)
+                .delete(routes::collections::delete),
+        )
+        .route(
+            "/{slug}/boards",
+            axum::routing::post(routes::collections::add_board),
+        )
+        .route(
+            "/{slug}/boards/{board_slug}",
+            axum::routing::delete(routes::collections::remove_board),
         )
         .layer(middleware::from_fn_with_state(
             state,

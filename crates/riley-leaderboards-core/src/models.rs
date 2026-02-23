@@ -259,6 +259,57 @@ pub struct CreateReference {
     pub label: Option<String>,
 }
 
+// ── Collections ─────────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+pub struct Collection {
+    pub id: Uuid,
+    pub slug: String,
+    pub name: String,
+    pub metadata: Option<serde_json::Value>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CreateCollection {
+    pub slug: String,
+    pub name: String,
+    pub metadata: Option<serde_json::Value>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct UpdateCollection {
+    pub name: Option<String>,
+    #[serde(default)]
+    pub metadata: Nullable<serde_json::Value>,
+}
+
+/// A board within a collection, with its display order and summary info.
+#[derive(Debug, Clone, Serialize, sqlx::FromRow)]
+pub struct CollectionBoardEntry {
+    pub slug: String,
+    pub name: String,
+    pub board_type: String,
+    pub display_order: i32,
+    pub latest_version: Option<i32>,
+}
+
+/// Response for GET /collections/:slug — collection metadata + its boards.
+#[derive(Debug, Serialize)]
+pub struct CollectionWithBoards {
+    #[serde(flatten)]
+    pub collection: Collection,
+    pub boards: Vec<CollectionBoardEntry>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct AddBoardToCollection {
+    pub board_slug: String,
+    #[serde(default)]
+    pub display_order: i32,
+}
+
 // ── Accumulated Scores ───────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
