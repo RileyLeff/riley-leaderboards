@@ -6,10 +6,10 @@ services:
       context: /opt/riley-leaderboards
     environment:
       - DATABASE_URL=postgres://riley:${DB_PASSWORD}@postgres/riley
-      - RILEY_LEADERBOARDS_DB_SCHEMA=leaderboards
       - WEBHOOK_SECRET=${LEADERBOARDS_WEBHOOK_SECRET}
     volumes:
       - leaderboards_boards:/data/boards
+      - ./leaderboards.toml:/etc/riley_leaderboards/config.toml:ro
     networks:
       - web
       - internal

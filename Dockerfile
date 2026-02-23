@@ -11,5 +11,7 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=builder /app/target/release/riley-leaderboards /usr/local/bin/
 COPY --from=builder /app/migrations/ /app/migrations/
+RUN mkdir -p /etc/riley_leaderboards && \
+    printf '[database]\nurl = "env:DATABASE_URL"\n' > /etc/riley_leaderboards/config.toml
 EXPOSE 8082
 CMD ["riley-leaderboards", "serve"]

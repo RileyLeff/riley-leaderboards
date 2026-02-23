@@ -1,0 +1,4 @@
+# Integration test config — mounted into the container
+[database]
+url = "env:DATABASE_URL"
+schema = "integration_test"
