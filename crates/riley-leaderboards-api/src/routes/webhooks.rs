@@ -139,15 +139,22 @@ pub async fn github(
         .and_then(|s| s.sync_branch.as_deref())
         .unwrap_or("main");
 
-    if let Some(push_ref) = payload.get("ref").and_then(|r| r.as_str()) {
-        let expected_ref = format!("refs/heads/{expected_branch}");
-        if push_ref != expected_ref {
-            tracing::info!("ignoring push to {push_ref} (expected {expected_ref})");
+    let push_ref = match payload.get("ref").and_then(|r| r.as_str()) {
+        Some(r) => r,
+        None => {
             return (
-                StatusCode::OK,
-                Json(serde_json::json!({ "ignored": true, "reason": "branch mismatch" })),
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({ "error": "missing 'ref' field in push payload" })),
             );
         }
+    };
+    let expected_ref = format!("refs/heads/{expected_branch}");
+    if push_ref != expected_ref {
+        tracing::info!("ignoring push to {push_ref} (expected {expected_ref})");
+        return (
+            StatusCode::OK,
+            Json(serde_json::json!({ "ignored": true, "reason": "branch mismatch" })),
+        );
     }
 
     // Serialize webhook processing to prevent concurrent git operations

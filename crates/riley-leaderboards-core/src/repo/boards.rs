@@ -260,10 +260,16 @@ fn validate_tier_config(tier_config: Option<&serde_json::Value>) -> Result<()> {
         ));
     }
 
+    let mut seen_keys = std::collections::HashSet::new();
     for (i, tier) in tiers.iter().enumerate() {
-        if tier.get("key").and_then(|k| k.as_str()).is_none() {
-            return Err(Error::Validation(format!(
+        let key = tier.get("key").and_then(|k| k.as_str()).ok_or_else(|| {
+            Error::Validation(format!(
                 "tier_config.tiers[{i}] must have a string 'key'"
+            ))
+        })?;
+        if !seen_keys.insert(key) {
+            return Err(Error::Validation(format!(
+                "tier_config has duplicate tier key '{key}'"
             )));
         }
         let pos = tier

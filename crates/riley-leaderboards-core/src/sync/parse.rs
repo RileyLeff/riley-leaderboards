@@ -66,6 +66,7 @@ pub fn parse_board_dir(dir: &Path) -> Result<ParsedBoard> {
         .and_then(|n| n.to_str())
         .ok_or_else(|| Error::Validation(format!("invalid board directory: {}", dir.display())))?
         .to_string();
+    crate::repo::validate_slug(&slug)?;
 
     let board_path = dir.join("board.toml");
     let board_str = std::fs::read_to_string(&board_path).map_err(|e| {
