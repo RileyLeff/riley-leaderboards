@@ -27,3 +27,16 @@ max_connections = 10
 # repo_path = "/var/lib/leaderboards/boards"   # local checkout of boards repo
 # webhook_secret = "env:WEBHOOK_SECRET"        # GitHub webhook HMAC secret
 # sync_branch = "main"                         # only sync pushes to this branch (default: "main")
+
+# Outbound webhooks — fire-and-forget notifications on board/version events.
+# Events: version.created, board.created, board.updated, board.deleted
+#
+# [[webhooks]]
+# url = "https://api.netlify.com/build_hooks/abc123"
+# events = ["version.created"]
+# boards = ["dc-*"]                            # optional glob filter (empty = all boards)
+#
+# [[webhooks]]
+# url = "https://discord.com/api/webhooks/xyz"
+# events = ["version.created", "board.created"]
+# secret = "env:OUTBOUND_WEBHOOK_SECRET"       # optional HMAC-SHA256 signing

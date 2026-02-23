@@ -7,11 +7,13 @@ use axum::Json;
 
 use serde::Deserialize;
 
+use riley_leaderboards_core::config::WebhookEvent;
 use riley_leaderboards_core::models::{CreateVersion, PaginationParams};
 use riley_leaderboards_core::repo::{boards, versions};
 
 use crate::AppState;
 use crate::error::ApiResult;
+use crate::outbound_webhooks;
 
 #[derive(Deserialize)]
 pub struct DiffParams {
@@ -26,6 +28,16 @@ pub async fn create(
 ) -> ApiResult<impl IntoResponse> {
     let board = boards::get_by_slug(&state.pool, &board_slug).await?;
     let version = versions::create(&state.pool, &board, &input).await?;
+    outbound_webhooks::fire(
+        &state.config.webhooks,
+        WebhookEvent::VersionCreated,
+        &board.slug,
+        &board.name,
+        Some(outbound_webhooks::VersionInfo {
+            version_number: version.version.version_number,
+            note: version.version.note.clone(),
+        }),
+    );
     Ok((StatusCode::CREATED, Json(version)))
 }
 

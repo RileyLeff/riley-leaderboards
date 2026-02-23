@@ -245,6 +245,29 @@ pub async fn github(
     .await
     {
         Ok(results) => {
+            // Fire outbound webhooks for synced versions
+            for r in &results {
+                let version_number = match &r.action {
+                    riley_leaderboards_core::sync::execute::SyncAction::Created { version_number }
+                    | riley_leaderboards_core::sync::execute::SyncAction::Updated { version_number } => {
+                        Some(*version_number)
+                    }
+                    _ => None,
+                };
+                if let Some(vnum) = version_number {
+                    crate::outbound_webhooks::fire(
+                        &state.config.webhooks,
+                        riley_leaderboards_core::config::WebhookEvent::VersionCreated,
+                        &r.slug,
+                        &r.name,
+                        Some(crate::outbound_webhooks::VersionInfo {
+                            version_number: vnum,
+                            note: note.clone(),
+                        }),
+                    );
+                }
+            }
+
             let summary: Vec<serde_json::Value> = results
                 .iter()
                 .map(|r| {

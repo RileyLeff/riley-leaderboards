@@ -14,6 +14,7 @@ use tower_http::trace::TraceLayer;
 
 pub mod auth;
 mod error;
+pub mod outbound_webhooks;
 mod routes;
 
 pub struct AppState {

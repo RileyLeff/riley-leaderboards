@@ -17,6 +17,7 @@ use super::parse::{self, ParsedBoard, toml_to_json};
 #[derive(Debug)]
 pub struct BoardSyncResult {
     pub slug: String,
+    pub name: String,
     pub action: SyncAction,
 }
 
@@ -53,7 +54,8 @@ pub async fn sync_dir(
             Err(e) => {
                 warn!("failed to sync board '{slug}': {e}");
                 results.push(BoardSyncResult {
-                    slug,
+                    slug: slug.clone(),
+                    name: slug,
                     action: SyncAction::Failed {
                         error: e.to_string(),
                     },
@@ -74,6 +76,7 @@ async fn sync_board(
     // Skip accumulative boards — they're managed via score submission, not files
     if parsed.board.accumulative {
         return Ok(BoardSyncResult {
+            name: parsed.board.name.clone(),
             slug: parsed.slug,
             action: SyncAction::Skipped {
                 reason: "accumulative boards are managed via score submission, not file sync"
@@ -185,6 +188,7 @@ async fn sync_board(
     if parsed.entries.is_empty() {
         info!("board '{}': no entries in rankings.toml, skipping version creation", parsed.slug);
         return Ok(BoardSyncResult {
+            name: board.name.clone(),
             slug: parsed.slug,
             action: SyncAction::NoChange,
         });
@@ -271,6 +275,7 @@ async fn sync_board(
     if !needs_version {
         info!("board '{}': no changes detected, skipping version creation", parsed.slug);
         return Ok(BoardSyncResult {
+            name: board.name.clone(),
             slug: parsed.slug,
             action: SyncAction::NoChange,
         });
@@ -300,6 +305,7 @@ async fn sync_board(
     };
 
     Ok(BoardSyncResult {
+        name: board.name.clone(),
         slug: parsed.slug,
         action,
     })

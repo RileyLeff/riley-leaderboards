@@ -28,6 +28,7 @@ async fn health_returns_ok() {
         },
         auth: None,
         sync: None,
+        webhooks: vec![],
     };
 
     let pool = db::connect(&config.database).await.expect("connect failed");

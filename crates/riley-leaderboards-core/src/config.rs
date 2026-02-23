@@ -9,6 +9,43 @@ pub struct RileyLeaderboardsConfig {
     pub database: DatabaseConfig,
     pub auth: Option<AuthConfig>,
     pub sync: Option<SyncConfig>,
+    /// Outbound webhook destinations, notified on board/version events.
+    #[serde(default)]
+    pub webhooks: Vec<WebhookConfig>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct WebhookConfig {
+    pub url: String,
+    pub events: Vec<WebhookEvent>,
+    /// Optional board slug patterns (glob-style). Empty = all boards.
+    #[serde(default)]
+    pub boards: Vec<String>,
+    /// Optional HMAC-SHA256 secret for signing payloads.
+    pub secret: Option<ConfigValue>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+pub enum WebhookEvent {
+    #[serde(rename = "version.created")]
+    VersionCreated,
+    #[serde(rename = "board.created")]
+    BoardCreated,
+    #[serde(rename = "board.updated")]
+    BoardUpdated,
+    #[serde(rename = "board.deleted")]
+    BoardDeleted,
+}
+
+impl WebhookEvent {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::VersionCreated => "version.created",
+            Self::BoardCreated => "board.created",
+            Self::BoardUpdated => "board.updated",
+            Self::BoardDeleted => "board.deleted",
+        }
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -239,5 +276,46 @@ schema = "lb"
         assert!(server.behind_proxy);
         assert_eq!(config.database.max_connections, 20);
         assert_eq!(config.database.schema.as_deref(), Some("lb"));
+    }
+
+    #[test]
+    fn parse_webhook_config() {
+        let toml_str = r#"
+[database]
+url = "postgres://localhost/leaderboards"
+
+[[webhooks]]
+url = "https://api.netlify.com/build_hooks/abc123"
+events = ["version.created"]
+boards = ["dc-*", "nfl-*"]
+
+[[webhooks]]
+url = "https://api.vercel.com/v1/deploy/xyz"
+events = ["version.created", "board.created"]
+secret = "env:OUTBOUND_WEBHOOK_SECRET"
+"#;
+        let config: RileyLeaderboardsConfig = toml::from_str(toml_str).unwrap();
+        assert_eq!(config.webhooks.len(), 2);
+
+        let wh0 = &config.webhooks[0];
+        assert_eq!(wh0.url, "https://api.netlify.com/build_hooks/abc123");
+        assert_eq!(wh0.events, vec![WebhookEvent::VersionCreated]);
+        assert_eq!(wh0.boards, vec!["dc-*", "nfl-*"]);
+        assert!(wh0.secret.is_none());
+
+        let wh1 = &config.webhooks[1];
+        assert_eq!(wh1.events, vec![WebhookEvent::VersionCreated, WebhookEvent::BoardCreated]);
+        assert!(wh1.secret.is_some());
+        assert!(wh1.boards.is_empty());
+    }
+
+    #[test]
+    fn parse_config_no_webhooks_defaults_to_empty() {
+        let toml_str = r#"
+[database]
+url = "postgres://localhost/leaderboards"
+"#;
+        let config: RileyLeaderboardsConfig = toml::from_str(toml_str).unwrap();
+        assert!(config.webhooks.is_empty());
     }
 }

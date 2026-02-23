@@ -28,6 +28,7 @@ async fn setup(schema: &str) -> (Arc<AppState>, axum::Router) {
         },
         auth: None,
         sync: None,
+        webhooks: vec![],
     };
 
     let pool = db::connect(&config.database).await.expect("connect failed");
@@ -2453,6 +2454,7 @@ async fn setup_with_sync(schema: &str) -> (Arc<AppState>, axum::Router) {
         },
         auth: None,
         sync: None,
+        webhooks: vec![],
     };
 
     let pool = db::connect(&config.database).await.expect("connect failed");
@@ -2977,6 +2979,7 @@ async fn webhook_missing_signature_returns_400() {
             webhook_secret: Some(ConfigValue::new("test-secret")),
             sync_branch: None,
         }),
+        webhooks: vec![],
     };
     let pool = db::connect(&config.database).await.expect("connect failed");
     db::migrate(&pool).await.expect("migrate failed");
@@ -3026,6 +3029,7 @@ async fn webhook_invalid_signature_returns_401() {
             webhook_secret: Some(ConfigValue::new("test-secret")),
             sync_branch: None,
         }),
+        webhooks: vec![],
     };
     let pool = db::connect(&config.database).await.expect("connect failed");
     db::migrate(&pool).await.expect("migrate failed");
@@ -3130,6 +3134,7 @@ position = 1
             webhook_secret: Some(ConfigValue::new("test-secret")),
             sync_branch: None,
         }),
+        webhooks: vec![],
     };
     let pool = db::connect(&config.database).await.expect("connect failed");
     db::migrate(&pool).await.expect("migrate failed");
@@ -3289,6 +3294,7 @@ async fn auth_api_token_write_requires_token() {
         },
         auth: None,
         sync: None,
+        webhooks: vec![],
     };
     let pool = db::connect(&config.database).await.expect("connect failed");
     db::migrate(&pool).await.expect("migrate failed");
@@ -3409,6 +3415,7 @@ async fn auth_jwt_valid_token_allows_write() {
         },
         auth: None,
         sync: None,
+        webhooks: vec![],
     };
     let pool = db::connect(&config.database).await.expect("connect failed");
     db::migrate(&pool).await.expect("migrate failed");
@@ -3469,6 +3476,7 @@ async fn auth_jwt_expired_token_rejected() {
         },
         auth: None,
         sync: None,
+        webhooks: vec![],
     };
     let pool = db::connect(&config.database).await.expect("connect failed");
     db::migrate(&pool).await.expect("migrate failed");
@@ -3520,6 +3528,7 @@ async fn auth_jwt_wrong_role_rejected() {
         },
         auth: None,
         sync: None,
+        webhooks: vec![],
     };
     let pool = db::connect(&config.database).await.expect("connect failed");
     db::migrate(&pool).await.expect("migrate failed");
@@ -3575,6 +3584,7 @@ async fn auth_jwt_no_required_role_any_jwt_passes() {
         },
         auth: None,
         sync: None,
+        webhooks: vec![],
     };
     let pool = db::connect(&config.database).await.expect("connect failed");
     db::migrate(&pool).await.expect("migrate failed");
@@ -3643,6 +3653,7 @@ async fn auth_jwt_missing_token_returns_401() {
         },
         auth: None,
         sync: None,
+        webhooks: vec![],
     };
     let pool = db::connect(&config.database).await.expect("connect failed");
     db::migrate(&pool).await.expect("migrate failed");
@@ -3689,6 +3700,7 @@ async fn auth_jwks_fetch_from_mock_server() {
         },
         auth: None,
         sync: None,
+        webhooks: vec![],
     };
     let pool = db::connect(&config.database).await.expect("connect failed");
     db::migrate(&pool).await.expect("migrate failed");
@@ -4235,6 +4247,7 @@ async fn auth_read_token_can_read_but_not_write() {
         },
         auth: None,
         sync: None,
+        webhooks: vec![],
     };
     let pool = db::connect(&config.database).await.expect("connect failed");
     db::migrate(&pool).await.expect("migrate failed");
@@ -4345,6 +4358,7 @@ async fn auth_require_read_auth_blocks_unauthenticated_reads() {
         },
         auth: None,
         sync: None,
+        webhooks: vec![],
     };
     let pool = db::connect(&config.database).await.expect("connect failed");
     db::migrate(&pool).await.expect("migrate failed");
@@ -4461,6 +4475,7 @@ async fn auth_jwt_read_token_can_read_but_not_write() {
         },
         auth: None,
         sync: None,
+        webhooks: vec![],
     };
     let pool = db::connect(&config.database).await.expect("connect failed");
     db::migrate(&pool).await.expect("migrate failed");
@@ -4578,6 +4593,7 @@ async fn auth_jwt_require_read_auth() {
         },
         auth: None,
         sync: None,
+        webhooks: vec![],
     };
     let pool = db::connect(&config.database).await.expect("connect failed");
     db::migrate(&pool).await.expect("migrate failed");
