@@ -19,14 +19,21 @@ pub enum AuthMode {
     /// No auth configured — all endpoints are open.
     NoAuth,
     /// JWT mode — validate Bearer tokens against JWKS keys.
+    /// Read-only tokens are API tokens that bypass JWT for read operations.
     Jwt {
         jwks_cache: Arc<JwksCache>,
         required_role: Option<String>,
+        read_token_hashes: Vec<Vec<u8>>,
+        require_read_auth: bool,
     },
-    /// API token mode — validate Bearer tokens against a configured secret.
+    /// API token mode — validate Bearer tokens against configured secrets.
     ApiToken {
-        /// HMAC-SHA256 hash of the configured token (we don't store plaintext).
-        token_hash: Vec<u8>,
+        /// HMAC-SHA256 hash of the admin token (full read/write access).
+        admin_token_hash: Vec<u8>,
+        /// HMAC-SHA256 hashes of read-only tokens.
+        read_token_hashes: Vec<Vec<u8>>,
+        /// Whether read endpoints require authentication.
+        require_read_auth: bool,
     },
 }
 
@@ -37,9 +44,30 @@ impl AuthMode {
             return Ok(Self::NoAuth);
         };
 
-        match (&auth.jwks_url, &auth.api_token) {
+        // Resolve the effective admin token (admin_token or legacy api_token alias)
+        let effective_admin_token = match (&auth.admin_token, &auth.api_token) {
             (Some(_), Some(_)) => {
-                anyhow::bail!("auth config: jwks_url and api_token are mutually exclusive");
+                anyhow::bail!("auth config: admin_token and api_token are mutually exclusive (api_token is a legacy alias for admin_token)");
+            }
+            (Some(t), None) | (None, Some(t)) => Some(t),
+            (None, None) => None,
+        };
+
+        // Resolve read tokens
+        let read_token_hashes: Vec<Vec<u8>> = auth
+            .read_tokens
+            .iter()
+            .map(|t| {
+                let resolved = t.resolve().map_err(|e| anyhow::anyhow!("{e}"))?;
+                Ok(hash_token(&resolved))
+            })
+            .collect::<anyhow::Result<Vec<_>>>()?;
+
+        let require_read_auth = auth.require_read_auth;
+
+        match (&auth.jwks_url, effective_admin_token) {
+            (Some(_), Some(_)) => {
+                anyhow::bail!("auth config: jwks_url and admin_token/api_token are mutually exclusive");
             }
             (Some(url), None) => {
                 let cache = JwksCache::new(url).await?;
@@ -48,14 +76,30 @@ impl AuthMode {
                 Ok(Self::Jwt {
                     jwks_cache: cache,
                     required_role: auth.required_role.clone(),
+                    read_token_hashes,
+                    require_read_auth,
                 })
             }
             (None, Some(token_val)) => {
                 let token = token_val.resolve().map_err(|e| anyhow::anyhow!("{e}"))?;
-                let token_hash = hash_token(&token);
-                Ok(Self::ApiToken { token_hash })
+                let admin_token_hash = hash_token(&token);
+                Ok(Self::ApiToken {
+                    admin_token_hash,
+                    read_token_hashes,
+                    require_read_auth,
+                })
             }
-            (None, None) => Ok(Self::NoAuth),
+            (None, None) => {
+                if !read_token_hashes.is_empty() || require_read_auth {
+                    // read_tokens or require_read_auth without any admin auth is not useful —
+                    // there would be no way to write. Treat as NoAuth and warn.
+                    tracing::warn!(
+                        "read_tokens or require_read_auth set without admin_token or jwks_url; \
+                         all endpoints will be open"
+                    );
+                }
+                Ok(Self::NoAuth)
+            }
         }
     }
 }
@@ -219,41 +263,81 @@ struct Claims {
 
 // -- Auth Middleware --
 
-/// Axum middleware that enforces auth on write operations (POST, PATCH, PUT, DELETE).
-/// Read operations (GET, HEAD, OPTIONS) pass through unconditionally.
+/// Check if a token matches any of the given read-only token hashes.
+fn is_read_token(incoming: &str, read_token_hashes: &[Vec<u8>]) -> bool {
+    read_token_hashes
+        .iter()
+        .any(|hash| verify_token(incoming, hash))
+}
+
+/// Axum middleware that enforces auth on operations.
+///
+/// Write operations (POST, PATCH, PUT, DELETE) require admin auth (admin token or JWT with role).
+/// Read operations (GET, HEAD, OPTIONS) are public by default, but can require auth when
+/// `require_read_auth` is enabled — any valid token (admin, read-only, or JWT) suffices.
 pub async fn require_auth(
     State(state): State<Arc<AppState>>,
     request: Request<axum::body::Body>,
     next: Next,
 ) -> Result<Response, Response> {
-    // Read operations are always public
-    if matches!(
+    let is_read = matches!(
         *request.method(),
         Method::GET | Method::HEAD | Method::OPTIONS
-    ) {
-        return Ok(next.run(request).await);
-    }
+    );
 
     match &state.auth_mode {
         AuthMode::NoAuth => Ok(next.run(request).await),
-        AuthMode::ApiToken { token_hash } => {
+
+        AuthMode::ApiToken {
+            admin_token_hash,
+            read_token_hashes,
+            require_read_auth,
+        } => {
+            if is_read && !require_read_auth {
+                return Ok(next.run(request).await);
+            }
+
             let token = extract_bearer_token(&request)
                 .ok_or_else(|| auth_error("missing or invalid Authorization header"))?;
 
-            if !verify_token(token, token_hash) {
-                return Err(auth_error("invalid API token"));
+            // Admin token: allows everything
+            if verify_token(token, admin_token_hash) {
+                return Ok(next.run(request).await);
             }
 
-            Ok(next.run(request).await)
+            // Read-only token: only allows reads
+            if is_read && is_read_token(token, read_token_hashes) {
+                return Ok(next.run(request).await);
+            }
+
+            Err(auth_error(if is_read {
+                "invalid API token"
+            } else {
+                "write operations require an admin token"
+            }))
         }
+
         AuthMode::Jwt {
             jwks_cache,
             required_role,
+            read_token_hashes,
+            require_read_auth,
         } => {
+            if is_read && !require_read_auth {
+                return Ok(next.run(request).await);
+            }
+
             let token = extract_bearer_token(&request)
                 .ok_or_else(|| auth_error("missing or invalid Authorization header"))?;
 
-            validate_jwt(token, jwks_cache, required_role.as_deref()).await?;
+            // For reads, check read-only tokens first (cheaper than JWT validation)
+            if is_read && is_read_token(token, read_token_hashes) {
+                return Ok(next.run(request).await);
+            }
+
+            // Validate JWT — for writes, enforce required_role; for reads, any valid JWT
+            let role_to_check = if is_read { None } else { required_role.as_deref() };
+            validate_jwt(token, jwks_cache, role_to_check).await?;
 
             Ok(next.run(request).await)
         }

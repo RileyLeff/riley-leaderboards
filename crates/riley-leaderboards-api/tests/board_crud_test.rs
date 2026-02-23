@@ -3264,6 +3264,8 @@ fn setup_jwt_auth_state(
     let auth_mode = riley_leaderboards_api::auth::AuthMode::Jwt {
         jwks_cache: Arc::new(jwks_cache),
         required_role,
+        read_token_hashes: vec![],
+        require_read_auth: false,
     };
     let state = Arc::new(AppState {
         pool,
@@ -3300,7 +3302,11 @@ async fn auth_api_token_write_requires_token() {
         mac.update(b"test-api-secret-123");
         mac.finalize().into_bytes().to_vec()
     };
-    let auth_mode = riley_leaderboards_api::auth::AuthMode::ApiToken { token_hash };
+    let auth_mode = riley_leaderboards_api::auth::AuthMode::ApiToken {
+        admin_token_hash: token_hash,
+        read_token_hashes: vec![],
+        require_read_auth: false,
+    };
     let state = Arc::new(AppState {
         pool: pool.clone(),
         config,
@@ -3725,6 +3731,8 @@ async fn auth_jwks_fetch_from_mock_server() {
     let auth_mode = riley_leaderboards_api::auth::AuthMode::Jwt {
         jwks_cache,
         required_role: Some("admin".to_string()),
+        read_token_hashes: vec![],
+        require_read_auth: false,
     };
     let state = Arc::new(AppState {
         pool: pool.clone(),
@@ -4200,6 +4208,446 @@ position = 1
     let meta = version.version.metadata.expect("version metadata should be set");
     assert_eq!(meta["blog_post_url"], "https://example.com/post");
     assert_eq!(meta["author"], "test");
+
+    cleanup(&state, schema).await;
+}
+
+// ── Phase 2 (v2): Read-Only API Keys ────────────────────────────────────
+
+/// Helper: compute HMAC-SHA256 hash of a token for test AuthMode construction.
+fn hash_test_token(token: &str) -> Vec<u8> {
+    use hmac::{Hmac, Mac};
+    use sha2::Sha256;
+    let mut mac = Hmac::<Sha256>::new_from_slice(b"riley-leaderboards-api-token").unwrap();
+    mac.update(token.as_bytes());
+    mac.finalize().into_bytes().to_vec()
+}
+
+#[tokio::test]
+async fn auth_read_token_can_read_but_not_write() {
+    let schema = "test_read_token_rw";
+    let config = RileyLeaderboardsConfig {
+        server: None,
+        database: DatabaseConfig {
+            url: ConfigValue::new(test_db_url()),
+            max_connections: 2,
+            schema: Some(schema.to_string()),
+        },
+        auth: None,
+        sync: None,
+    };
+    let pool = db::connect(&config.database).await.expect("connect failed");
+    db::migrate(&pool).await.expect("migrate failed");
+
+    let admin_token_hash = hash_test_token("admin-secret");
+    let read_token_hash = hash_test_token("read-secret");
+
+    let auth_mode = riley_leaderboards_api::auth::AuthMode::ApiToken {
+        admin_token_hash,
+        read_token_hashes: vec![read_token_hash],
+        require_read_auth: false,
+    };
+    let state = Arc::new(AppState {
+        pool: pool.clone(),
+        config,
+        auth_mode,
+        sync_mutex: tokio::sync::Mutex::new(()),
+    });
+    let app = build_router(state.clone());
+
+    // First, create a board with the admin token so we have something to read
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/boards")
+                .header("content-type", "application/json")
+                .header("authorization", "Bearer admin-secret")
+                .body(Body::from(
+                    serde_json::to_vec(&serde_json::json!({
+                        "slug": "read-test",
+                        "name": "Read Test",
+                        "board_type": "ordered"
+                    }))
+                    .unwrap(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 201);
+
+    // GET with read-only token → 200
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/boards")
+                .header("authorization", "Bearer read-secret")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200);
+
+    // POST with read-only token → 401 (writes require admin)
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/boards")
+                .header("content-type", "application/json")
+                .header("authorization", "Bearer read-secret")
+                .body(Body::from(
+                    serde_json::to_vec(&serde_json::json!({
+                        "slug": "should-fail",
+                        "name": "Should Fail",
+                        "board_type": "ordered"
+                    }))
+                    .unwrap(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 401);
+
+    // DELETE with read-only token → 401
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("DELETE")
+                .uri("/boards/read-test")
+                .header("authorization", "Bearer read-secret")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 401);
+
+    cleanup(&state, schema).await;
+}
+
+#[tokio::test]
+async fn auth_require_read_auth_blocks_unauthenticated_reads() {
+    let schema = "test_require_read_auth";
+    let config = RileyLeaderboardsConfig {
+        server: None,
+        database: DatabaseConfig {
+            url: ConfigValue::new(test_db_url()),
+            max_connections: 2,
+            schema: Some(schema.to_string()),
+        },
+        auth: None,
+        sync: None,
+    };
+    let pool = db::connect(&config.database).await.expect("connect failed");
+    db::migrate(&pool).await.expect("migrate failed");
+
+    let admin_token_hash = hash_test_token("admin-secret");
+    let read_token_hash = hash_test_token("read-secret");
+
+    let auth_mode = riley_leaderboards_api::auth::AuthMode::ApiToken {
+        admin_token_hash,
+        read_token_hashes: vec![read_token_hash],
+        require_read_auth: true,
+    };
+    let state = Arc::new(AppState {
+        pool: pool.clone(),
+        config,
+        auth_mode,
+        sync_mutex: tokio::sync::Mutex::new(()),
+    });
+    let app = build_router(state.clone());
+
+    // Create a board with admin token
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/boards")
+                .header("content-type", "application/json")
+                .header("authorization", "Bearer admin-secret")
+                .body(Body::from(
+                    serde_json::to_vec(&serde_json::json!({
+                        "slug": "auth-read-test",
+                        "name": "Auth Read Test",
+                        "board_type": "ordered"
+                    }))
+                    .unwrap(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 201);
+
+    // GET without token → 401 (require_read_auth is true)
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/boards")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 401);
+
+    // GET with read-only token → 200
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/boards")
+                .header("authorization", "Bearer read-secret")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200);
+
+    // GET with admin token → 200
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/boards")
+                .header("authorization", "Bearer admin-secret")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200);
+
+    // GET with wrong token → 401
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/boards")
+                .header("authorization", "Bearer wrong-token")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 401);
+
+    cleanup(&state, schema).await;
+}
+
+#[tokio::test]
+async fn auth_jwt_read_token_can_read_but_not_write() {
+    let schema = "test_jwt_read_token";
+    let config = RileyLeaderboardsConfig {
+        server: None,
+        database: DatabaseConfig {
+            url: ConfigValue::new(test_db_url()),
+            max_connections: 2,
+            schema: Some(schema.to_string()),
+        },
+        auth: None,
+        sync: None,
+    };
+    let pool = db::connect(&config.database).await.expect("connect failed");
+    db::migrate(&pool).await.expect("migrate failed");
+
+    let read_token_hash = hash_test_token("jwt-read-secret");
+
+    let decoding_key =
+        jsonwebtoken::DecodingKey::from_rsa_pem(TEST_RSA_PUBLIC_KEY.as_bytes()).unwrap();
+    let jwks_cache = riley_leaderboards_api::auth::JwksCache::from_static(
+        "test-key-1".to_string(),
+        decoding_key,
+        jsonwebtoken::Algorithm::RS256,
+    );
+    let auth_mode = riley_leaderboards_api::auth::AuthMode::Jwt {
+        jwks_cache: Arc::new(jwks_cache),
+        required_role: Some("admin".to_string()),
+        read_token_hashes: vec![read_token_hash],
+        require_read_auth: false,
+    };
+    let state = Arc::new(AppState {
+        pool: pool.clone(),
+        config,
+        auth_mode,
+        sync_mutex: tokio::sync::Mutex::new(()),
+    });
+    let app = build_router(state.clone());
+
+    // Create a board with JWT admin token
+    let admin_jwt = make_test_jwt(&["admin"], 3600);
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/boards")
+                .header("content-type", "application/json")
+                .header("authorization", format!("Bearer {admin_jwt}"))
+                .body(Body::from(
+                    serde_json::to_vec(&serde_json::json!({
+                        "slug": "jwt-read-test",
+                        "name": "JWT Read Test",
+                        "board_type": "ordered"
+                    }))
+                    .unwrap(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 201);
+
+    // GET with read-only API token → 200 (read tokens work for reads)
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/boards")
+                .header("authorization", "Bearer jwt-read-secret")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200);
+
+    // POST with read-only API token → 401 (writes require JWT with role)
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/boards")
+                .header("content-type", "application/json")
+                .header("authorization", "Bearer jwt-read-secret")
+                .body(Body::from(
+                    serde_json::to_vec(&serde_json::json!({
+                        "slug": "should-fail",
+                        "name": "Should Fail",
+                        "board_type": "ordered"
+                    }))
+                    .unwrap(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 401);
+
+    // GET without any token → 200 (reads are public, require_read_auth is false)
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/boards")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200);
+
+    cleanup(&state, schema).await;
+}
+
+#[tokio::test]
+async fn auth_jwt_require_read_auth() {
+    let schema = "test_jwt_require_read";
+    let config = RileyLeaderboardsConfig {
+        server: None,
+        database: DatabaseConfig {
+            url: ConfigValue::new(test_db_url()),
+            max_connections: 2,
+            schema: Some(schema.to_string()),
+        },
+        auth: None,
+        sync: None,
+    };
+    let pool = db::connect(&config.database).await.expect("connect failed");
+    db::migrate(&pool).await.expect("migrate failed");
+
+    let read_token_hash = hash_test_token("jwt-read-secret");
+
+    let decoding_key =
+        jsonwebtoken::DecodingKey::from_rsa_pem(TEST_RSA_PUBLIC_KEY.as_bytes()).unwrap();
+    let jwks_cache = riley_leaderboards_api::auth::JwksCache::from_static(
+        "test-key-1".to_string(),
+        decoding_key,
+        jsonwebtoken::Algorithm::RS256,
+    );
+    let auth_mode = riley_leaderboards_api::auth::AuthMode::Jwt {
+        jwks_cache: Arc::new(jwks_cache),
+        required_role: Some("admin".to_string()),
+        read_token_hashes: vec![read_token_hash],
+        require_read_auth: true,
+    };
+    let state = Arc::new(AppState {
+        pool: pool.clone(),
+        config,
+        auth_mode,
+        sync_mutex: tokio::sync::Mutex::new(()),
+    });
+    let app = build_router(state.clone());
+
+    // GET without token → 401 (require_read_auth is true)
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/boards")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 401);
+
+    // GET with read-only token → 200
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/boards")
+                .header("authorization", "Bearer jwt-read-secret")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200);
+
+    // GET with valid JWT (no special role needed for reads) → 200
+    let viewer_jwt = make_test_jwt(&["viewer"], 3600);
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/boards")
+                .header("authorization", format!("Bearer {viewer_jwt}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200);
 
     cleanup(&state, schema).await;
 }

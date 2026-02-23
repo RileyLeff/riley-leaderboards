@@ -15,7 +15,16 @@ pub struct RileyLeaderboardsConfig {
 pub struct AuthConfig {
     pub jwks_url: Option<String>,
     pub required_role: Option<String>,
+    /// Admin token — full read/write access. Alias: `api_token` (v1 compat).
+    pub admin_token: Option<ConfigValue>,
+    /// Legacy alias for `admin_token`. If both are set, startup fails.
     pub api_token: Option<ConfigValue>,
+    /// Read-only tokens — can fetch boards, versions, entries, references.
+    #[serde(default)]
+    pub read_tokens: Vec<ConfigValue>,
+    /// Whether reads require authentication. Default: false (public reads).
+    #[serde(default)]
+    pub require_read_auth: bool,
 }
 
 #[derive(Debug, Clone, Deserialize)]
