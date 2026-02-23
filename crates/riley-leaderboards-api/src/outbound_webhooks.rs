@@ -1,8 +1,10 @@
 use std::sync::LazyLock;
 
+use chrono::{DateTime, Utc};
 use hmac::{Hmac, Mac};
 use serde::Serialize;
 use sha2::Sha256;
+use tokio::task::JoinHandle;
 
 use riley_leaderboards_core::config::{WebhookConfig, WebhookEvent};
 
@@ -39,18 +41,23 @@ pub struct VersionInfo {
     pub note: Option<String>,
 }
 
-/// Fire outbound webhooks for the given event and board. Non-blocking —
-/// spawns a task for each matching webhook and returns immediately.
+/// Fire outbound webhooks for the given event and board.
+/// Returns a `Vec<JoinHandle<()>>` — server call sites can ignore these (fire-and-forget),
+/// while CLI call sites can `join_all()` to ensure delivery before exit.
+/// The `timestamp` parameter allows passing the DB-sourced timestamp (e.g. `created_at`);
+/// when `None`, falls back to `Utc::now()`.
 pub fn fire(
     configs: &[WebhookConfig],
     event: WebhookEvent,
     board_slug: &str,
     board_name: &str,
     version_info: Option<VersionInfo>,
-) {
+    timestamp: Option<DateTime<Utc>>,
+) -> Vec<JoinHandle<()>> {
+    let ts = timestamp.unwrap_or_else(Utc::now).to_rfc3339();
     let payload = WebhookPayload {
         event: event.as_str(),
-        timestamp: chrono::Utc::now().to_rfc3339(),
+        timestamp: ts,
         board: BoardInfo {
             slug: board_slug.to_string(),
             name: board_name.to_string(),
@@ -62,9 +69,11 @@ pub fn fire(
         Ok(b) => b,
         Err(e) => {
             tracing::error!("failed to serialize webhook payload: {e}");
-            return;
+            return vec![];
         }
     };
+
+    let mut handles = Vec::new();
 
     for config in configs {
         if !config.events.contains(&event) {
@@ -90,10 +99,12 @@ pub fn fire(
             None => None,
         };
 
-        tokio::spawn(async move {
+        handles.push(tokio::spawn(async move {
             deliver(&url, &body, secret.as_deref()).await;
-        });
+        }));
     }
+
+    handles
 }
 
 /// Check if a board slug matches the webhook's board filter patterns.

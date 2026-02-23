@@ -5,6 +5,7 @@ use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use riley_leaderboards_api::AppState;
 use riley_leaderboards_core::{config, db, repo};
+use tokio::task::JoinHandle;
 
 #[derive(Parser)]
 #[command(name = "riley-leaderboards")]
@@ -166,6 +167,7 @@ async fn main() -> Result<()> {
                     .await
                     .context("sync failed")?;
 
+            let mut webhook_handles: Vec<JoinHandle<()>> = Vec::new();
             for result in &results {
                 match &result.action {
                     riley_leaderboards_core::sync::execute::SyncAction::Created {
@@ -175,7 +177,16 @@ async fn main() -> Result<()> {
                             "board '{}': created (version {version_number})",
                             result.slug
                         );
-                        riley_leaderboards_api::outbound_webhooks::fire(
+                        // Fire board.created for newly created boards
+                        webhook_handles.extend(riley_leaderboards_api::outbound_webhooks::fire(
+                            &config.webhooks,
+                            riley_leaderboards_core::config::WebhookEvent::BoardCreated,
+                            &result.slug,
+                            &result.name,
+                            None,
+                            None,
+                        ));
+                        webhook_handles.extend(riley_leaderboards_api::outbound_webhooks::fire(
                             &config.webhooks,
                             riley_leaderboards_core::config::WebhookEvent::VersionCreated,
                             &result.slug,
@@ -184,7 +195,8 @@ async fn main() -> Result<()> {
                                 version_number: *version_number,
                                 note: note.clone(),
                             }),
-                        );
+                            None,
+                        ));
                     }
                     riley_leaderboards_core::sync::execute::SyncAction::Updated {
                         version_number,
@@ -193,7 +205,7 @@ async fn main() -> Result<()> {
                             "board '{}': updated (version {version_number})",
                             result.slug
                         );
-                        riley_leaderboards_api::outbound_webhooks::fire(
+                        webhook_handles.extend(riley_leaderboards_api::outbound_webhooks::fire(
                             &config.webhooks,
                             riley_leaderboards_core::config::WebhookEvent::VersionCreated,
                             &result.slug,
@@ -202,7 +214,8 @@ async fn main() -> Result<()> {
                                 version_number: *version_number,
                                 note: note.clone(),
                             }),
-                        );
+                            None,
+                        ));
                     }
                     riley_leaderboards_core::sync::execute::SyncAction::NoChange => {
                         tracing::info!("board '{}': no changes", result.slug);
@@ -215,6 +228,8 @@ async fn main() -> Result<()> {
                     }
                 }
             }
+            // Await webhook delivery before CLI exits
+            futures_util::future::join_all(webhook_handles).await;
         }
         Command::ListBoards => {
             let pool = db::connect_readonly(&config.database).await?;
@@ -255,13 +270,15 @@ async fn main() -> Result<()> {
             }
 
             repo::boards::delete(&pool, &slug).await?;
-            riley_leaderboards_api::outbound_webhooks::fire(
+            let handles = riley_leaderboards_api::outbound_webhooks::fire(
                 &config.webhooks,
                 riley_leaderboards_core::config::WebhookEvent::BoardDeleted,
                 &slug,
                 &board_name,
                 None,
+                None,
             );
+            futures_util::future::join_all(handles).await;
             println!("Board '{slug}' deleted.");
         }
         Command::ListVersions { slug } => {
@@ -298,13 +315,15 @@ async fn main() -> Result<()> {
             let pool = db::connect(&config.database).await?;
             db::migrate(&pool).await?;
             repo::export::import_board(&pool, &export).await?;
-            riley_leaderboards_api::outbound_webhooks::fire(
+            let handles = riley_leaderboards_api::outbound_webhooks::fire(
                 &config.webhooks,
                 riley_leaderboards_core::config::WebhookEvent::BoardCreated,
                 &export.board.slug,
                 &export.board.name,
                 None,
+                None,
             );
+            futures_util::future::join_all(handles).await;
             println!("Board '{}' imported successfully.", export.board.slug);
         }
         Command::ListCollections => {

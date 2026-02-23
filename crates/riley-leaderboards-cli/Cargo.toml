@@ -20,3 +20,4 @@ anyhow = { workspace = true }
 serde_json = { workspace = true }
 sqlx = { workspace = true }
 redis = { workspace = true }
+futures-util = { workspace = true }

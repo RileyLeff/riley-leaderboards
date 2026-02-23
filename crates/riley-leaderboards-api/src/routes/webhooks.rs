@@ -252,30 +252,52 @@ pub async fn github(
     .await
     {
         Ok(results) => {
-            // Fire outbound webhooks for synced versions
+            // Fire outbound webhooks for synced boards/versions
             for r in &results {
-                let version_number = match &r.action {
-                    riley_leaderboards_core::sync::execute::SyncAction::Created { version_number }
-                    | riley_leaderboards_core::sync::execute::SyncAction::Updated { version_number } => {
-                        Some(*version_number)
+                match &r.action {
+                    riley_leaderboards_core::sync::execute::SyncAction::Created { version_number } => {
+                        // Fire board.created for newly created boards
+                        let _ = crate::outbound_webhooks::fire(
+                            &state.config.webhooks,
+                            riley_leaderboards_core::config::WebhookEvent::BoardCreated,
+                            &r.slug,
+                            &r.name,
+                            None,
+                            None,
+                        );
+                        // Fire version.created
+                        let _ = crate::outbound_webhooks::fire(
+                            &state.config.webhooks,
+                            riley_leaderboards_core::config::WebhookEvent::VersionCreated,
+                            &r.slug,
+                            &r.name,
+                            Some(crate::outbound_webhooks::VersionInfo {
+                                version_number: *version_number,
+                                note: note.clone(),
+                            }),
+                            None,
+                        );
+                        if let Some(ref event_bus) = state.event_bus {
+                            event_bus.publish_version(&r.slug, *version_number, note.clone());
+                        }
                     }
-                    _ => None,
-                };
-                if let Some(vnum) = version_number {
-                    crate::outbound_webhooks::fire(
-                        &state.config.webhooks,
-                        riley_leaderboards_core::config::WebhookEvent::VersionCreated,
-                        &r.slug,
-                        &r.name,
-                        Some(crate::outbound_webhooks::VersionInfo {
-                            version_number: vnum,
-                            note: note.clone(),
-                        }),
-                    );
-                    // Publish SSE event for live subscribers
-                    if let Some(ref event_bus) = state.event_bus {
-                        event_bus.publish_version(&r.slug, vnum, note.clone());
+                    riley_leaderboards_core::sync::execute::SyncAction::Updated { version_number } => {
+                        let _ = crate::outbound_webhooks::fire(
+                            &state.config.webhooks,
+                            riley_leaderboards_core::config::WebhookEvent::VersionCreated,
+                            &r.slug,
+                            &r.name,
+                            Some(crate::outbound_webhooks::VersionInfo {
+                                version_number: *version_number,
+                                note: note.clone(),
+                            }),
+                            None,
+                        );
+                        if let Some(ref event_bus) = state.event_bus {
+                            event_bus.publish_version(&r.slug, *version_number, note.clone());
+                        }
                     }
+                    _ => {}
                 }
             }
 

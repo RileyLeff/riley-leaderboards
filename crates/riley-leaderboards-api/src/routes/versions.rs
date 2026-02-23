@@ -71,7 +71,7 @@ pub async fn create(
     }
 
     let version = versions::create(&state.pool, &board, &input).await?;
-    outbound_webhooks::fire(
+    let _ = outbound_webhooks::fire(
         &state.config.webhooks,
         WebhookEvent::VersionCreated,
         &board.slug,
@@ -80,6 +80,7 @@ pub async fn create(
             version_number: version.version.version_number,
             note: version.version.note.clone(),
         }),
+        Some(version.version.created_at),
     );
 
     // Publish SSE version.created event

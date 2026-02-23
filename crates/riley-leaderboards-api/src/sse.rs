@@ -104,12 +104,20 @@ impl EventBus {
 
     /// Publish a version.created event (always sent, no debouncing).
     pub fn publish_version(&self, board_slug: &str, version_number: i32, note: Option<String>) {
-        let channels = self.channels.read().unwrap();
-        if let Some(tx) = channels.get(board_slug) {
-            let _ = tx.send(SseEvent::VersionCreated {
-                version_number,
-                note,
-            });
+        let should_prune = {
+            let channels = self.channels.read().unwrap();
+            if let Some(tx) = channels.get(board_slug) {
+                let _ = tx.send(SseEvent::VersionCreated {
+                    version_number,
+                    note,
+                });
+                tx.receiver_count() == 0
+            } else {
+                false
+            }
+        };
+        if should_prune {
+            self.prune_channel(board_slug);
         }
     }
 
@@ -122,33 +130,59 @@ impl EventBus {
         entry_name: String,
         score: f64,
     ) -> bool {
-        let channels = self.channels.read().unwrap();
-        let Some(tx) = channels.get(board_slug) else {
-            return true; // No subscribers — nothing to debounce or send
-        };
+        let should_prune = {
+            let channels = self.channels.read().unwrap();
+            let Some(tx) = channels.get(board_slug) else {
+                return true; // No subscribers — nothing to debounce or send
+            };
 
-        // Check debounce (only when there are subscribers)
-        if self.debounce_ms > 0 {
-            let now = Instant::now();
-            let mut last_events = self.last_score_event.write().unwrap();
-            if let Some(last) = last_events.get(board_slug) {
-                if now.duration_since(*last).as_millis() < self.debounce_ms as u128 {
+            // Check debounce (only when there are subscribers)
+            if self.debounce_ms > 0 {
+                let now = Instant::now();
+                let mut last_events = self.last_score_event.write().unwrap();
+                if let Some(last) = last_events.get(board_slug)
+                    && now.duration_since(*last).as_millis() < self.debounce_ms as u128
+                {
                     return false;
                 }
+                last_events.insert(board_slug.to_string(), now);
             }
-            last_events.insert(board_slug.to_string(), now);
-        }
 
-        let _ = tx.send(SseEvent::ScoreUpdated {
-            entry_slug,
-            entry_name,
-            score,
-        });
+            let _ = tx.send(SseEvent::ScoreUpdated {
+                entry_slug,
+                entry_name,
+                score,
+            });
+            tx.receiver_count() == 0
+        };
+        if should_prune {
+            self.prune_channel(board_slug);
+        }
         true
+    }
+
+    /// Remove a channel with no receivers (and its debounce state).
+    fn prune_channel(&self, board_slug: &str) {
+        let mut channels = self.channels.write().unwrap();
+        // Re-check under write lock — a new subscriber may have appeared
+        if let Some(tx) = channels.get(board_slug) {
+            if tx.receiver_count() == 0 {
+                channels.remove(board_slug);
+                self.last_score_event
+                    .write()
+                    .unwrap()
+                    .remove(board_slug);
+            }
+        }
     }
 
     pub fn active_connections(&self) -> usize {
         self.active_connections.load(Ordering::Acquire)
+    }
+
+    /// Number of board channels currently in the registry.
+    pub fn channel_count(&self) -> usize {
+        self.channels.read().unwrap().len()
     }
 }
 

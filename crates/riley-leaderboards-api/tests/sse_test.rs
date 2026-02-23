@@ -530,3 +530,32 @@ async fn snapshot_publishes_sse_event() {
 
     cleanup(&state, schema).await;
 }
+
+// ── Test: EventBus prunes channels with no receivers ─────────────────────────
+
+#[tokio::test]
+async fn event_bus_prunes_stale_channels() {
+    let bus = EventBus::new(100, 100, 256); // 100ms debounce
+
+    // Subscribe and then drop the receiver
+    let (rx, guard) = bus.subscribe("prune-board").unwrap();
+    assert_eq!(bus.channel_count(), 1);
+
+    // Publish a score to create a debounce entry
+    bus.publish_score(
+        "prune-board",
+        "p1".to_string(),
+        "P1".to_string(),
+        50.0,
+    );
+
+    // Drop the subscriber — receiver count goes to 0 on next publish
+    drop(rx);
+    drop(guard);
+
+    // Next publish should trigger pruning (no receivers left)
+    bus.publish_version("prune-board", 1, None);
+
+    // Channel and debounce state should be pruned
+    assert_eq!(bus.channel_count(), 0);
+}
