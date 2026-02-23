@@ -6,6 +6,7 @@
 
 use redis::AsyncCommands;
 use sqlx::PgPool;
+use tracing;
 use uuid::Uuid;
 
 use crate::error::{Error, Result};
@@ -245,15 +246,17 @@ pub async fn snapshot(
 
     tx.commit().await.map_err(Error::Database)?;
 
-    // Clear Redis state if configured
+    // Clear Redis state if configured (best-effort: Postgres commit is authoritative)
     if board.clear_on_snapshot {
-        let _: () = redis::pipe()
+        if let Err(e) = redis::pipe()
             .atomic()
             .del(&sk)
             .del(&ek)
-            .query_async(redis)
+            .query_async::<()>(redis)
             .await
-            .map_err(|e| Error::ServiceUnavailable(format!("Redis clear error: {e}")))?;
+        {
+            tracing::error!("failed to clear Redis after snapshot for board '{}': {e}", board.slug);
+        }
     }
 
     Ok(VersionWithPlacements {
