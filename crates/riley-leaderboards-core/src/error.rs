@@ -22,6 +22,9 @@ pub enum Error {
 
     #[error("internal error: {0}")]
     Internal(String),
+
+    #[error("service unavailable: {0}")]
+    ServiceUnavailable(String),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;

@@ -8,8 +8,9 @@ use axum::Json;
 use serde::Deserialize;
 
 use riley_leaderboards_core::config::WebhookEvent;
+use riley_leaderboards_core::error::Error as CoreError;
 use riley_leaderboards_core::models::{CreateVersion, PaginationParams};
-use riley_leaderboards_core::repo::{boards, versions};
+use riley_leaderboards_core::repo::{boards, realtime, versions};
 
 use crate::AppState;
 use crate::error::ApiResult;
@@ -65,6 +66,15 @@ pub async fn latest(
     Path(board_slug): Path<String>,
 ) -> ApiResult<impl IntoResponse> {
     let board = boards::get_by_slug(&state.pool, &board_slug).await?;
+
+    if board.realtime {
+        let mut redis = state.redis.clone().ok_or(CoreError::ServiceUnavailable(
+            "Redis is required for realtime boards but not configured".to_string(),
+        ))?;
+        let standings = realtime::latest(&mut redis, &board).await?;
+        return Ok(Json(standings));
+    }
+
     let version = versions::get_latest(&state.pool, board.id).await?;
     Ok(Json(version))
 }
