@@ -28,17 +28,19 @@ pub async fn github(
     {
         Some(cv) => match cv.resolve() {
             Ok(s) => s,
-            Err(_) => {
+            Err(e) => {
+                tracing::error!("webhook secret resolve failed: {e}");
                 return (
                     StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(serde_json::json!({ "error": "webhook secret not configured" })),
+                    Json(serde_json::json!({ "error": "webhook processing failed" })),
                 );
             }
         },
         None => {
+            tracing::error!("webhook secret not configured");
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(serde_json::json!({ "error": "webhook secret not configured" })),
+                Json(serde_json::json!({ "error": "webhook processing failed" })),
             );
         }
     };
@@ -52,9 +54,10 @@ pub async fn github(
     {
         Some(p) => p.clone(),
         None => {
+            tracing::error!("sync repo_path not configured");
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(serde_json::json!({ "error": "sync repo_path not configured" })),
+                Json(serde_json::json!({ "error": "webhook processing failed" })),
             );
         }
     };
