@@ -56,18 +56,19 @@ CREATE TABLE placements (
 CREATE INDEX idx_placements_version_id ON placements(version_id);
 CREATE INDEX idx_placements_entry_id ON placements(entry_id);
 
--- References (links between board versions and external contexts)
-CREATE TABLE references (
+-- Board references (links between board versions and external contexts)
+-- Named "board_references" because "references" is a SQL reserved keyword.
+CREATE TABLE board_references (
     id uuid PRIMARY KEY DEFAULT uuidv7(),
     board_id uuid NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
     pinned_version_id uuid REFERENCES versions(id) ON DELETE SET NULL,
     uri text NOT NULL,
-    type text NOT NULL,
+    ref_type text NOT NULL,
     label text,
     created_at timestamptz NOT NULL DEFAULT now()
 );
 
-CREATE INDEX idx_references_board_id ON references(board_id);
+CREATE INDEX idx_board_references_board_id ON board_references(board_id);
 
 -- Accumulated scores (staging area for accumulative boards)
 CREATE TABLE accumulated_scores (
