@@ -1,0 +1,5 @@
+target/
+planning/
+.git/
+*.md
+!CLAUDE.md
