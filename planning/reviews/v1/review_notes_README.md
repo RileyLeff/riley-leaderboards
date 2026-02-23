@@ -56,3 +56,13 @@ database. Harmless in dev, but if it causes flaky tests, consider Drop guards.
 `connect_readonly` sets `search_path` to a potentially non-existent schema,
 which PostgreSQL accepts silently. `validate` confirms the database is
 reachable but does not verify the configured schema exists.
+
+### Cross-board integrity not enforced at schema level (Phase 2 action item)
+Codex flagged (late, after convergence) that the schema allows cross-board
+data: a placement could link a version from board A with an entry from board B.
+Same for accumulated_scores and board_references. This is harmless in Phase 1
+(no write paths exist), but Phase 2 MUST enforce this invariant. Options:
+- Application-level validation in CRUD handlers (simplest, most common)
+- Composite FKs with redundant board_id columns (most robust)
+- Database triggers (most invisible to application code)
+Decision deferred to Phase 2 start.
