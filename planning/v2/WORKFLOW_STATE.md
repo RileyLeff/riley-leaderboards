@@ -1,8 +1,8 @@
 # v2 Workflow State
 
-**Current Phase:** 3 — Outbound Webhooks (COMPLETE)
+**Current Phase:** 4 — Board Collections (COMPLETE)
 **Current Step:** Done
-**Status:** Phase 3 converged. 3 review rounds, 0 majors in R2+R3. 122 tests pass. Ready for Phase 4.
+**Status:** Phase 4 converged. 2 review rounds, 0 majors in R1+R2. 136 tests pass. Ready for Phase 5.
 
 ## Progress
 
@@ -14,7 +14,10 @@
 | 2 | review | Exhaustive review (3 rounds, converged) | Done |
 | 3 | 3.1-3.5 | Outbound webhooks (config, dispatcher, hooks, filtering, tests) | Done |
 | 3 | review | Exhaustive review (3 rounds, converged, Claude only) | Done |
-| 4 | 4.1 | Collections migration | Not Started |
+| 4 | 4.1-4.5 | Collections (migration, models, repo, API, CLI) | Done |
+| 4 | 4.6 | Integration tests (14 tests) | Done |
+| 4 | review | Exhaustive review (2 rounds, converged, Codex+Claude) | Done |
+| 5 | 5.1 | Redis config + optional connection | Not Started |
 
 ## Blockers
 
@@ -22,8 +25,7 @@ None.
 
 ## Recent Activity
 
-- Phase 3: Outbound webhooks (98e3404)
-- Phase 3 tests (5d08d26)
-- Phase 3 R1 fixes: secret fail-open, CLI webhooks, glob validation (5363e15)
-- Phase 3 R2 fixes: shared reqwest::Client (b55c822)
-- Phase 3 converged: 3 rounds, 0 majors in R2+R3
+- Phase 4: Board collections implementation (f5f827b)
+- Phase 4 tests: 14 integration tests (0523f86)
+- Phase 4 R1 fixes: CLI list, FK race, board_id index, no-op PATCH (926d7be)
+- Phase 4 converged: 2 rounds, 0 majors in R1+R2

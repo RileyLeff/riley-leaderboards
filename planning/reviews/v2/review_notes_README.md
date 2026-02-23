@@ -96,3 +96,33 @@ timestamps would require threading timestamps through the fire() API. Accepted.
 `config.rs home_dir()` only checks the `HOME` environment variable. This
 doesn't work on Windows (which uses USERPROFILE), but the project targets
 Linux containers (Dockerfile). Accepted.
+
+## Phase 4: Board Collections
+
+### No outbound webhook events for collection CRUD (intentional)
+
+Board CRUD fires webhooks but collection CRUD does not. Collections are
+organizational groupings, not data-bearing entities. Static site rebuilds
+triggered by collection changes are unlikely. If needed, collection events
+can be added in a future phase.
+
+### CollectionBoardEntry omits entry_count (intentional)
+
+The `GET /collections/:slug` response includes `latest_version` per board but
+not `entry_count`. The v2 plan did not specify `entry_count` in the response
+example. Consumers who need entry counts can fetch individual board details.
+This avoids an extra subquery per board in the collection query.
+
+### Correlated subquery for latest_version is fine at current scale
+
+`get_with_boards()` uses `(SELECT MAX(v.version_number) ...)` per board. The
+`versions` table has a unique index on `(board_id, version_number)` so this is
+an index-only scan. For collections with hundreds of boards, a lateral join
+would be more efficient, but current scale doesn't warrant the complexity.
+
+### GitHub webhook handler proceeds without branch check when `ref` is absent (pre-existing)
+
+The webhook `github` handler only filters by branch when `ref` is present in the
+payload. If `ref` is absent, sync proceeds unconditionally. This is a pre-existing
+behavior from Phase 1, not a Phase 4 issue. It could be tightened to return 400
+for malformed payloads, but in practice GitHub always sends `ref` in push events.
