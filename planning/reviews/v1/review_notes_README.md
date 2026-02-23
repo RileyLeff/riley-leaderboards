@@ -102,3 +102,24 @@ deterministic position assignment across transactions.
 ### PlacementWithEntry doesn't include entry metadata (future enhancement)
 Response includes entry slug and name only. Full entry metadata could be
 added to the placement response in a future phase if needed.
+
+### Entry deletion + version creation race is handled by PostgreSQL FK locking
+When `entries::delete` holds FOR UPDATE on an entry, the FK constraint check
+in `versions::create`'s placement INSERT implicitly acquires FOR KEY SHARE,
+which conflicts with FOR UPDATE. This serializes the two operations correctly:
+either the version creation waits and then fails with FK violation (if entry
+was deleted) or the deletion sees the new placement and returns 409.
+
+### Lost update race in board/entry PATCH is Phase 8 / v2
+Concurrent PATCHes to the same board could overwrite each other's changes
+(read-then-write pattern without locking). Acceptable for v1 given single-
+curator semantics. Add SELECT FOR UPDATE in update functions if multi-admin
+support is added.
+
+### tier_config duplicate keys and COALESCE magic numbers are Phase 8
+validate_tier_config doesn't enforce key uniqueness; fetch_placements uses
+COALESCE with i32::MAX instead of NULLS LAST. Both are cosmetic/polish items.
+
+### sort_direction on non-scored boards is harmless
+Changing sort_direction on ordered/tiered boards succeeds silently. The field
+has no effect on non-scored board logic. Phase 8 could reject or document.
