@@ -1,8 +1,8 @@
 # v2 Workflow State
 
-**Current Phase:** ALL PHASES COMPLETE
-**Current Step:** N/A
-**Status:** All 6 phases implemented, tested, and reviewed. 159 tests pass. v2 is complete.
+**Current Phase:** 7 — Hardening & Polish (COMPLETE)
+**Current Step:** N/A — all steps done, exhaustive review converged
+**Status:** Phase 7 complete. 166 tests passing, clippy clean. Ready for release.
 
 ## Progress
 
@@ -25,6 +25,14 @@
 | 6 | 6.1-6.5 | SSE infrastructure, endpoint, publishing, debounce, config | Done |
 | 6 | 6.6 | 11 SSE tests (endpoint, EventBus unit, integration) | Done |
 | 6 | review | Exhaustive review (3 rounds, converged, Claude only) | Done |
+| 7 | 7.1 | Deduplicate scores_equal, remove explicit tx.rollback | Done |
+| 7 | 7.2 | Tier config duplicate key, sync slug validation, webhook ref check | Done |
+| 7 | 7.3 | Sanitize ServiceUnavailable errors, improve read-token error | Done |
+| 7 | 7.6 | JWKS EC/EdDSA key support | Done |
+| 7 | 7.4 | Redis key prefix, safety limits, SSE timeout, broadcast buffer | Done |
+| 7 | 7.5 | Webhook improvements (no-op filter, board.created, CLI await, timestamps, pruning) | Done |
+| 7 | 7.7 | Integration test expansion (auth, Redis, health, collections) | Done |
+| 7 | review | Exhaustive review (6 rounds, converged R5+R6, Claude only) | Done |
 
 ## Blockers
 
@@ -32,9 +40,15 @@ None.
 
 ## Recent Activity
 
-- 6.1-6.5: SSE infrastructure + EventBus + publishing + config (636f121)
-- 6.6: 11 SSE tests (eaf2933)
-- R1 fixes: Atomic connection limit, sync SSE publishing, example config, debounce ordering (2ec627c)
-- R2: 0 major, 0 minor — all R1 fixes verified
-- R3: 0 major, 0 minor — Phase 6 converged
-- All 6 v2 phases complete. 159 tests pass.
+- 7.1: Deduplicate scores_equal, remove tx.rollback (0c7d551)
+- 7.2: Tier config, sync slug, webhook ref validation (bda3de4)
+- 7.3: Sanitize errors, read-token improvement (555a012)
+- 7.6: JWKS EC/EdDSA key support (c9af5a4)
+- 7.4: Redis prefix, safety limits, SSE timeout, buffer (4f727f5)
+- 7.5: Webhook improvements (ecf5fa0)
+- 7.7: Integration tests (7af8a1b)
+- Review fix: Webhook error leaks, CORS example (ec9d57f)
+- Review fix: Safety limit coverage (22e1959)
+- Review fix: Placement metadata size (d86cb9f)
+- Review fix: Import validation, CORS logging (3bf0fec)
+- Exhaustive review converged: R5+R6 clean (0 major, 0 minor)
