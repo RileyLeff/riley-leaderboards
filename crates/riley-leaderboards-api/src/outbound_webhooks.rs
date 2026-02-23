@@ -1,3 +1,5 @@
+use std::sync::LazyLock;
+
 use hmac::{Hmac, Mac};
 use serde::Serialize;
 use sha2::Sha256;
@@ -5,6 +7,14 @@ use sha2::Sha256;
 use riley_leaderboards_core::config::{WebhookConfig, WebhookEvent};
 
 type HmacSha256 = Hmac<Sha256>;
+
+/// Shared HTTP client for all webhook deliveries. Reuses connection pool and TLS sessions.
+static HTTP_CLIENT: LazyLock<reqwest::Client> = LazyLock::new(|| {
+    reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(10))
+        .build()
+        .expect("failed to build reqwest client")
+});
 
 /// Payload sent to outbound webhook endpoints.
 #[derive(Debug, Serialize)]
@@ -113,10 +123,7 @@ fn glob_match(pattern: &str, value: &str) -> bool {
 /// 3 attempts with backoff: 1s, 5s.
 /// 10 second timeout per attempt.
 async fn deliver(url: &str, body: &[u8], secret: Option<&str>) {
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(10))
-        .build()
-        .unwrap_or_default();
+    let client = &*HTTP_CLIENT;
     let delays = [1, 5, 0]; // 0 = final attempt, no sleep after
 
     for (attempt, delay_secs) in delays.iter().enumerate() {
