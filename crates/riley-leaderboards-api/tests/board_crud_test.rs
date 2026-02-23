@@ -37,6 +37,7 @@ async fn setup(schema: &str) -> (Arc<AppState>, axum::Router) {
         pool,
         config,
         auth_mode: riley_leaderboards_api::auth::AuthMode::NoAuth,
+        sync_mutex: tokio::sync::Mutex::new(()),
     });
     let router = build_router(state.clone());
     (state, router)
@@ -2461,6 +2462,7 @@ async fn setup_with_sync(schema: &str) -> (Arc<AppState>, axum::Router) {
         pool,
         config,
         auth_mode: riley_leaderboards_api::auth::AuthMode::NoAuth,
+        sync_mutex: tokio::sync::Mutex::new(()),
     });
     let router = build_router(state.clone());
     (state, router)
@@ -2982,6 +2984,7 @@ async fn webhook_missing_signature_returns_400() {
         pool: pool.clone(),
         config,
         auth_mode: riley_leaderboards_api::auth::AuthMode::NoAuth,
+        sync_mutex: tokio::sync::Mutex::new(()),
     });
     let app = build_router(state);
 
@@ -3030,6 +3033,7 @@ async fn webhook_invalid_signature_returns_401() {
         pool: pool.clone(),
         config,
         auth_mode: riley_leaderboards_api::auth::AuthMode::NoAuth,
+        sync_mutex: tokio::sync::Mutex::new(()),
     });
     let app = build_router(state);
 
@@ -3133,6 +3137,7 @@ position = 1
         pool: pool.clone(),
         config,
         auth_mode: riley_leaderboards_api::auth::AuthMode::NoAuth,
+        sync_mutex: tokio::sync::Mutex::new(()),
     });
     let app = build_router(state);
 
@@ -3264,6 +3269,7 @@ fn setup_jwt_auth_state(
         pool,
         config,
         auth_mode,
+        sync_mutex: tokio::sync::Mutex::new(()),
     });
     let router = build_router(state.clone());
     (state, router)
@@ -3299,6 +3305,7 @@ async fn auth_api_token_write_requires_token() {
         pool: pool.clone(),
         config,
         auth_mode,
+        sync_mutex: tokio::sync::Mutex::new(()),
     });
     let app = build_router(state);
 
@@ -3723,6 +3730,7 @@ async fn auth_jwks_fetch_from_mock_server() {
         pool: pool.clone(),
         config,
         auth_mode,
+        sync_mutex: tokio::sync::Mutex::new(()),
     });
     let app = build_router(state);
 

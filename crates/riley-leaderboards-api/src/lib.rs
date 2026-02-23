@@ -20,6 +20,8 @@ pub struct AppState {
     pub pool: PgPool,
     pub config: RileyLeaderboardsConfig,
     pub auth_mode: auth::AuthMode,
+    /// Serializes webhook pull+sync operations to prevent concurrent git operations.
+    pub sync_mutex: tokio::sync::Mutex<()>,
 }
 
 pub fn build_router(state: Arc<AppState>) -> Router {

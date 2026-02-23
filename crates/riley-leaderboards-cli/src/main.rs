@@ -87,6 +87,7 @@ async fn main() -> Result<()> {
                 pool,
                 config,
                 auth_mode,
+                sync_mutex: tokio::sync::Mutex::new(()),
             });
             riley_leaderboards_api::serve(state).await?;
         }

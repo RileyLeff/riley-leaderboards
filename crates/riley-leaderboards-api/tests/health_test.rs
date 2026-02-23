@@ -37,6 +37,7 @@ async fn health_returns_ok() {
         pool: pool.clone(),
         config,
         auth_mode: riley_leaderboards_api::auth::AuthMode::NoAuth,
+        sync_mutex: tokio::sync::Mutex::new(()),
     });
     let app = build_router(state);
 

@@ -150,6 +150,9 @@ pub async fn github(
         }
     }
 
+    // Serialize webhook processing to prevent concurrent git operations
+    let _sync_guard = state.sync_mutex.lock().await;
+
     // Pull latest changes from the repository (with 60-second timeout)
     let pull_result = tokio::time::timeout(
         std::time::Duration::from_secs(60),
