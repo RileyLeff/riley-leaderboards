@@ -1,0 +1,10 @@
+[server]
+host = "0.0.0.0"
+port = 8082
+cors_origins = ["https://rileyleff.com", "https://*.rileyleff.com"]
+behind_proxy = false
+
+[database]
+url = "env:DATABASE_URL"               # postgres://user:pass@host/db
+max_connections = 10
+# schema = "leaderboards"              # optional, defaults to "public"

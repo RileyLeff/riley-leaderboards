@@ -1,0 +1,48 @@
+[workspace]
+resolver = "3"
+members = [
+    "crates/riley-leaderboards-core",
+    "crates/riley-leaderboards-api",
+    "crates/riley-leaderboards-cli",
+]
+
+[workspace.package]
+edition = "2024"
+rust-version = "1.88"
+license = "MIT"
+
+[workspace.dependencies]
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+
+# Web framework
+axum = { version = "0.8" }
+
+# Database
+sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "postgres", "chrono", "uuid", "json"] }
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.8"
+
+# Time
+chrono = { version = "0.4", features = ["serde"] }
+
+# IDs
+uuid = { version = "1", features = ["serde", "v4"] }
+
+# Error handling
+thiserror = "2"
+anyhow = "1"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+
+# CLI
+clap = { version = "4", features = ["derive"] }
+
+# Internal crates
+riley-leaderboards-core = { path = "crates/riley-leaderboards-core" }
+riley-leaderboards-api = { path = "crates/riley-leaderboards-api" }

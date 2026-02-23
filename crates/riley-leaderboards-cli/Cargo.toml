@@ -1,0 +1,20 @@
+[package]
+name = "riley-leaderboards-cli"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "riley-leaderboards"
+path = "src/main.rs"
+
+[dependencies]
+riley-leaderboards-core = { workspace = true }
+riley-leaderboards-api = { workspace = true }
+tokio = { workspace = true }
+clap = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+anyhow = { workspace = true }
+sqlx = { workspace = true }
