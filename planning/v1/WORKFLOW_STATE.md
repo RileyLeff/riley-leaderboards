@@ -1,8 +1,8 @@
 # v1 Workflow State
 
-**Current Phase:** 3 — History + Diffing (COMPLETE)
-**Current Step:** Phase 3 exhaustive review converged
-**Status:** Phase 3 complete. 46 tests passing. Exhaustive review converged (2 rounds, 0 major in R1+R2). Ready for Phase 4.
+**Current Phase:** 4 — References (COMPLETE)
+**Current Step:** Phase 4 exhaustive review converged
+**Status:** Phase 4 complete. 53 tests passing. Exhaustive review converged (2 rounds, 0 major in R1+R2). Ready for Phase 5.
 
 ## Progress
 
@@ -29,7 +29,10 @@
 | 3 | 3.3 | Staleness check endpoint | Done |
 | 3 | 3.4 | Tests (8 new, 46 total) | Done |
 | 3 | review | Exhaustive review (2 rounds, converged) | Done |
-| 4 | 4.1 | Reference CRUD | Pending |
+| 4 | 4.1 | Reference CRUD + pinned version resolution | Done |
+| 4 | 4.2 | Tests (7 new, 53 total) | Done |
+| 4 | review | Exhaustive review (2 rounds, converged) | Done |
+| 5 | 5.1 | Accumulative boards | Pending |
 
 ## Blockers
 
@@ -37,6 +40,6 @@ None.
 
 ## Recent Activity
 
-- Phase 3 implementation: entry history, version diff, staleness check (1587b90)
-- Review R1 fix: diff param validation (075c312)
+- Phase 4 implementation: board references CRUD with pinned version resolution (5ea2ce9)
+- Review R1 fixes: URI/label validation, version number in response (47f5ba5)
 - Review R2: converged — 0 major in 2 consecutive rounds
