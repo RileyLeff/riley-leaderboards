@@ -174,6 +174,24 @@ pub async fn import_board(pool: &PgPool, export: &BoardExport) -> Result<()> {
     super::boards::validate_board_type(&create_board.board_type)?;
     super::boards::validate_sort_direction(&create_board.sort_direction)?;
 
+    // Cross-field constraints (same as boards::create)
+    if create_board.accumulative && create_board.board_type != "scored" {
+        return Err(Error::Validation(
+            "accumulative boards must have board_type 'scored'".to_string(),
+        ));
+    }
+    if create_board.realtime && !(create_board.accumulative && create_board.board_type == "scored")
+    {
+        return Err(Error::Validation(
+            "realtime boards must be accumulative and scored".to_string(),
+        ));
+    }
+    if create_board.clear_on_snapshot && !create_board.realtime {
+        return Err(Error::Validation(
+            "clear_on_snapshot requires realtime to be true".to_string(),
+        ));
+    }
+
     let board = sqlx::query_as::<_, crate::models::Board>(
         r#"INSERT INTO boards (slug, name, board_type, sort_direction, tier_config, metadata, accumulative, realtime, clear_on_snapshot)
            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
@@ -211,6 +229,8 @@ pub async fn import_board(pool: &PgPool, export: &BoardExport) -> Result<()> {
 
     let mut entry_ids: HashMap<String, uuid::Uuid> = HashMap::new();
     for (slug, name) in &entry_names {
+        super::validate_slug(slug)?;
+        super::validate_name(name)?;
         let entry = sqlx::query_as::<_, crate::models::Entry>(
             r#"INSERT INTO entries (board_id, slug, name)
                VALUES ($1, $2, $3)
