@@ -93,6 +93,15 @@ pub struct ServerConfig {
     /// Rate limit burst size.
     #[serde(default = "default_rate_limit_burst")]
     pub rate_limit_burst: u32,
+    /// Enable SSE streaming endpoint for live board updates.
+    #[serde(default)]
+    pub sse_enabled: bool,
+    /// Maximum concurrent SSE connections per server.
+    #[serde(default = "default_sse_max_connections")]
+    pub sse_max_connections: usize,
+    /// Minimum interval (ms) between score.updated SSE events per board.
+    #[serde(default = "default_sse_score_debounce_ms")]
+    pub sse_score_debounce_ms: u64,
 }
 
 impl Default for ServerConfig {
@@ -104,12 +113,23 @@ impl Default for ServerConfig {
             behind_proxy: false,
             rate_limit_per_second: 0,
             rate_limit_burst: default_rate_limit_burst(),
+            sse_enabled: false,
+            sse_max_connections: default_sse_max_connections(),
+            sse_score_debounce_ms: default_sse_score_debounce_ms(),
         }
     }
 }
 
 fn default_rate_limit_burst() -> u32 {
     50
+}
+
+fn default_sse_max_connections() -> usize {
+    1000
+}
+
+fn default_sse_score_debounce_ms() -> u64 {
+    1000
 }
 
 #[derive(Debug, Clone, Deserialize)]

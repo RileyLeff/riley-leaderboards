@@ -26,6 +26,17 @@ pub async fn submit(
             "Redis is required for realtime boards but not configured".to_string(),
         ))?;
         realtime::submit(&state.pool, &mut redis, &board, &input).await?;
+
+        // Publish SSE score.updated event (debounced per-board)
+        if let Some(ref event_bus) = state.event_bus {
+            event_bus.publish_score(
+                &board.slug,
+                input.entry_slug.clone(),
+                input.entry_name.clone(),
+                input.score,
+            );
+        }
+
         Ok((StatusCode::OK, Json(serde_json::json!({ "ok": true }))))
     } else {
         let score = scores::submit(&state.pool, &board, &input).await?;
@@ -72,5 +83,15 @@ pub async fn snapshot(
             note: version.version.note.clone(),
         }),
     );
+
+    // Publish SSE version.created event
+    if let Some(ref event_bus) = state.event_bus {
+        event_bus.publish_version(
+            &board.slug,
+            version.version.version_number,
+            version.version.note.clone(),
+        );
+    }
+
     Ok((StatusCode::CREATED, Json(serde_json::to_value(version).map_err(|e| CoreError::Internal(format!("serialization error: {e}")))?)))
 }

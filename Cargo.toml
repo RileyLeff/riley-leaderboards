@@ -60,6 +60,11 @@ reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"
 # Redis (for realtime boards)
 redis = { version = "0.29", features = ["tokio-comp", "connection-manager"] }
 
+# Streaming / SSE
+tokio-stream = { version = "0.1", features = ["sync"] }
+futures-util = "0.3"
+pin-project-lite = "0.2"
+
 # Rate limiting
 tower_governor = "0.6"
 

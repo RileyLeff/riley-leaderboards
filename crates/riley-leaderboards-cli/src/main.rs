@@ -103,12 +103,28 @@ async fn main() -> Result<()> {
                 None
             };
 
+            let server_config = config.server.as_ref().cloned().unwrap_or_default();
+            let event_bus = if server_config.sse_enabled {
+                tracing::info!(
+                    "SSE enabled (max_connections={}, debounce_ms={})",
+                    server_config.sse_max_connections,
+                    server_config.sse_score_debounce_ms
+                );
+                Some(riley_leaderboards_api::sse::EventBus::new(
+                    server_config.sse_max_connections,
+                    server_config.sse_score_debounce_ms,
+                ))
+            } else {
+                None
+            };
+
             let state = Arc::new(AppState {
                 pool,
                 redis,
                 config,
                 auth_mode,
                 sync_mutex: tokio::sync::Mutex::new(()),
+                event_bus,
             });
             riley_leaderboards_api::serve(state).await?;
         }

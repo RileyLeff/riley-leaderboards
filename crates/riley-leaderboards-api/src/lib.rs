@@ -16,6 +16,7 @@ pub mod auth;
 mod error;
 pub mod outbound_webhooks;
 mod routes;
+pub mod sse;
 
 pub struct AppState {
     pub pool: PgPool,
@@ -24,6 +25,8 @@ pub struct AppState {
     pub auth_mode: auth::AuthMode,
     /// Serializes webhook pull+sync operations to prevent concurrent git operations.
     pub sync_mutex: tokio::sync::Mutex<()>,
+    /// SSE event bus for live board updates. None when SSE is disabled.
+    pub event_bus: Option<sse::EventBus>,
 }
 
 pub fn build_router(state: Arc<AppState>) -> Router {
@@ -166,6 +169,7 @@ fn board_routes(state: Arc<AppState>) -> Router<Arc<AppState>> {
             "/{slug}/snapshot",
             axum::routing::post(routes::scores::snapshot),
         )
+        .route("/{slug}/stream", get(sse::stream))
         .layer(middleware::from_fn_with_state(
             state,
             auth::require_auth,

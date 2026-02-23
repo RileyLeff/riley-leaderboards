@@ -39,6 +39,16 @@ pub async fn create(
             note: version.version.note.clone(),
         }),
     );
+
+    // Publish SSE version.created event
+    if let Some(ref event_bus) = state.event_bus {
+        event_bus.publish_version(
+            &board.slug,
+            version.version.version_number,
+            version.version.note.clone(),
+        );
+    }
+
     Ok((StatusCode::CREATED, Json(version)))
 }
 
