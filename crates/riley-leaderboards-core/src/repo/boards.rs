@@ -195,6 +195,12 @@ fn validate_tier_config(tier_config: Option<&serde_json::Value>) -> Result<()> {
             )
         })?;
 
+    if tiers.is_empty() {
+        return Err(Error::Validation(
+            "tier_config.tiers must not be empty".to_string(),
+        ));
+    }
+
     for (i, tier) in tiers.iter().enumerate() {
         if tier.get("key").and_then(|k| k.as_str()).is_none() {
             return Err(Error::Validation(format!(
