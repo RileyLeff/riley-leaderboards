@@ -3,7 +3,8 @@ use uuid::Uuid;
 
 use crate::error::{Error, Result};
 use crate::models::{
-    Board, CreatePlacement, CreateVersion, PlacementWithEntry, Version, VersionWithPlacements,
+    Board, CreatePlacement, CreateVersion, DiffEntry, DiffMovedEntry, PlacementWithEntry, Version,
+    VersionDiff, VersionWithPlacements,
 };
 
 pub async fn create(
@@ -220,6 +221,116 @@ async fn derive_scored_positions(
         .await?;
 
     Ok(())
+}
+
+pub async fn since(
+    pool: &PgPool,
+    board_id: Uuid,
+    after_version: i32,
+) -> Result<Vec<Version>> {
+    let versions = sqlx::query_as::<_, Version>(
+        r#"SELECT * FROM versions
+           WHERE board_id = $1 AND version_number > $2
+           ORDER BY version_number ASC"#,
+    )
+    .bind(board_id)
+    .bind(after_version)
+    .fetch_all(pool)
+    .await?;
+    Ok(versions)
+}
+
+pub async fn diff(
+    pool: &PgPool,
+    board_id: Uuid,
+    from_number: i32,
+    to_number: i32,
+) -> Result<VersionDiff> {
+    // Fetch both versions (validates they exist)
+    let from = get_by_number(pool, board_id, from_number).await?;
+    let to = get_by_number(pool, board_id, to_number).await?;
+
+    // Build lookup maps keyed by entry slug
+    let from_map: std::collections::HashMap<&str, &PlacementWithEntry> = from
+        .placements
+        .iter()
+        .map(|p| (p.entry_slug.as_str(), p))
+        .collect();
+    let to_map: std::collections::HashMap<&str, &PlacementWithEntry> = to
+        .placements
+        .iter()
+        .map(|p| (p.entry_slug.as_str(), p))
+        .collect();
+
+    let mut added = Vec::new();
+    let mut removed = Vec::new();
+    let mut moved = Vec::new();
+    let mut unchanged = Vec::new();
+
+    // Entries in `to` but not in `from` → added
+    // Entries in both → check if moved or unchanged
+    for p in &to.placements {
+        let slug = p.entry_slug.as_str();
+        match from_map.get(slug) {
+            None => {
+                added.push(DiffEntry {
+                    entry_slug: p.entry_slug.clone(),
+                    entry_name: p.entry_name.clone(),
+                    position: p.position,
+                    score: p.score,
+                    tier: p.tier.clone(),
+                });
+            }
+            Some(from_p) => {
+                let pos_changed = from_p.position != p.position;
+                let score_changed = from_p.score != p.score;
+                let tier_changed = from_p.tier != p.tier;
+
+                if pos_changed || score_changed || tier_changed {
+                    moved.push(DiffMovedEntry {
+                        entry_slug: p.entry_slug.clone(),
+                        entry_name: p.entry_name.clone(),
+                        from_position: from_p.position,
+                        to_position: p.position,
+                        from_score: from_p.score,
+                        to_score: p.score,
+                        from_tier: from_p.tier.clone(),
+                        to_tier: p.tier.clone(),
+                    });
+                } else {
+                    unchanged.push(DiffEntry {
+                        entry_slug: p.entry_slug.clone(),
+                        entry_name: p.entry_name.clone(),
+                        position: p.position,
+                        score: p.score,
+                        tier: p.tier.clone(),
+                    });
+                }
+            }
+        }
+    }
+
+    // Entries in `from` but not in `to` → removed
+    for p in &from.placements {
+        if !to_map.contains_key(p.entry_slug.as_str()) {
+            removed.push(DiffEntry {
+                entry_slug: p.entry_slug.clone(),
+                entry_name: p.entry_name.clone(),
+                position: p.position,
+                score: p.score,
+                tier: p.tier.clone(),
+            });
+        }
+    }
+
+    Ok(VersionDiff {
+        from_version: from_number,
+        to_version: to_number,
+        added,
+        removed,
+        moved,
+        unchanged,
+    })
 }
 
 fn validate_placements(board: &Board, placements: &[CreatePlacement]) -> Result<()> {

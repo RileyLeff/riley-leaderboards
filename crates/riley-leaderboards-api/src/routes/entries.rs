@@ -57,3 +57,12 @@ pub async fn delete(
     entries::delete(&state.pool, board.id, &entry_slug).await?;
     Ok(StatusCode::NO_CONTENT)
 }
+
+pub async fn history(
+    State(state): State<Arc<AppState>>,
+    Path((board_slug, entry_slug)): Path<(String, String)>,
+) -> ApiResult<impl IntoResponse> {
+    let board = boards::get_by_slug(&state.pool, &board_slug).await?;
+    let items = entries::history(&state.pool, board.id, &entry_slug).await?;
+    Ok(Json(items))
+}

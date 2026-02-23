@@ -2,7 +2,7 @@ use sqlx::PgPool;
 use uuid::Uuid;
 
 use crate::error::{Error, Result};
-use crate::models::{CreateEntry, Entry, Nullable, UpdateEntry};
+use crate::models::{CreateEntry, Entry, EntryHistoryItem, Nullable, UpdateEntry};
 
 pub async fn create(pool: &PgPool, board_id: Uuid, input: &CreateEntry) -> Result<Entry> {
     super::validate_slug(&input.slug)?;
@@ -133,4 +133,26 @@ pub async fn get_by_id(pool: &PgPool, id: Uuid) -> Result<Entry> {
         .fetch_optional(pool)
         .await?
         .ok_or_else(|| Error::NotFound(format!("entry with id '{id}' not found")))
+}
+
+pub async fn history(
+    pool: &PgPool,
+    board_id: Uuid,
+    entry_slug: &str,
+) -> Result<Vec<EntryHistoryItem>> {
+    let entry = get_by_slug(pool, board_id, entry_slug).await?;
+
+    let items = sqlx::query_as::<_, EntryHistoryItem>(
+        r#"SELECT v.version_number, p.position, p.score, p.tier,
+                  p.metadata, v.created_at
+           FROM placements p
+           JOIN versions v ON v.id = p.version_id
+           WHERE p.entry_id = $1
+           ORDER BY v.version_number ASC"#,
+    )
+    .bind(entry.id)
+    .fetch_all(pool)
+    .await?;
+
+    Ok(items)
 }

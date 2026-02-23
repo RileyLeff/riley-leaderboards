@@ -1217,3 +1217,460 @@ async fn empty_name_returns_400() {
 
     cleanup(&state, schema).await;
 }
+
+// ── Phase 3: History + Diffing ────────────────────────────────────────────
+
+#[tokio::test]
+async fn entry_history_across_versions() {
+    let schema = "test_entry_history";
+    let (state, app) = setup(schema).await;
+
+    // Create board and entries
+    app.clone().oneshot(json_request(
+        "POST",
+        "/boards",
+        Some(serde_json::json!({
+            "slug": "sandwiches",
+            "name": "Sandwiches",
+            "board_type": "ordered"
+        })),
+    )).await.unwrap();
+
+    for slug in ["crunchy-boi", "humberto", "litteri"] {
+        app.clone().oneshot(json_request(
+            "POST",
+            "/boards/sandwiches/entries",
+            Some(serde_json::json!({ "slug": slug, "name": slug })),
+        )).await.unwrap();
+    }
+
+    // Version 1: crunchy=1, humberto=2, litteri=3
+    app.clone().oneshot(json_request(
+        "POST",
+        "/boards/sandwiches/versions",
+        Some(serde_json::json!({
+            "note": "v1",
+            "placements": [
+                { "entry_slug": "crunchy-boi", "position": 1 },
+                { "entry_slug": "humberto", "position": 2 },
+                { "entry_slug": "litteri", "position": 3 }
+            ]
+        })),
+    )).await.unwrap();
+
+    // Version 2: humberto=1, crunchy=2, litteri=3
+    app.clone().oneshot(json_request(
+        "POST",
+        "/boards/sandwiches/versions",
+        Some(serde_json::json!({
+            "note": "v2",
+            "placements": [
+                { "entry_slug": "humberto", "position": 1 },
+                { "entry_slug": "crunchy-boi", "position": 2 },
+                { "entry_slug": "litteri", "position": 3 }
+            ]
+        })),
+    )).await.unwrap();
+
+    // Get history for crunchy-boi (moved from pos 1 → 2)
+    let resp = app.clone().oneshot(json_request(
+        "GET",
+        "/boards/sandwiches/entries/crunchy-boi/history",
+        None,
+    )).await.unwrap();
+    assert_eq!(resp.status(), 200);
+    let history = json_body(resp).await;
+    let items = history.as_array().unwrap();
+    assert_eq!(items.len(), 2);
+    assert_eq!(items[0]["version_number"], 1);
+    assert_eq!(items[0]["position"], 1);
+    assert_eq!(items[1]["version_number"], 2);
+    assert_eq!(items[1]["position"], 2);
+
+    // History for entry not in any version yet returns empty array
+    app.clone().oneshot(json_request(
+        "POST",
+        "/boards/sandwiches/entries",
+        Some(serde_json::json!({ "slug": "new-entry", "name": "New" })),
+    )).await.unwrap();
+    let resp = app.clone().oneshot(json_request(
+        "GET",
+        "/boards/sandwiches/entries/new-entry/history",
+        None,
+    )).await.unwrap();
+    assert_eq!(resp.status(), 200);
+    let empty = json_body(resp).await;
+    assert_eq!(empty.as_array().unwrap().len(), 0);
+
+    // History for nonexistent entry returns 404
+    let resp = app.clone().oneshot(json_request(
+        "GET",
+        "/boards/sandwiches/entries/nonexistent/history",
+        None,
+    )).await.unwrap();
+    assert_eq!(resp.status(), 404);
+
+    cleanup(&state, schema).await;
+}
+
+#[tokio::test]
+async fn entry_history_scored_board() {
+    let schema = "test_history_scored";
+    let (state, app) = setup(schema).await;
+
+    app.clone().oneshot(json_request(
+        "POST",
+        "/boards",
+        Some(serde_json::json!({
+            "slug": "scores",
+            "name": "Scores",
+            "board_type": "scored",
+            "sort_direction": "desc"
+        })),
+    )).await.unwrap();
+
+    for slug in ["alice", "bob"] {
+        app.clone().oneshot(json_request(
+            "POST",
+            "/boards/scores/entries",
+            Some(serde_json::json!({ "slug": slug, "name": slug })),
+        )).await.unwrap();
+    }
+
+    // V1: alice=100, bob=200
+    app.clone().oneshot(json_request(
+        "POST",
+        "/boards/scores/versions",
+        Some(serde_json::json!({
+            "placements": [
+                { "entry_slug": "alice", "score": 100.0 },
+                { "entry_slug": "bob", "score": 200.0 }
+            ]
+        })),
+    )).await.unwrap();
+
+    // V2: alice=300, bob=200
+    app.clone().oneshot(json_request(
+        "POST",
+        "/boards/scores/versions",
+        Some(serde_json::json!({
+            "placements": [
+                { "entry_slug": "alice", "score": 300.0 },
+                { "entry_slug": "bob", "score": 200.0 }
+            ]
+        })),
+    )).await.unwrap();
+
+    let resp = app.clone().oneshot(json_request(
+        "GET",
+        "/boards/scores/entries/alice/history",
+        None,
+    )).await.unwrap();
+    assert_eq!(resp.status(), 200);
+    let history = json_body(resp).await;
+    let items = history.as_array().unwrap();
+    assert_eq!(items.len(), 2);
+    // V1: alice scored 100, position 2 (bob was higher)
+    assert_eq!(items[0]["version_number"], 1);
+    assert_eq!(items[0]["score"], 100.0);
+    assert_eq!(items[0]["position"], 2);
+    // V2: alice scored 300, position 1
+    assert_eq!(items[1]["version_number"], 2);
+    assert_eq!(items[1]["score"], 300.0);
+    assert_eq!(items[1]["position"], 1);
+
+    cleanup(&state, schema).await;
+}
+
+#[tokio::test]
+async fn version_diff_ordered_board() {
+    let schema = "test_diff_ordered";
+    let (state, app) = setup(schema).await;
+
+    app.clone().oneshot(json_request(
+        "POST",
+        "/boards",
+        Some(serde_json::json!({
+            "slug": "board",
+            "name": "Board",
+            "board_type": "ordered"
+        })),
+    )).await.unwrap();
+
+    for slug in ["a", "b", "c", "d"] {
+        app.clone().oneshot(json_request(
+            "POST",
+            "/boards/board/entries",
+            Some(serde_json::json!({ "slug": slug, "name": slug })),
+        )).await.unwrap();
+    }
+
+    // V1: a=1, b=2, c=3
+    app.clone().oneshot(json_request(
+        "POST",
+        "/boards/board/versions",
+        Some(serde_json::json!({
+            "placements": [
+                { "entry_slug": "a", "position": 1 },
+                { "entry_slug": "b", "position": 2 },
+                { "entry_slug": "c", "position": 3 }
+            ]
+        })),
+    )).await.unwrap();
+
+    // V2: b=1, a=2, d=3 (c removed, d added, a and b swapped)
+    app.clone().oneshot(json_request(
+        "POST",
+        "/boards/board/versions",
+        Some(serde_json::json!({
+            "placements": [
+                { "entry_slug": "b", "position": 1 },
+                { "entry_slug": "a", "position": 2 },
+                { "entry_slug": "d", "position": 3 }
+            ]
+        })),
+    )).await.unwrap();
+
+    let resp = app.clone().oneshot(json_request(
+        "GET",
+        "/boards/board/diff?from=1&to=2",
+        None,
+    )).await.unwrap();
+    assert_eq!(resp.status(), 200);
+    let diff = json_body(resp).await;
+
+    assert_eq!(diff["from_version"], 1);
+    assert_eq!(diff["to_version"], 2);
+
+    // Added: d
+    let added = diff["added"].as_array().unwrap();
+    assert_eq!(added.len(), 1);
+    assert_eq!(added[0]["entry_slug"], "d");
+    assert_eq!(added[0]["position"], 3);
+
+    // Removed: c
+    let removed = diff["removed"].as_array().unwrap();
+    assert_eq!(removed.len(), 1);
+    assert_eq!(removed[0]["entry_slug"], "c");
+
+    // Moved: a (1→2) and b (2→1)
+    let moved = diff["moved"].as_array().unwrap();
+    assert_eq!(moved.len(), 2);
+    let moved_a = moved.iter().find(|m| m["entry_slug"] == "a").unwrap();
+    assert_eq!(moved_a["from_position"], 1);
+    assert_eq!(moved_a["to_position"], 2);
+    let moved_b = moved.iter().find(|m| m["entry_slug"] == "b").unwrap();
+    assert_eq!(moved_b["from_position"], 2);
+    assert_eq!(moved_b["to_position"], 1);
+
+    // Unchanged: none
+    assert_eq!(diff["unchanged"].as_array().unwrap().len(), 0);
+
+    cleanup(&state, schema).await;
+}
+
+#[tokio::test]
+async fn version_diff_tiered_board() {
+    let schema = "test_diff_tiered";
+    let (state, app) = setup(schema).await;
+
+    app.clone().oneshot(json_request(
+        "POST",
+        "/boards",
+        Some(serde_json::json!({
+            "slug": "tiers",
+            "name": "Tiers",
+            "board_type": "tiered",
+            "tier_config": {
+                "tiers": [
+                    { "key": "s", "label": "S", "position": 1 },
+                    { "key": "a", "label": "A", "position": 2 }
+                ]
+            }
+        })),
+    )).await.unwrap();
+
+    for slug in ["x", "y"] {
+        app.clone().oneshot(json_request(
+            "POST",
+            "/boards/tiers/entries",
+            Some(serde_json::json!({ "slug": slug, "name": slug })),
+        )).await.unwrap();
+    }
+
+    // V1: x in tier A, y in tier A
+    app.clone().oneshot(json_request(
+        "POST",
+        "/boards/tiers/versions",
+        Some(serde_json::json!({
+            "placements": [
+                { "entry_slug": "x", "tier": "a", "position": 1 },
+                { "entry_slug": "y", "tier": "a", "position": 2 }
+            ]
+        })),
+    )).await.unwrap();
+
+    // V2: x promoted to S, y stays in A
+    app.clone().oneshot(json_request(
+        "POST",
+        "/boards/tiers/versions",
+        Some(serde_json::json!({
+            "placements": [
+                { "entry_slug": "x", "tier": "s", "position": 1 },
+                { "entry_slug": "y", "tier": "a", "position": 1 }
+            ]
+        })),
+    )).await.unwrap();
+
+    let resp = app.clone().oneshot(json_request(
+        "GET",
+        "/boards/tiers/diff?from=1&to=2",
+        None,
+    )).await.unwrap();
+    assert_eq!(resp.status(), 200);
+    let diff = json_body(resp).await;
+
+    // x moved (tier change from a→s)
+    let moved = diff["moved"].as_array().unwrap();
+    let moved_x = moved.iter().find(|m| m["entry_slug"] == "x").unwrap();
+    assert_eq!(moved_x["from_tier"], "a");
+    assert_eq!(moved_x["to_tier"], "s");
+
+    // y: position changed from 2→1 within tier a
+    let moved_y = moved.iter().find(|m| m["entry_slug"] == "y").unwrap();
+    assert_eq!(moved_y["from_position"], 2);
+    assert_eq!(moved_y["to_position"], 1);
+
+    assert_eq!(diff["added"].as_array().unwrap().len(), 0);
+    assert_eq!(diff["removed"].as_array().unwrap().len(), 0);
+
+    cleanup(&state, schema).await;
+}
+
+#[tokio::test]
+async fn version_diff_missing_params_returns_400() {
+    let schema = "test_diff_missing_params";
+    let (state, app) = setup(schema).await;
+
+    app.clone().oneshot(json_request(
+        "POST",
+        "/boards",
+        Some(serde_json::json!({
+            "slug": "board",
+            "name": "Board",
+            "board_type": "ordered"
+        })),
+    )).await.unwrap();
+
+    // Missing both params
+    let resp = app.clone().oneshot(json_request(
+        "GET",
+        "/boards/board/diff",
+        None,
+    )).await.unwrap();
+    assert_eq!(resp.status(), 400);
+
+    // Missing 'to'
+    let resp = app.clone().oneshot(json_request(
+        "GET",
+        "/boards/board/diff?from=1",
+        None,
+    )).await.unwrap();
+    assert_eq!(resp.status(), 400);
+
+    cleanup(&state, schema).await;
+}
+
+#[tokio::test]
+async fn version_diff_nonexistent_version_returns_404() {
+    let schema = "test_diff_no_version";
+    let (state, app) = setup(schema).await;
+
+    app.clone().oneshot(json_request(
+        "POST",
+        "/boards",
+        Some(serde_json::json!({
+            "slug": "board",
+            "name": "Board",
+            "board_type": "ordered"
+        })),
+    )).await.unwrap();
+
+    let resp = app.clone().oneshot(json_request(
+        "GET",
+        "/boards/board/diff?from=1&to=2",
+        None,
+    )).await.unwrap();
+    assert_eq!(resp.status(), 404);
+
+    cleanup(&state, schema).await;
+}
+
+#[tokio::test]
+async fn since_returns_newer_versions() {
+    let schema = "test_since";
+    let (state, app) = setup(schema).await;
+
+    app.clone().oneshot(json_request(
+        "POST",
+        "/boards",
+        Some(serde_json::json!({
+            "slug": "board",
+            "name": "Board",
+            "board_type": "ordered"
+        })),
+    )).await.unwrap();
+
+    app.clone().oneshot(json_request(
+        "POST",
+        "/boards/board/entries",
+        Some(serde_json::json!({ "slug": "item", "name": "Item" })),
+    )).await.unwrap();
+
+    // Create 3 versions
+    for i in 1..=3 {
+        app.clone().oneshot(json_request(
+            "POST",
+            "/boards/board/versions",
+            Some(serde_json::json!({
+                "note": format!("v{i}"),
+                "placements": [{ "entry_slug": "item", "position": 1 }]
+            })),
+        )).await.unwrap();
+    }
+
+    // since/1 should return v2 and v3
+    let resp = app.clone().oneshot(json_request(
+        "GET",
+        "/boards/board/since/1",
+        None,
+    )).await.unwrap();
+    assert_eq!(resp.status(), 200);
+    let versions = json_body(resp).await;
+    let arr = versions.as_array().unwrap();
+    assert_eq!(arr.len(), 2);
+    assert_eq!(arr[0]["version_number"], 2);
+    assert_eq!(arr[1]["version_number"], 3);
+
+    // since/3 should return empty
+    let resp = app.clone().oneshot(json_request(
+        "GET",
+        "/boards/board/since/3",
+        None,
+    )).await.unwrap();
+    assert_eq!(resp.status(), 200);
+    let versions = json_body(resp).await;
+    assert_eq!(versions.as_array().unwrap().len(), 0);
+
+    // since/0 should return all 3
+    let resp = app.clone().oneshot(json_request(
+        "GET",
+        "/boards/board/since/0",
+        None,
+    )).await.unwrap();
+    assert_eq!(resp.status(), 200);
+    let versions = json_body(resp).await;
+    assert_eq!(versions.as_array().unwrap().len(), 3);
+
+    cleanup(&state, schema).await;
+}

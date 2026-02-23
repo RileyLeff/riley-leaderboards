@@ -44,11 +44,17 @@ fn board_routes() -> Router<Arc<AppState>> {
                 .delete(routes::entries::delete),
         )
         .route(
+            "/{slug}/entries/{entry_slug}/history",
+            get(routes::entries::history),
+        )
+        .route(
             "/{slug}/versions",
             get(routes::versions::list).post(routes::versions::create),
         )
         .route("/{slug}/versions/{version_number}", get(routes::versions::get))
         .route("/{slug}/latest", get(routes::versions::latest))
+        .route("/{slug}/diff", get(routes::versions::diff))
+        .route("/{slug}/since/{version_number}", get(routes::versions::since))
 }
 
 async fn health(State(state): State<Arc<AppState>>) -> impl IntoResponse {
