@@ -32,3 +32,27 @@ on `(board_id, uri, ref_type)` later.
 ### No test for public schema migration path
 `migrate_default_schema` uses a custom schema to avoid polluting the shared
 `public` schema. Acceptable tradeoff for test isolation.
+
+### ref_type taxonomy: embed/citation/context (not blog_post/game/page)
+The plan originally used entity-type values (blog_post, game, page) but the
+implementation uses relationship-type values (embed, citation, context). The
+implementation's taxonomy is stronger — it's more compositional (a blog post
+can embed OR cite a board). Plan updated to match in round 2.
+
+### Unix-specific signal handling is not cfg-gated
+`shutdown_signal()` uses `tokio::signal::unix::signal` without `#[cfg(unix)]`.
+The project targets Linux/macOS. If cross-platform support becomes a goal,
+wrap in cfg guard.
+
+### ConfigValue "env:" prefix is implicit
+A value starting with "env:" is treated as an environment variable reference.
+This should be documented for end users to avoid confusion.
+
+### Integration tests may leak schemas on panic
+If an assertion panics before cleanup runs, test schemas remain in the
+database. Harmless in dev, but if it causes flaky tests, consider Drop guards.
+
+### validate checks connectivity only, not schema existence
+`connect_readonly` sets `search_path` to a potentially non-existent schema,
+which PostgreSQL accepts silently. `validate` confirms the database is
+reachable but does not verify the configured schema exists.

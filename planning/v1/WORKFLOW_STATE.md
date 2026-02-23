@@ -1,8 +1,8 @@
 # v1 Workflow State
 
-**Current Phase:** 1 — Foundation (IN PROGRESS)
-**Current Step:** 1.7 Tests
-**Status:** Steps 1.1–1.6 implemented and committed. 7 unit tests passing. Moving to integration tests and exhaustive review.
+**Current Phase:** 1 — Foundation (COMPLETE)
+**Current Step:** N/A — Phase 1 done, awaiting user checkpoint
+**Status:** Exhaustive review converged (3 rounds, 0 major in final 2). 12 tests passing. Ready for Phase 2.
 
 ## Progress
 
@@ -14,8 +14,8 @@
 | 1 | 1.4 | Migration runner + initial schema | Done |
 | 1 | 1.5 | Health check endpoint | Done |
 | 1 | 1.6 | CLI skeleton | Done |
-| 1 | 1.7 | Tests | In Progress |
-| 1 | review | Exhaustive review | Not Started |
+| 1 | 1.7 | Tests | Done |
+| 1 | review | Exhaustive review (3 rounds, converged) | Done |
 | 2 | 2.1 | Board CRUD | Not Started |
 | 2 | 2.2 | Entry CRUD | Not Started |
 | 2 | 2.3 | Version creation (ordered) | Not Started |
@@ -24,45 +24,6 @@
 | 2 | 2.6 | Tiered board support | Not Started |
 | 2 | 2.7 | Tests | Not Started |
 | 2 | review | Exhaustive review | Not Started |
-| 3 | 3.1 | Entry history | Not Started |
-| 3 | 3.2 | Version diff | Not Started |
-| 3 | 3.3 | Staleness check | Not Started |
-| 3 | 3.4 | Tests | Not Started |
-| 3 | review | Standard review | Not Started |
-| 4 | 4.1 | Reference CRUD | Not Started |
-| 4 | 4.2 | Pinned version resolution | Not Started |
-| 4 | 4.3 | Tests | Not Started |
-| 4 | review | Standard review | Not Started |
-| 5 | 5.1 | Accumulated scores + submission | Not Started |
-| 5 | 5.2 | Snapshot | Not Started |
-| 5 | 5.3 | Validation | Not Started |
-| 5 | 5.4 | Tests | Not Started |
-| 5 | review | Exhaustive review | Not Started |
-| 6 | 6.1 | TOML file parser | Not Started |
-| 6 | 6.2 | Diff logic | Not Started |
-| 6 | 6.3 | CLI sync command | Not Started |
-| 6 | 6.4 | GitHub webhook endpoint | Not Started |
-| 6 | 6.5 | Tests | Not Started |
-| 6 | review | Standard review | Not Started |
-| 7 | 7.1 | JWT validation | Not Started |
-| 7 | 7.2 | API token validation | Not Started |
-| 7 | 7.3 | Auth middleware | Not Started |
-| 7 | 7.4 | Webhook auth | Not Started |
-| 7 | 7.5 | Tests | Not Started |
-| 7 | review | Standard review | Not Started |
-| 8 | 8.1 | Admin CLI commands | Not Started |
-| 8 | 8.2 | Export/import | Not Started |
-| 8.3 | Pagination | Not Started |
-| 8 | 8.4 | Rate limiting | Not Started |
-| 8 | 8.5 | CORS | Not Started |
-| 8 | 8.6 | Request logging | Not Started |
-| 8 | 8.7 | Tests | Not Started |
-| 8 | review | Standard review | Not Started |
-| 9 | 9.1 | Dockerfile | Not Started |
-| 9 | 9.2 | docker-compose fragment | Not Started |
-| 9 | 9.3 | Integration tests | Not Started |
-| 9 | 9.4 | Caddy config | Not Started |
-| 9 | review | Exhaustive review (final) | Not Started |
 
 ## Blockers
 
@@ -70,6 +31,9 @@ None.
 
 ## Recent Activity
 
-- Repository initialized, planning documents written (soul.md, plan.md, implementation_plan.md)
 - Phase 1 foundation implemented: workspace, config, DB, migrations, health check, CLI (277cfbe)
-- Fixed: renamed `references` table to `board_references` (SQL reserved keyword) (ec3422c)
+- Fixed SQL reserved keyword: renamed references -> board_references (ec3422c)
+- Integration tests added: 4 DB tests + docker-compose (81fa9a2, efab399)
+- Review round 1: 1 major, 9 minor (be62161) -> all fixed (52f0dc5, 07d8338, bc41b40, fb55174)
+- Review round 2: 0 major, 2 minor (fdaede2) -> fixed (ref_type values, anyhow::Context)
+- Review round 3: 0 major, 0 minor -> converged
