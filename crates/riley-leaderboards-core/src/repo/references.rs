@@ -10,6 +10,8 @@ pub async fn create(
     input: &CreateReference,
 ) -> Result<BoardReference> {
     validate_ref_type(&input.ref_type)?;
+    validate_uri(&input.uri)?;
+    validate_label(&input.label)?;
 
     // Resolve pinned_version_number to version ID if provided
     let pinned_version_id = match input.pinned_version_number {
@@ -31,9 +33,16 @@ pub async fn create(
     };
 
     let reference = sqlx::query_as::<_, BoardReference>(
-        r#"INSERT INTO board_references (board_id, pinned_version_id, uri, ref_type, label)
-           VALUES ($1, $2, $3, $4, $5)
-           RETURNING *"#,
+        r#"WITH inserted AS (
+               INSERT INTO board_references (board_id, pinned_version_id, uri, ref_type, label)
+               VALUES ($1, $2, $3, $4, $5)
+               RETURNING *
+           )
+           SELECT i.id, i.board_id, i.pinned_version_id,
+                  v.version_number AS pinned_version_number,
+                  i.uri, i.ref_type, i.label, i.created_at
+           FROM inserted i
+           LEFT JOIN versions v ON v.id = i.pinned_version_id"#,
     )
     .bind(board_id)
     .bind(pinned_version_id)
@@ -48,7 +57,13 @@ pub async fn create(
 
 pub async fn list(pool: &PgPool, board_id: Uuid) -> Result<Vec<BoardReference>> {
     let refs = sqlx::query_as::<_, BoardReference>(
-        "SELECT * FROM board_references WHERE board_id = $1 ORDER BY created_at ASC",
+        r#"SELECT br.id, br.board_id, br.pinned_version_id,
+                  v.version_number AS pinned_version_number,
+                  br.uri, br.ref_type, br.label, br.created_at
+           FROM board_references br
+           LEFT JOIN versions v ON v.id = br.pinned_version_id
+           WHERE br.board_id = $1
+           ORDER BY br.created_at ASC"#,
     )
     .bind(board_id)
     .fetch_all(pool)
@@ -79,4 +94,27 @@ fn validate_ref_type(ref_type: &str) -> Result<()> {
             "invalid ref_type '{ref_type}': must be 'embed', 'citation', or 'context'"
         ))),
     }
+}
+
+fn validate_uri(uri: &str) -> Result<()> {
+    if uri.is_empty() {
+        return Err(Error::Validation("uri must not be empty".to_string()));
+    }
+    if uri.len() > 2048 {
+        return Err(Error::Validation(
+            "uri must not exceed 2048 characters".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+fn validate_label(label: &Option<String>) -> Result<()> {
+    if let Some(l) = label {
+        if l.len() > 256 {
+            return Err(Error::Validation(
+                "label must not exceed 256 characters".to_string(),
+            ));
+        }
+    }
+    Ok(())
 }

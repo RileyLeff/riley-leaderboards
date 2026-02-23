@@ -242,6 +242,7 @@ pub struct BoardReference {
     pub id: Uuid,
     pub board_id: Uuid,
     pub pinned_version_id: Option<Uuid>,
+    pub pinned_version_number: Option<i32>,
     pub uri: String,
     pub ref_type: String,
     pub label: Option<String>,

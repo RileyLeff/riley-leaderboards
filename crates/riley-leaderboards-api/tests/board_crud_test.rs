@@ -1725,6 +1725,7 @@ async fn reference_create_list_delete() {
     assert_eq!(reference["ref_type"], "embed");
     assert_eq!(reference["label"], "Blog Post");
     assert!(reference["pinned_version_id"].is_string()); // resolved to UUID
+    assert_eq!(reference["pinned_version_number"], 1); // version number included
     let ref_id = reference["id"].as_str().unwrap().to_string();
 
     // Create a reference without pinned version (follow latest)
@@ -1739,6 +1740,7 @@ async fn reference_create_list_delete() {
     assert_eq!(resp.status(), 201);
     let ref2 = json_body(resp).await;
     assert!(ref2["pinned_version_id"].is_null());
+    assert!(ref2["pinned_version_number"].is_null()); // null when unpinned
 
     // List references
     let resp = app.clone().oneshot(json_request(
@@ -1886,6 +1888,68 @@ async fn board_delete_cascades_references() {
     // Board gone
     let resp = app.clone().oneshot(json_request("GET", "/boards/board", None)).await.unwrap();
     assert_eq!(resp.status(), 404);
+
+    cleanup(&state, schema).await;
+}
+
+#[tokio::test]
+async fn reference_empty_uri_returns_400() {
+    let schema = "test_ref_empty_uri";
+    let (state, app) = setup(schema).await;
+
+    app.clone().oneshot(json_request(
+        "POST",
+        "/boards",
+        Some(serde_json::json!({
+            "slug": "board",
+            "name": "Board",
+            "board_type": "ordered"
+        })),
+    )).await.unwrap();
+
+    let resp = app.clone().oneshot(json_request(
+        "POST",
+        "/boards/board/references",
+        Some(serde_json::json!({
+            "uri": "",
+            "ref_type": "embed"
+        })),
+    )).await.unwrap();
+    assert_eq!(resp.status(), 400);
+    let body = json_body(resp).await;
+    assert!(body["error"].as_str().unwrap().contains("uri must not be empty"));
+
+    cleanup(&state, schema).await;
+}
+
+#[tokio::test]
+async fn reference_label_too_long_returns_400() {
+    let schema = "test_ref_long_label";
+    let (state, app) = setup(schema).await;
+
+    app.clone().oneshot(json_request(
+        "POST",
+        "/boards",
+        Some(serde_json::json!({
+            "slug": "board",
+            "name": "Board",
+            "board_type": "ordered"
+        })),
+    )).await.unwrap();
+
+    let long_label = "x".repeat(257);
+    let resp = app.clone().oneshot(json_request(
+        "POST",
+        "/boards/board/references",
+        Some(serde_json::json!({
+            "uri": "/blog",
+            "ref_type": "embed",
+            "label": long_label
+        })),
+    )).await.unwrap();
+    assert_eq!(resp.status(), 400);
+    let body = json_body(resp).await;
+    assert!(body["error"].as_str().unwrap().contains("label must not exceed 256"));
 
     cleanup(&state, schema).await;
 }
