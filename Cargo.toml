@@ -43,6 +43,11 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 # CLI
 clap = { version = "4", features = ["derive"] }
 
+# HTTP (for testing)
+http = "1"
+tower = { version = "0.5", features = ["util"] }
+http-body-util = "0.1"
+
 # Internal crates
 riley-leaderboards-core = { path = "crates/riley-leaderboards-core" }
 riley-leaderboards-api = { path = "crates/riley-leaderboards-api" }

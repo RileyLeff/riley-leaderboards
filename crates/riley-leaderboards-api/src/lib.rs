@@ -21,7 +21,7 @@ pub fn build_router(state: Arc<AppState>) -> Router {
 }
 
 async fn health(State(state): State<Arc<AppState>>) -> impl IntoResponse {
-    match sqlx::query_scalar::<_, i32>("SELECT 1")
+    match sqlx::query_scalar::<_, i32>("SELECT 1::int4")
         .fetch_one(&state.pool)
         .await
     {
@@ -37,7 +37,8 @@ pub async fn serve(state: Arc<AppState>) -> anyhow::Result<()> {
     let server_config = state
         .config
         .server
-        .clone()
+        .as_ref()
+        .cloned()
         .unwrap_or_default();
 
     let app = build_router(state);
@@ -54,8 +55,14 @@ pub async fn serve(state: Arc<AppState>) -> anyhow::Result<()> {
 }
 
 async fn shutdown_signal() {
-    tokio::signal::ctrl_c()
-        .await
-        .expect("failed to listen for ctrl+c");
+    let ctrl_c = tokio::signal::ctrl_c();
+    let mut sigterm =
+        tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+            .expect("failed to register SIGTERM handler");
+
+    tokio::select! {
+        _ = ctrl_c => {},
+        _ = sigterm.recv() => {},
+    }
     tracing::info!("shutdown signal received");
 }

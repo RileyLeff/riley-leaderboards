@@ -17,3 +17,8 @@ uuid = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
 anyhow = { workspace = true }
+
+[dev-dependencies]
+http = { workspace = true }
+tower = { workspace = true }
+http-body-util = { workspace = true }
