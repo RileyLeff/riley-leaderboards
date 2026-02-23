@@ -17,10 +17,20 @@ pub async fn create(pool: &PgPool, input: &CreateBoard) -> Result<Board> {
             "accumulative boards must have board_type 'scored'".to_string(),
         ));
     }
+    if input.realtime && !(input.accumulative && input.board_type == "scored") {
+        return Err(Error::Validation(
+            "realtime boards must be accumulative and scored".to_string(),
+        ));
+    }
+    if input.clear_on_snapshot && !input.realtime {
+        return Err(Error::Validation(
+            "clear_on_snapshot requires realtime to be true".to_string(),
+        ));
+    }
 
     let board = sqlx::query_as::<_, Board>(
-        r#"INSERT INTO boards (slug, name, board_type, sort_direction, tier_config, metadata, accumulative)
-           VALUES ($1, $2, $3, $4, $5, $6, $7)
+        r#"INSERT INTO boards (slug, name, board_type, sort_direction, tier_config, metadata, accumulative, realtime, clear_on_snapshot)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
            RETURNING *"#,
     )
     .bind(&input.slug)
@@ -30,6 +40,8 @@ pub async fn create(pool: &PgPool, input: &CreateBoard) -> Result<Board> {
     .bind(&input.tier_config)
     .bind(&input.metadata)
     .bind(input.accumulative)
+    .bind(input.realtime)
+    .bind(input.clear_on_snapshot)
     .fetch_one(pool)
     .await
     .map_err(|e| match &e {

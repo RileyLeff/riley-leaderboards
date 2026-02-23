@@ -23,6 +23,10 @@ pub struct BoardExportMeta {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub metadata: Option<serde_json::Value>,
     pub accumulative: bool,
+    #[serde(default)]
+    pub realtime: bool,
+    #[serde(default)]
+    pub clear_on_snapshot: bool,
 }
 
 impl From<&Board> for BoardExportMeta {
@@ -35,6 +39,8 @@ impl From<&Board> for BoardExportMeta {
             tier_config: b.tier_config.clone(),
             metadata: b.metadata.clone(),
             accumulative: b.accumulative,
+            realtime: b.realtime,
+            clear_on_snapshot: b.clear_on_snapshot,
         }
     }
 }
@@ -139,6 +145,8 @@ pub async fn import_board(pool: &PgPool, export: &BoardExport) -> Result<()> {
             tier_config: board_meta.tier_config.clone(),
             metadata: board_meta.metadata.clone(),
             accumulative: board_meta.accumulative,
+            realtime: board_meta.realtime,
+            clear_on_snapshot: board_meta.clear_on_snapshot,
             created_at: chrono::Utc::now(),
             updated_at: chrono::Utc::now(),
         };
@@ -157,6 +165,8 @@ pub async fn import_board(pool: &PgPool, export: &BoardExport) -> Result<()> {
         tier_config: export.board.tier_config.clone(),
         metadata: export.board.metadata.clone(),
         accumulative: export.board.accumulative,
+        realtime: export.board.realtime,
+        clear_on_snapshot: export.board.clear_on_snapshot,
     };
 
     super::validate_slug(&create_board.slug)?;
@@ -165,8 +175,8 @@ pub async fn import_board(pool: &PgPool, export: &BoardExport) -> Result<()> {
     super::boards::validate_sort_direction(&create_board.sort_direction)?;
 
     let board = sqlx::query_as::<_, crate::models::Board>(
-        r#"INSERT INTO boards (slug, name, board_type, sort_direction, tier_config, metadata, accumulative)
-           VALUES ($1, $2, $3, $4, $5, $6, $7)
+        r#"INSERT INTO boards (slug, name, board_type, sort_direction, tier_config, metadata, accumulative, realtime, clear_on_snapshot)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
            RETURNING *"#,
     )
     .bind(&create_board.slug)
@@ -176,6 +186,8 @@ pub async fn import_board(pool: &PgPool, export: &BoardExport) -> Result<()> {
     .bind(&create_board.tier_config)
     .bind(&create_board.metadata)
     .bind(create_board.accumulative)
+    .bind(create_board.realtime)
+    .bind(create_board.clear_on_snapshot)
     .fetch_one(&mut *tx)
     .await
     .map_err(|e| match &e {

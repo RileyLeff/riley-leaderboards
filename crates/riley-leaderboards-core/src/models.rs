@@ -52,6 +52,8 @@ pub struct Board {
     pub tier_config: Option<serde_json::Value>,
     pub metadata: Option<serde_json::Value>,
     pub accumulative: bool,
+    pub realtime: bool,
+    pub clear_on_snapshot: bool,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -67,6 +69,10 @@ pub struct CreateBoard {
     pub metadata: Option<serde_json::Value>,
     #[serde(default)]
     pub accumulative: bool,
+    #[serde(default)]
+    pub realtime: bool,
+    #[serde(default)]
+    pub clear_on_snapshot: bool,
 }
 
 #[derive(Debug, Deserialize)]

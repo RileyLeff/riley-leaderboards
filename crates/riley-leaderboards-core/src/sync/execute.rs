@@ -178,6 +178,8 @@ async fn sync_board(
                 tier_config,
                 metadata,
                 accumulative: false,
+                realtime: false,
+                clear_on_snapshot: false,
             };
             boards::create(pool, &create).await?
         }
