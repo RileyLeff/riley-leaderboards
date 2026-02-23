@@ -95,9 +95,11 @@ Will be implemented in Phase 8 (polish/deployment).
 Each placement does slug lookup + insert individually. Acceptable at expected
 scale. Batch optimization (WHERE slug = ANY($1)) deferred to Phase 8.
 
-### Scored board tiebreaking uses placement ID
-When scores are equal, `ROW_NUMBER()` uses `id ASC` as a tiebreaker for
-deterministic position assignment across transactions.
+### Scored board tiebreaking uses entry_id (updated Phase 5)
+When scores are equal, `ROW_NUMBER()` uses `entry_id ASC` as a tiebreaker for
+deterministic position assignment. Originally used `placements.id` but this was
+non-deterministic across versions (new UUID per insert). Changed to `entry_id`
+which is stable across versions (assigned at entry creation).
 
 ### PlacementWithEntry doesn't include entry metadata (future enhancement)
 Response includes entry slug and name only. Full entry metadata could be
@@ -123,3 +125,26 @@ COALESCE with i32::MAX instead of NULLS LAST. Both are cosmetic/polish items.
 ### sort_direction on non-scored boards is harmless
 Changing sort_direction on ordered/tiered boards succeeds silently. The field
 has no effect on non-scored board logic. Phase 8 could reject or document.
+
+## Phase 5
+
+### Snapshot does not clear accumulated_scores (intentional)
+Snapshot preserves all accumulated_scores — this is the "high score" pattern.
+For resetting leaderboards (e.g., weekly standings), a "clear on snapshot" flag
+or separate endpoint would be a future enhancement.
+
+### No read endpoint for accumulated scores (design choice)
+There is no `GET /boards/:slug/scores` to preview accumulated state before
+snapshotting. The "snapshot materializes state" model is intentional. Could add
+a preview endpoint in a future phase.
+
+### Inline placement fetch in snapshot uses simpler query (intentional)
+`scores::snapshot` fetches placements with a simpler ORDER BY (no LATERAL join
+for tier ordering) instead of reusing `fetch_placements`. This is correct
+because accumulative boards are always scored (never tiered). The simpler query
+is appropriate for this context.
+
+### Entry deletion cascade-deletes accumulated_scores (consistent)
+If an entry has accumulated_scores but no snapshots, deleting the entry
+cascade-deletes the score via FK. Consistent behavior — the entry has no
+historical data in any version.

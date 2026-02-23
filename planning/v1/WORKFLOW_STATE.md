@@ -1,8 +1,8 @@
 # v1 Workflow State
 
-**Current Phase:** 4 — References (COMPLETE)
-**Current Step:** Phase 4 exhaustive review converged
-**Status:** Phase 4 complete. 53 tests passing. Exhaustive review converged (2 rounds, 0 major in R1+R2). Ready for Phase 5.
+**Current Phase:** 5 — Accumulative Boards (COMPLETE)
+**Current Step:** Phase 5 exhaustive review converged
+**Status:** Phase 5 complete. 62 tests passing. Exhaustive review converged (3 rounds, 0 major in R2+R3). Ready for Phase 6.
 
 ## Progress
 
@@ -32,7 +32,12 @@
 | 4 | 4.1 | Reference CRUD + pinned version resolution | Done |
 | 4 | 4.2 | Tests (7 new, 53 total) | Done |
 | 4 | review | Exhaustive review (2 rounds, converged) | Done |
-| 5 | 5.1 | Accumulative boards | Pending |
+| 5 | 5.1 | Score submission endpoint | Done |
+| 5 | 5.2 | Snapshot endpoint | Done |
+| 5 | 5.3 | Accumulative validation guards | Done |
+| 5 | 5.4 | Tests (9 new, 62 total) | Done |
+| 5 | review | Exhaustive review (3 rounds, converged) | Done |
+| 6 | 6.1 | TOML file parser | Pending |
 
 ## Blockers
 
@@ -40,6 +45,7 @@ None.
 
 ## Recent Activity
 
-- Phase 4 implementation: board references CRUD with pinned version resolution (5ea2ce9)
-- Review R1 fixes: URI/label validation, version number in response (47f5ba5)
-- Review R2: converged — 0 major in 2 consecutive rounds
+- Phase 5 implementation: score submission, snapshot, validation guards (53586df)
+- Review R1 fixes: stable tiebreaker, tx wrapping, validation (a35ba1d)
+- Review R2 fix: name update test coverage (fb016ea)
+- Review R3: converged — 0 major in 2 consecutive rounds (R2+R3)
