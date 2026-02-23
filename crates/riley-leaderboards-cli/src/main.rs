@@ -222,6 +222,20 @@ async fn main() -> Result<()> {
             let board = repo::boards::get_by_slug(&pool, &slug).await
                 .context("board not found")?;
             let board_name = board.name.clone();
+
+            // Clean up Redis keys for realtime boards before Postgres delete
+            if board.realtime {
+                if let Some(ref redis_config) = config.redis {
+                    let url = redis_config.url.resolve().context("failed to resolve Redis URL")?;
+                    let client = redis::Client::open(url.as_str())
+                        .context("failed to create Redis client")?;
+                    let mut mgr = redis::aio::ConnectionManager::new(client)
+                        .await
+                        .context("failed to connect to Redis")?;
+                    let _ = repo::realtime::clear(&mut mgr, &slug).await;
+                }
+            }
+
             repo::boards::delete(&pool, &slug).await?;
             riley_leaderboards_api::outbound_webhooks::fire(
                 &config.webhooks,

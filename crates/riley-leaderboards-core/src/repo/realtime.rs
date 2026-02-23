@@ -66,7 +66,7 @@ pub async fn submit(
         .hset(&ek, &input.entry_slug, &input.entry_name)
         .query_async::<()>(redis)
         .await
-        .map_err(|e| Error::Internal(format!("Redis error: {e}")))?;
+        .map_err(|e| Error::ServiceUnavailable(format!("Redis error: {e}")))?;
 
     Ok(())
 }
@@ -87,12 +87,12 @@ pub async fn latest(
         redis
             .zrange_withscores(&sk, 0, -1)
             .await
-            .map_err(|e| Error::Internal(format!("Redis error: {e}")))?
+            .map_err(|e| Error::ServiceUnavailable(format!("Redis error: {e}")))?
     } else {
         redis
             .zrevrange_withscores(&sk, 0, -1)
             .await
-            .map_err(|e| Error::Internal(format!("Redis error: {e}")))?
+            .map_err(|e| Error::ServiceUnavailable(format!("Redis error: {e}")))?
     };
 
     // Batch-fetch entry names from the hash
@@ -103,7 +103,7 @@ pub async fn latest(
         redis
             .hget(&ek, &entry_slugs)
             .await
-            .map_err(|e| Error::Internal(format!("Redis error: {e}")))?
+            .map_err(|e| Error::ServiceUnavailable(format!("Redis error: {e}")))?
     };
 
     let placements: Vec<PlacementWithEntry> = entries_with_scores
@@ -138,8 +138,9 @@ pub async fn latest(
 
 /// Snapshot Redis state into a Postgres version.
 ///
-/// Reads the sorted set, creates a version with placements, and optionally
-/// clears the Redis state if `board.clear_on_snapshot` is true.
+/// Acquires the Postgres FOR UPDATE lock first, then reads Redis to minimize
+/// the TOCTOU window for concurrent score submissions. Optionally clears
+/// the Redis state if `board.clear_on_snapshot` is true.
 pub async fn snapshot(
     pool: &PgPool,
     redis: &mut redis::aio::ConnectionManager,
@@ -150,25 +151,28 @@ pub async fn snapshot(
     let sk = scores_key(&board.slug);
     let ek = entries_key(&board.slug);
 
-    // Read all entries with scores (always desc for snapshot — positions will be derived)
-    let entries_with_scores: Vec<(String, f64)> = redis
-        .zrevrange_withscores(&sk, 0, -1)
-        .await
-        .map_err(|e| Error::Internal(format!("Redis error: {e}")))?;
-
-    if entries_with_scores.is_empty() {
-        return Err(Error::Validation(
-            "no scores in Redis to snapshot".to_string(),
-        ));
-    }
-
     let mut tx = pool.begin().await.map_err(Error::Database)?;
 
-    // Lock the board row to serialize concurrent snapshots
+    // Lock the board row to serialize concurrent snapshots.
+    // Acquired BEFORE reading Redis to minimize the TOCTOU window.
     let board = sqlx::query_as::<_, Board>("SELECT * FROM boards WHERE id = $1 FOR UPDATE")
         .bind(board.id)
         .fetch_one(&mut *tx)
         .await?;
+
+    // Read all entries with scores from Redis (fetch order doesn't matter
+    // since derive_scored_positions re-derives positions from sort_direction).
+    let entries_with_scores: Vec<(String, f64)> = redis
+        .zrevrange_withscores(&sk, 0, -1)
+        .await
+        .map_err(|e| Error::ServiceUnavailable(format!("Redis error: {e}")))?;
+
+    if entries_with_scores.is_empty() {
+        tx.rollback().await.map_err(Error::Database)?;
+        return Err(Error::Validation(
+            "no scores in Redis to snapshot".to_string(),
+        ));
+    }
 
     // Get next version number
     let next_number: i32 = sqlx::query_scalar(
@@ -191,17 +195,22 @@ pub async fn snapshot(
     .fetch_one(&mut *tx)
     .await?;
 
-    // Insert placements — look up entry_id from Postgres entries table
-    for (entry_slug, score) in &entries_with_scores {
-        let entry_id: Option<Uuid> = sqlx::query_scalar(
-            "SELECT id FROM entries WHERE board_id = $1 AND slug = $2",
-        )
-        .bind(board.id)
-        .bind(entry_slug)
-        .fetch_optional(&mut *tx)
-        .await?;
+    // Batch-fetch entry IDs from Postgres to avoid O(N) individual lookups
+    let entry_slugs: Vec<&str> = entries_with_scores.iter().map(|(s, _)| s.as_str()).collect();
+    let entry_rows: Vec<(Uuid, String)> = sqlx::query_as(
+        "SELECT id, slug FROM entries WHERE board_id = $1 AND slug = ANY($2)",
+    )
+    .bind(board.id)
+    .bind(&entry_slugs)
+    .fetch_all(&mut *tx)
+    .await?;
 
-        let entry_id = entry_id.ok_or_else(|| {
+    let entry_map: std::collections::HashMap<String, Uuid> =
+        entry_rows.into_iter().map(|(id, slug)| (slug, id)).collect();
+
+    // Insert placements
+    for (entry_slug, score) in &entries_with_scores {
+        let entry_id = entry_map.get(entry_slug).ok_or_else(|| {
             Error::Internal(format!(
                 "entry '{entry_slug}' exists in Redis but not in Postgres"
             ))
@@ -244,7 +253,7 @@ pub async fn snapshot(
             .del(&ek)
             .query_async(redis)
             .await
-            .map_err(|e| Error::Internal(format!("Redis clear error: {e}")))?;
+            .map_err(|e| Error::ServiceUnavailable(format!("Redis clear error: {e}")))?;
     }
 
     Ok(VersionWithPlacements {
@@ -267,7 +276,7 @@ pub async fn clear(
         .del(&ek)
         .query_async(redis)
         .await
-        .map_err(|e| Error::Internal(format!("Redis error: {e}")))?;
+        .map_err(|e| Error::ServiceUnavailable(format!("Redis error: {e}")))?;
 
     Ok(())
 }

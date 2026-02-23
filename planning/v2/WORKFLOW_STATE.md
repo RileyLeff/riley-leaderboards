@@ -1,8 +1,8 @@
 # v2 Workflow State
 
-**Current Phase:** 4 — Board Collections (COMPLETE)
-**Current Step:** Done
-**Status:** Phase 4 converged. 2 review rounds, 0 majors in R1+R2. 136 tests pass. Ready for Phase 5.
+**Current Phase:** 5 — Realtime Boards (EXHAUSTIVE REVIEW)
+**Current Step:** Exhaustive review R1
+**Status:** Phase 5 implementation complete. 147 tests pass (including 11 new realtime tests). Starting exhaustive review.
 
 ## Progress
 
@@ -17,7 +17,11 @@
 | 4 | 4.1-4.5 | Collections (migration, models, repo, API, CLI) | Done |
 | 4 | 4.6 | Integration tests (14 tests) | Done |
 | 4 | review | Exhaustive review (2 rounds, converged, Codex+Claude) | Done |
-| 5 | 5.1 | Redis config + optional connection | Not Started |
+| 5 | 5.1 | Redis config + optional connection in AppState | Done |
+| 5 | 5.2 | Board model changes (realtime, clear_on_snapshot) | Done |
+| 5 | 5.3-5.6 | Redis realtime module, route handlers, fallback | Done |
+| 5 | 5.7 | 11 integration tests (Redis + Postgres) | Done |
+| 5 | review | Exhaustive review | In Progress |
 
 ## Blockers
 
@@ -25,7 +29,7 @@ None.
 
 ## Recent Activity
 
-- Phase 4: Board collections implementation (f5f827b)
-- Phase 4 tests: 14 integration tests (0523f86)
-- Phase 4 R1 fixes: CLI list, FK race, board_id index, no-op PATCH (926d7be)
-- Phase 4 converged: 2 rounds, 0 majors in R1+R2
+- 5.1: Redis config + optional ConnectionManager (a3c5fb5)
+- 5.2: Realtime + clear_on_snapshot board fields + migration 005 (9df2011)
+- 5.3-5.6: Redis realtime module, route handler dispatch, 503 fallback (63543b3)
+- 5.7: Redis in docker-compose + 11 realtime integration tests (08ed6c8)

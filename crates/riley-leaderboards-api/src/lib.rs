@@ -199,16 +199,32 @@ fn collection_routes(state: Arc<AppState>) -> Router<Arc<AppState>> {
 }
 
 async fn health(State(state): State<Arc<AppState>>) -> impl IntoResponse {
-    match sqlx::query_scalar::<_, i32>("SELECT 1::int4")
+    // Check Postgres
+    if let Err(_) = sqlx::query_scalar::<_, i32>("SELECT 1::int4")
         .fetch_one(&state.pool)
         .await
     {
-        Ok(_) => (StatusCode::OK, Json(json!({ "status": "ok" }))),
-        Err(_) => (
+        return (
             StatusCode::SERVICE_UNAVAILABLE,
             Json(json!({ "status": "unhealthy", "reason": "database unreachable" })),
-        ),
+        );
     }
+
+    // Check Redis if configured
+    if let Some(ref redis) = state.redis {
+        let mut conn = redis.clone();
+        if let Err(_) = redis::cmd("PING")
+            .query_async::<String>(&mut conn)
+            .await
+        {
+            return (
+                StatusCode::SERVICE_UNAVAILABLE,
+                Json(json!({ "status": "unhealthy", "reason": "redis unreachable" })),
+            );
+        }
+    }
+
+    (StatusCode::OK, Json(json!({ "status": "ok" })))
 }
 
 pub async fn serve(state: Arc<AppState>) -> anyhow::Result<()> {

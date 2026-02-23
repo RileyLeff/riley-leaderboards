@@ -29,7 +29,7 @@ pub async fn submit(
         Ok((StatusCode::OK, Json(serde_json::json!({ "ok": true }))))
     } else {
         let score = scores::submit(&state.pool, &board, &input).await?;
-        Ok((StatusCode::OK, Json(serde_json::to_value(score).unwrap())))
+        Ok((StatusCode::OK, Json(serde_json::to_value(score).map_err(|e| CoreError::Internal(format!("serialization error: {e}")))?)))
     }
 }
 
@@ -72,5 +72,5 @@ pub async fn snapshot(
             note: version.version.note.clone(),
         }),
     );
-    Ok((StatusCode::CREATED, Json(serde_json::to_value(version).unwrap())))
+    Ok((StatusCode::CREATED, Json(serde_json::to_value(version).map_err(|e| CoreError::Internal(format!("serialization error: {e}")))?)))
 }

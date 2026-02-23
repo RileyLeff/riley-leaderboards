@@ -7,7 +7,7 @@ use axum::Json;
 
 use riley_leaderboards_core::config::WebhookEvent;
 use riley_leaderboards_core::models::{CreateBoard, PaginationParams, UpdateBoard};
-use riley_leaderboards_core::repo::boards;
+use riley_leaderboards_core::repo::{boards, realtime};
 
 use crate::AppState;
 use crate::error::ApiResult;
@@ -64,8 +64,16 @@ pub async fn delete(
     State(state): State<Arc<AppState>>,
     Path(slug): Path<String>,
 ) -> ApiResult<impl IntoResponse> {
-    // Fetch board info before deleting (for webhook payload)
+    // Fetch board info before deleting (for webhook payload + Redis cleanup)
     let board = boards::get_by_slug(&state.pool, &slug).await?;
+
+    // Clean up Redis keys for realtime boards before Postgres delete
+    if board.realtime {
+        if let Some(ref redis) = state.redis {
+            let _ = realtime::clear(&mut redis.clone(), &board.slug).await;
+        }
+    }
+
     boards::delete(&state.pool, &slug).await?;
     outbound_webhooks::fire(
         &state.config.webhooks,

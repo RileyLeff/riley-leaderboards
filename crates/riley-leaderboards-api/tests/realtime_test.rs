@@ -682,3 +682,54 @@ async fn snapshot_empty_returns_400() {
 
     cleanup(&state, schema).await;
 }
+
+// ── Test: Board deletion cleans up Redis keys ────────────────────────────────
+
+#[tokio::test]
+async fn delete_realtime_board_clears_redis() {
+    let schema = "test_rt_delete";
+    let (state, app) = setup_with_redis(schema).await;
+    flush_redis(&state).await;
+
+    create_realtime_board(&app, "del-board", "Delete Board").await;
+
+    // Submit a score
+    let resp = app
+        .clone()
+        .oneshot(json_request(
+            "POST",
+            "/boards/del-board/scores",
+            Some(serde_json::json!({
+                "entry_slug": "player",
+                "entry_name": "Player",
+                "score": 42.0
+            })),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200);
+
+    // Delete the board
+    let resp = app
+        .clone()
+        .oneshot(json_request("DELETE", "/boards/del-board", None))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 204);
+
+    // Recreate same slug — should start fresh with no stale scores
+    create_realtime_board(&app, "del-board", "Delete Board Reborn").await;
+
+    // Latest should show empty (no stale scores from previous board)
+    let resp = app
+        .clone()
+        .oneshot(json_request("GET", "/boards/del-board/latest", None))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200);
+    let body = json_body(resp).await;
+    let placements = body["placements"].as_array().unwrap();
+    assert_eq!(placements.len(), 0, "expected no stale scores after delete+recreate");
+
+    cleanup(&state, schema).await;
+}
