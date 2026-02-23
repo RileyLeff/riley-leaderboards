@@ -1,8 +1,8 @@
 # v1 Workflow State
 
-**Current Phase:** 6 — File Sync (COMPLETE)
-**Current Step:** Phase 6 exhaustive review converged
-**Status:** Phase 6 complete. 73 tests passing. Exhaustive review converged (4 rounds, 0 major in R3+R4). Ready for Phase 7.
+**Current Phase:** 7 — Auth (COMPLETE)
+**Current Step:** Done
+**Status:** Phase 7 exhaustive review converged (3 rounds, 0 majors in final 2). 81 tests passing. Ready for Phase 8.
 
 ## Progress
 
@@ -43,7 +43,10 @@
 | 6 | 6.4 | GitHub webhook endpoint | Done |
 | 6 | 6.5 | Tests (11 new, 73 total) | Done |
 | 6 | review | Exhaustive review (4 rounds, converged) | Done |
-| 7 | 7.1 | Auth (JWT/API token) | Pending |
+| 7 | 7.1 | Auth config + dependencies | Done |
+| 7 | 7.2 | Auth module (JWKS cache, JWT, API token, middleware) | Done |
+| 7 | 7.3 | Tests (8 new, 81 total) | Done |
+| 7 | review | Exhaustive review (3 rounds, converged) | Done |
 
 ## Blockers
 
@@ -51,7 +54,7 @@ None.
 
 ## Recent Activity
 
-- Phase 6 implementation: TOML parsing, sync execution, CLI sync, webhook (c13dc58)
-- Review R1 fixes: scored board diff, git pull, branch filter, entry updates (44cf219)
-- Review R2 fixes: implicit position diff, ranking config versioning (193462a)
-- Review R3+R4: converged — 0 major in 2 consecutive rounds
+- Phase 7 implementation: auth module with JWT/API token/no-auth modes (77c58ad)
+- Phase 7 exhaustive R1: 3 majors + 11 minors, all majors fixed (c35d696)
+- Phase 7 exhaustive R2: 0 majors, 2 minors fixed (f8af5d5)
+- Phase 7 exhaustive R3: 0 majors, 1 minor fixed (a61a75f) — converged
