@@ -2380,3 +2380,39 @@ async fn accumulative_board_delete_cascades() {
 
     cleanup(&state, schema).await;
 }
+
+#[tokio::test]
+async fn accumulative_non_scored_board_rejected() {
+    let schema = "test_accum_non_scored";
+    let (state, app) = setup(schema).await;
+
+    // Accumulative ordered board should be rejected
+    let resp = app.clone().oneshot(json_request(
+        "POST",
+        "/boards",
+        Some(serde_json::json!({
+            "slug": "board",
+            "name": "Board",
+            "board_type": "ordered",
+            "accumulative": true
+        })),
+    )).await.unwrap();
+    assert_eq!(resp.status(), 400);
+    let body = json_body(resp).await;
+    assert!(body["error"].as_str().unwrap().contains("accumulative boards must have board_type 'scored'"));
+
+    // Accumulative tiered board should also be rejected
+    let resp = app.clone().oneshot(json_request(
+        "POST",
+        "/boards",
+        Some(serde_json::json!({
+            "slug": "board2",
+            "name": "Board2",
+            "board_type": "tiered",
+            "accumulative": true
+        })),
+    )).await.unwrap();
+    assert_eq!(resp.status(), 400);
+
+    cleanup(&state, schema).await;
+}

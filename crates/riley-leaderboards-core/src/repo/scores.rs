@@ -7,7 +7,7 @@ use crate::models::{
 };
 
 /// Submit (upsert) a score for an accumulative board.
-/// Creates the entry if it doesn't exist.
+/// Creates the entry if it doesn't exist; updates name on re-submission.
 pub async fn submit(
     pool: &PgPool,
     board: &Board,
@@ -31,17 +31,19 @@ pub async fn submit(
     super::validate_slug(&input.entry_slug)?;
     super::validate_name(&input.entry_name)?;
 
-    // Upsert the entry (create if not exists)
+    let mut tx = pool.begin().await?;
+
+    // Upsert the entry (create if not exists, update name on re-submission)
     let entry_id: Uuid = sqlx::query_scalar(
         r#"INSERT INTO entries (board_id, slug, name)
            VALUES ($1, $2, $3)
-           ON CONFLICT (board_id, slug) DO UPDATE SET updated_at = now()
+           ON CONFLICT (board_id, slug) DO UPDATE SET name = $3, updated_at = now()
            RETURNING id"#,
     )
     .bind(board.id)
     .bind(&input.entry_slug)
     .bind(&input.entry_name)
-    .fetch_one(pool)
+    .fetch_one(&mut *tx)
     .await?;
 
     // Upsert the accumulated score
@@ -54,8 +56,10 @@ pub async fn submit(
     .bind(board.id)
     .bind(entry_id)
     .bind(input.score)
-    .fetch_one(pool)
+    .fetch_one(&mut *tx)
     .await?;
+
+    tx.commit().await?;
 
     Ok(score)
 }
@@ -69,6 +73,11 @@ pub async fn snapshot(
     if !board.accumulative {
         return Err(Error::Validation(
             "snapshot is only allowed on accumulative boards".to_string(),
+        ));
+    }
+    if board.board_type != "scored" {
+        return Err(Error::Validation(
+            "snapshot is only allowed on scored boards".to_string(),
         ));
     }
 
@@ -130,26 +139,8 @@ pub async fn snapshot(
         .await?;
     }
 
-    // Derive positions from scores
-    let order = if board.sort_direction == "asc" {
-        "ASC"
-    } else {
-        "DESC"
-    };
-    let query = format!(
-        r#"UPDATE placements
-           SET position = ranked.pos
-           FROM (
-               SELECT id, ROW_NUMBER() OVER (ORDER BY score {order} NULLS LAST, id ASC) AS pos
-               FROM placements
-               WHERE version_id = $1
-           ) ranked
-           WHERE placements.id = ranked.id"#
-    );
-    sqlx::query(&query)
-        .bind(version.id)
-        .execute(&mut *tx)
-        .await?;
+    // Derive positions from scores (reuse shared logic)
+    super::versions::derive_scored_positions(&mut tx, version.id, &board.sort_direction).await?;
 
     // Fetch final placements with entry info
     let placements = sqlx::query_as::<_, PlacementWithEntry>(

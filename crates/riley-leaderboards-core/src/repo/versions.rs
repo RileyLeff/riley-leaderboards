@@ -198,7 +198,7 @@ where
     Ok(placements)
 }
 
-async fn derive_scored_positions(
+pub async fn derive_scored_positions(
     tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     version_id: Uuid,
     sort_direction: &str,
@@ -209,12 +209,14 @@ async fn derive_scored_positions(
         "DESC"
     };
 
-    // Use a window function to assign positions based on score
+    // Use a window function to assign positions based on score.
+    // Tiebreaker on entry_id (stable across versions) rather than placements.id
+    // (which changes per version, causing non-deterministic ordering for ties).
     let query = format!(
         r#"UPDATE placements
            SET position = ranked.pos
            FROM (
-               SELECT id, ROW_NUMBER() OVER (ORDER BY score {order} NULLS LAST, id ASC) AS pos
+               SELECT id, ROW_NUMBER() OVER (ORDER BY score {order} NULLS LAST, entry_id ASC) AS pos
                FROM placements
                WHERE version_id = $1
            ) ranked

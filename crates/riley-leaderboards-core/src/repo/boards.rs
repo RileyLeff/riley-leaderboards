@@ -12,6 +12,11 @@ pub async fn create(pool: &PgPool, input: &CreateBoard) -> Result<Board> {
     if input.board_type == "tiered" {
         validate_tier_config(input.tier_config.as_ref())?;
     }
+    if input.accumulative && input.board_type != "scored" {
+        return Err(Error::Validation(
+            "accumulative boards must have board_type 'scored'".to_string(),
+        ));
+    }
 
     let board = sqlx::query_as::<_, Board>(
         r#"INSERT INTO boards (slug, name, board_type, sort_direction, tier_config, metadata, accumulative)
