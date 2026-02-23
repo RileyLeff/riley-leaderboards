@@ -280,6 +280,7 @@ async fn sync_board(
     let version_note = note.unwrap_or("Synced from file");
     let create_version = CreateVersion {
         note: Some(version_note.to_string()),
+        metadata: parsed.version_metadata,
         placements,
     };
     let version = versions::create(pool, &board, &create_version).await?;

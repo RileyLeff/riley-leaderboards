@@ -36,6 +36,7 @@ fn default_sort_direction() -> String {
 pub struct RankingsToml {
     #[serde(default)]
     pub entries: Vec<EntryToml>,
+    pub version_metadata: Option<toml::Value>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -54,6 +55,7 @@ pub struct ParsedBoard {
     pub slug: String,
     pub board: BoardToml,
     pub entries: Vec<EntryToml>,
+    pub version_metadata: Option<serde_json::Value>,
 }
 
 /// Parse a single board directory (must contain board.toml).
@@ -80,7 +82,7 @@ pub fn parse_board_dir(dir: &Path) -> Result<ParsedBoard> {
     })?;
 
     let rankings_path = dir.join("rankings.toml");
-    let entries = if rankings_path.exists() {
+    let (entries, version_metadata) = if rankings_path.exists() {
         let rankings_str = std::fs::read_to_string(&rankings_path).map_err(|e| {
             Error::Validation(format!(
                 "failed to read {}: {e}",
@@ -93,15 +95,17 @@ pub fn parse_board_dir(dir: &Path) -> Result<ParsedBoard> {
                 rankings_path.display()
             ))
         })?;
-        rankings.entries
+        let vm = rankings.version_metadata.as_ref().map(toml_to_json);
+        (rankings.entries, vm)
     } else {
-        Vec::new()
+        (Vec::new(), None)
     };
 
     Ok(ParsedBoard {
         slug,
         board,
         entries,
+        version_metadata,
     })
 }
 

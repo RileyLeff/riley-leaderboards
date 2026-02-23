@@ -45,13 +45,14 @@ pub async fn create(
 
     // Create version
     let version = sqlx::query_as::<_, Version>(
-        r#"INSERT INTO versions (board_id, version_number, note)
-           VALUES ($1, $2, $3)
+        r#"INSERT INTO versions (board_id, version_number, note, metadata)
+           VALUES ($1, $2, $3, $4)
            RETURNING *"#,
     )
     .bind(board.id)
     .bind(next_number)
     .bind(&input.note)
+    .bind(&input.metadata)
     .fetch_one(&mut *tx)
     .await?;
 

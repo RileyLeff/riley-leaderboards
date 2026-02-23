@@ -27,6 +27,6 @@ pub async fn snapshot(
     Json(input): Json<SnapshotInput>,
 ) -> ApiResult<impl IntoResponse> {
     let board = boards::get_by_slug(&state.pool, &board_slug).await?;
-    let version = scores::snapshot(&state.pool, &board, input.note.as_deref()).await?;
+    let version = scores::snapshot(&state.pool, &board, input.note.as_deref(), input.metadata.as_ref()).await?;
     Ok((StatusCode::CREATED, Json(version)))
 }

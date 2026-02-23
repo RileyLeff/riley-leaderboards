@@ -69,6 +69,7 @@ pub async fn snapshot(
     pool: &PgPool,
     board: &Board,
     note: Option<&str>,
+    metadata: Option<&serde_json::Value>,
 ) -> Result<VersionWithPlacements> {
     if !board.accumulative {
         return Err(Error::Validation(
@@ -116,13 +117,14 @@ pub async fn snapshot(
 
     // Create version
     let version = sqlx::query_as::<_, Version>(
-        r#"INSERT INTO versions (board_id, version_number, note)
-           VALUES ($1, $2, $3)
+        r#"INSERT INTO versions (board_id, version_number, note, metadata)
+           VALUES ($1, $2, $3, $4)
            RETURNING *"#,
     )
     .bind(board.id)
     .bind(next_number)
     .bind(note)
+    .bind(metadata)
     .fetch_one(&mut *tx)
     .await?;
 

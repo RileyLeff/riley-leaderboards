@@ -118,6 +118,7 @@ pub struct Version {
     pub board_id: Uuid,
     pub version_number: i32,
     pub note: Option<String>,
+    pub metadata: Option<serde_json::Value>,
     pub created_at: DateTime<Utc>,
 }
 
@@ -146,6 +147,7 @@ pub struct CreatePlacement {
 #[derive(Debug, Deserialize)]
 pub struct CreateVersion {
     pub note: Option<String>,
+    pub metadata: Option<serde_json::Value>,
     pub placements: Vec<CreatePlacement>,
 }
 
@@ -278,6 +280,7 @@ pub struct SubmitScore {
 #[derive(Debug, Deserialize)]
 pub struct SnapshotInput {
     pub note: Option<String>,
+    pub metadata: Option<serde_json::Value>,
 }
 
 // ── Pagination ──────────────────────────────────────────────────────────

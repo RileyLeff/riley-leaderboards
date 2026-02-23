@@ -3938,3 +3938,268 @@ async fn export_import_round_trip() {
 
     cleanup(&state, schema).await;
 }
+
+// ── Version Metadata ─────────────────────────────────────────────────────
+
+#[tokio::test]
+async fn version_metadata_create_and_fetch() {
+    let schema = "test_version_metadata";
+    let (state, app) = setup(schema).await;
+
+    // Create board + entry
+    app.clone().oneshot(json_request(
+        "POST", "/boards",
+        Some(serde_json::json!({
+            "slug": "meta-board",
+            "name": "Metadata Board",
+            "board_type": "ordered"
+        })),
+    )).await.unwrap();
+    app.clone().oneshot(json_request(
+        "POST", "/boards/meta-board/entries",
+        Some(serde_json::json!({ "slug": "item-a", "name": "Item A" })),
+    )).await.unwrap();
+
+    // Create version WITH metadata
+    let resp = app.clone().oneshot(json_request(
+        "POST", "/boards/meta-board/versions",
+        Some(serde_json::json!({
+            "note": "February update",
+            "metadata": {
+                "blog_post_url": "https://example.com/blog/feb-update",
+                "changelog": "Added Item A"
+            },
+            "placements": [
+                { "entry_slug": "item-a", "position": 1 }
+            ]
+        })),
+    )).await.unwrap();
+    assert_eq!(resp.status(), 201);
+    let version = json_body(resp).await;
+    assert_eq!(version["version_number"], 1);
+    assert_eq!(version["metadata"]["blog_post_url"], "https://example.com/blog/feb-update");
+    assert_eq!(version["metadata"]["changelog"], "Added Item A");
+
+    // Fetch by number — metadata persists
+    let resp = app.clone().oneshot(json_request(
+        "GET", "/boards/meta-board/versions/1", None,
+    )).await.unwrap();
+    assert_eq!(resp.status(), 200);
+    let fetched = json_body(resp).await;
+    assert_eq!(fetched["metadata"]["blog_post_url"], "https://example.com/blog/feb-update");
+
+    // Fetch latest — metadata persists
+    let resp = app.clone().oneshot(json_request(
+        "GET", "/boards/meta-board/latest", None,
+    )).await.unwrap();
+    assert_eq!(resp.status(), 200);
+    let latest = json_body(resp).await;
+    assert_eq!(latest["metadata"]["changelog"], "Added Item A");
+
+    // List versions — metadata visible
+    let resp = app.clone().oneshot(json_request(
+        "GET", "/boards/meta-board/versions", None,
+    )).await.unwrap();
+    assert_eq!(resp.status(), 200);
+    let list = json_body(resp).await;
+    assert_eq!(list["items"][0]["metadata"]["blog_post_url"], "https://example.com/blog/feb-update");
+
+    // Since endpoint — metadata visible
+    let resp = app.clone().oneshot(json_request(
+        "GET", "/boards/meta-board/since/0", None,
+    )).await.unwrap();
+    assert_eq!(resp.status(), 200);
+    let since = json_body(resp).await;
+    assert_eq!(since[0]["metadata"]["blog_post_url"], "https://example.com/blog/feb-update");
+
+    cleanup(&state, schema).await;
+}
+
+#[tokio::test]
+async fn version_metadata_null_is_fine() {
+    let schema = "test_version_meta_null";
+    let (state, app) = setup(schema).await;
+
+    // Create board + entry
+    app.clone().oneshot(json_request(
+        "POST", "/boards",
+        Some(serde_json::json!({
+            "slug": "board",
+            "name": "Board",
+            "board_type": "ordered"
+        })),
+    )).await.unwrap();
+    app.clone().oneshot(json_request(
+        "POST", "/boards/board/entries",
+        Some(serde_json::json!({ "slug": "item", "name": "Item" })),
+    )).await.unwrap();
+
+    // Create version WITHOUT metadata
+    let resp = app.clone().oneshot(json_request(
+        "POST", "/boards/board/versions",
+        Some(serde_json::json!({
+            "note": "No metadata",
+            "placements": [{ "entry_slug": "item", "position": 1 }]
+        })),
+    )).await.unwrap();
+    assert_eq!(resp.status(), 201);
+    let version = json_body(resp).await;
+    assert!(version["metadata"].is_null());
+
+    cleanup(&state, schema).await;
+}
+
+#[tokio::test]
+async fn snapshot_with_metadata() {
+    let schema = "test_snapshot_metadata";
+    let (state, app) = setup(schema).await;
+
+    // Create accumulative board
+    app.clone().oneshot(json_request(
+        "POST", "/boards",
+        Some(serde_json::json!({
+            "slug": "game",
+            "name": "Game Scores",
+            "board_type": "scored",
+            "accumulative": true
+        })),
+    )).await.unwrap();
+
+    // Submit score
+    app.clone().oneshot(json_request(
+        "POST", "/boards/game/scores",
+        Some(serde_json::json!({
+            "entry_slug": "player1",
+            "entry_name": "Player 1",
+            "score": 100.0
+        })),
+    )).await.unwrap();
+
+    // Snapshot WITH metadata
+    let resp = app.clone().oneshot(json_request(
+        "POST", "/boards/game/snapshot",
+        Some(serde_json::json!({
+            "note": "End of round 1",
+            "metadata": {
+                "round": 1,
+                "tournament": "Summer 2026"
+            }
+        })),
+    )).await.unwrap();
+    assert_eq!(resp.status(), 201);
+    let version = json_body(resp).await;
+    assert_eq!(version["metadata"]["round"], 1);
+    assert_eq!(version["metadata"]["tournament"], "Summer 2026");
+
+    // Fetch latest — metadata persists
+    let resp = app.clone().oneshot(json_request(
+        "GET", "/boards/game/latest", None,
+    )).await.unwrap();
+    let latest = json_body(resp).await;
+    assert_eq!(latest["metadata"]["tournament"], "Summer 2026");
+
+    cleanup(&state, schema).await;
+}
+
+#[tokio::test]
+async fn export_import_preserves_version_metadata() {
+    let schema = "test_export_version_meta";
+    let (state, app) = setup(schema).await;
+
+    // Create board + entry + version with metadata
+    app.clone().oneshot(json_request(
+        "POST", "/boards",
+        Some(serde_json::json!({
+            "slug": "export-meta",
+            "name": "Export Meta Test",
+            "board_type": "ordered"
+        })),
+    )).await.unwrap();
+    app.clone().oneshot(json_request(
+        "POST", "/boards/export-meta/entries",
+        Some(serde_json::json!({ "slug": "item", "name": "Item" })),
+    )).await.unwrap();
+    app.clone().oneshot(json_request(
+        "POST", "/boards/export-meta/versions",
+        Some(serde_json::json!({
+            "note": "v1",
+            "metadata": { "source": "test", "url": "https://example.com" },
+            "placements": [{ "entry_slug": "item", "position": 1 }]
+        })),
+    )).await.unwrap();
+
+    // Export
+    use riley_leaderboards_core::repo::export;
+    let exported = export::export_board(&state.pool, "export-meta").await.unwrap();
+    assert_eq!(exported.versions[0].metadata.as_ref().unwrap()["source"], "test");
+
+    // Delete the board, then re-import
+    app.clone().oneshot(json_request(
+        "DELETE", "/boards/export-meta", None,
+    )).await.unwrap();
+
+    export::import_board(&state.pool, &exported).await.unwrap();
+
+    // Verify metadata survived the round-trip
+    let resp = app.clone().oneshot(json_request(
+        "GET", "/boards/export-meta/versions/1", None,
+    )).await.unwrap();
+    assert_eq!(resp.status(), 200);
+    let version = json_body(resp).await;
+    assert_eq!(version["metadata"]["source"], "test");
+    assert_eq!(version["metadata"]["url"], "https://example.com");
+
+    cleanup(&state, schema).await;
+}
+
+#[tokio::test]
+async fn sync_with_version_metadata() {
+    let schema = "test_sync_version_meta";
+    let (state, _app) = setup_with_sync(schema).await;
+    let tmp = create_temp_boards_dir();
+
+    write_board_files(
+        tmp.path(),
+        "meta-sync",
+        r#"
+name = "Meta Sync Test"
+board_type = "ordered"
+"#,
+        Some(r#"
+[version_metadata]
+blog_post_url = "https://example.com/post"
+author = "test"
+
+[[entries]]
+slug = "item-a"
+name = "Item A"
+position = 1
+"#),
+    );
+
+    let results = riley_leaderboards_core::sync::execute::sync_dir(
+        &state.pool,
+        tmp.path(),
+        Some("Sync with metadata"),
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(results.len(), 1);
+    assert!(matches!(
+        results[0].action,
+        riley_leaderboards_core::sync::execute::SyncAction::Created { version_number: 1 }
+    ));
+
+    // Verify version metadata was stored
+    let board = riley_leaderboards_core::repo::boards::get_by_slug(&state.pool, "meta-sync")
+        .await
+        .unwrap();
+    let version =
+        riley_leaderboards_core::repo::versions::get_latest(&state.pool, board.id).await.unwrap();
+    let meta = version.version.metadata.expect("version metadata should be set");
+    assert_eq!(meta["blog_post_url"], "https://example.com/post");
+    assert_eq!(meta["author"], "test");
+
+    cleanup(&state, schema).await;
+}

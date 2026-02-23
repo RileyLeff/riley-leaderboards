@@ -45,6 +45,8 @@ pub struct VersionExport {
     pub version_number: i32,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub note: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub metadata: Option<serde_json::Value>,
     pub placements: Vec<PlacementExport>,
 }
 
@@ -87,6 +89,7 @@ pub async fn export_board(pool: &PgPool, slug: &str) -> Result<BoardExport> {
         version_exports.push(VersionExport {
             version_number: vwp.version.version_number,
             note: vwp.version.note.clone(),
+            metadata: vwp.version.metadata.clone(),
             placements: vwp.placements.iter().map(PlacementExport::from).collect(),
         });
     }
@@ -216,13 +219,14 @@ pub async fn import_board(pool: &PgPool, export: &BoardExport) -> Result<()> {
 
     for v in &sorted_versions {
         let version = sqlx::query_as::<_, Version>(
-            r#"INSERT INTO versions (board_id, version_number, note)
-               VALUES ($1, $2, $3)
+            r#"INSERT INTO versions (board_id, version_number, note, metadata)
+               VALUES ($1, $2, $3, $4)
                RETURNING *"#,
         )
         .bind(board.id)
         .bind(v.version_number)
         .bind(&v.note)
+        .bind(&v.metadata)
         .fetch_one(&mut *tx)
         .await
         .map_err(Error::Database)?;
