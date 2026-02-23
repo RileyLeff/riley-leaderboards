@@ -2071,13 +2071,13 @@ async fn accumulative_score_upsert_behavior() {
         })),
     )).await.unwrap();
 
-    // Submit higher score — should overwrite
+    // Submit higher score with updated name — should overwrite both
     let resp = app.clone().oneshot(json_request(
         "POST",
         "/boards/board/scores",
         Some(serde_json::json!({
             "entry_slug": "player",
-            "entry_name": "Player",
+            "entry_name": "Player Updated",
             "score": 999.0
         })),
     )).await.unwrap();
@@ -2085,7 +2085,7 @@ async fn accumulative_score_upsert_behavior() {
     let score = json_body(resp).await;
     assert_eq!(score["score"], 999.0);
 
-    // Snapshot should use latest score
+    // Snapshot should use latest score and updated name
     let resp = app.clone().oneshot(json_request(
         "POST",
         "/boards/board/snapshot",
@@ -2094,6 +2094,7 @@ async fn accumulative_score_upsert_behavior() {
     assert_eq!(resp.status(), 201);
     let version = json_body(resp).await;
     assert_eq!(version["placements"][0]["score"], 999.0);
+    assert_eq!(version["placements"][0]["entry_name"], "Player Updated");
 
     cleanup(&state, schema).await;
 }
