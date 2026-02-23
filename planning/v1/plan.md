@@ -390,20 +390,22 @@ CREATE INDEX idx_placements_version_id ON placements(version_id);
 CREATE INDEX idx_placements_entry_id ON placements(entry_id);
 ```
 
-### references
+### board_references
+
+Named `board_references` because `references` is a SQL reserved keyword.
 
 ```sql
-CREATE TABLE references (
+CREATE TABLE board_references (
   id uuid PRIMARY KEY DEFAULT uuidv7(),
   board_id uuid NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
   pinned_version_id uuid REFERENCES versions(id) ON DELETE SET NULL,
   uri text NOT NULL,                    -- "/blog/sandwich-rankings", "https://forestroyale.rileyleff.com"
-  type text NOT NULL,                   -- "blog_post", "game", "page", etc.
+  ref_type text NOT NULL,               -- "blog_post", "game", "page", etc.
   label text,                           -- optional display name for this reference
   created_at timestamptz NOT NULL DEFAULT now()
 );
 
-CREATE INDEX idx_references_board_id ON references(board_id);
+CREATE INDEX idx_board_references_board_id ON board_references(board_id);
 ```
 
 ### accumulated_scores

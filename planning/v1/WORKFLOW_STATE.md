@@ -1,20 +1,20 @@
 # v1 Workflow State
 
-**Current Phase:** 1 — Foundation (NOT STARTED)
-**Current Step:** —
-**Status:** Repository initialized, planning complete, ready to begin implementation.
+**Current Phase:** 1 — Foundation (IN PROGRESS)
+**Current Step:** 1.7 Tests
+**Status:** Steps 1.1–1.6 implemented and committed. 7 unit tests passing. Moving to integration tests and exhaustive review.
 
 ## Progress
 
 | Phase | Step | Description | Status |
 |-------|------|-------------|--------|
-| 1 | 1.1 | Cargo workspace setup | Not Started |
-| 1 | 1.2 | Config loading | Not Started |
-| 1 | 1.3 | Database connection with configurable schema | Not Started |
-| 1 | 1.4 | Migration runner + initial schema | Not Started |
-| 1 | 1.5 | Health check endpoint | Not Started |
-| 1 | 1.6 | CLI skeleton | Not Started |
-| 1 | 1.7 | Tests | Not Started |
+| 1 | 1.1 | Cargo workspace setup | Done |
+| 1 | 1.2 | Config loading | Done |
+| 1 | 1.3 | Database connection with configurable schema | Done |
+| 1 | 1.4 | Migration runner + initial schema | Done |
+| 1 | 1.5 | Health check endpoint | Done |
+| 1 | 1.6 | CLI skeleton | Done |
+| 1 | 1.7 | Tests | In Progress |
 | 1 | review | Exhaustive review | Not Started |
 | 2 | 2.1 | Board CRUD | Not Started |
 | 2 | 2.2 | Entry CRUD | Not Started |
@@ -71,3 +71,5 @@ None.
 ## Recent Activity
 
 - Repository initialized, planning documents written (soul.md, plan.md, implementation_plan.md)
+- Phase 1 foundation implemented: workspace, config, DB, migrations, health check, CLI (277cfbe)
+- Fixed: renamed `references` table to `board_references` (SQL reserved keyword) (ec3422c)
