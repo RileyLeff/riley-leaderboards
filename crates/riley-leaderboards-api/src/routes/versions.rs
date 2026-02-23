@@ -41,8 +41,11 @@ pub async fn create(
         .into());
     }
 
-    // Safety limit: metadata size
+    // Safety limit: metadata size (version-level and per-placement)
     check_metadata_size(input.metadata.as_ref(), limits.max_metadata_size_bytes)?;
+    for p in &input.placements {
+        check_metadata_size(p.metadata.as_ref(), limits.max_metadata_size_bytes)?;
+    }
 
     let board = boards::get_by_slug(&state.pool, &board_slug).await?;
 
