@@ -9,6 +9,9 @@ use riley_leaderboards_core::config::RileyLeaderboardsConfig;
 use serde_json::json;
 use sqlx::PgPool;
 
+mod error;
+mod routes;
+
 pub struct AppState {
     pub pool: PgPool,
     pub config: RileyLeaderboardsConfig,
@@ -17,7 +20,35 @@ pub struct AppState {
 pub fn build_router(state: Arc<AppState>) -> Router {
     Router::new()
         .route("/health", get(health))
+        .nest("/boards", board_routes())
         .with_state(state)
+}
+
+fn board_routes() -> Router<Arc<AppState>> {
+    Router::new()
+        .route("/", get(routes::boards::list).post(routes::boards::create))
+        .route(
+            "/{slug}",
+            get(routes::boards::get)
+                .patch(routes::boards::update)
+                .delete(routes::boards::delete),
+        )
+        .route(
+            "/{slug}/entries",
+            get(routes::entries::list).post(routes::entries::create),
+        )
+        .route(
+            "/{slug}/entries/{entry_slug}",
+            get(routes::entries::get)
+                .patch(routes::entries::update)
+                .delete(routes::entries::delete),
+        )
+        .route(
+            "/{slug}/versions",
+            get(routes::versions::list).post(routes::versions::create),
+        )
+        .route("/{slug}/versions/{version_number}", get(routes::versions::get))
+        .route("/{slug}/latest", get(routes::versions::latest))
 }
 
 async fn health(State(state): State<Arc<AppState>>) -> impl IntoResponse {

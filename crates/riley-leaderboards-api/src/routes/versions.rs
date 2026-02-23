@@ -1,0 +1,49 @@
+use std::sync::Arc;
+
+use axum::extract::{Path, State};
+use axum::http::StatusCode;
+use axum::response::IntoResponse;
+use axum::Json;
+
+use riley_leaderboards_core::models::CreateVersion;
+use riley_leaderboards_core::repo::{boards, versions};
+
+use crate::AppState;
+use crate::error::ApiResult;
+
+pub async fn create(
+    State(state): State<Arc<AppState>>,
+    Path(board_slug): Path<String>,
+    Json(input): Json<CreateVersion>,
+) -> ApiResult<impl IntoResponse> {
+    let board = boards::get_by_slug(&state.pool, &board_slug).await?;
+    let version = versions::create(&state.pool, &board, &input).await?;
+    Ok((StatusCode::CREATED, Json(version)))
+}
+
+pub async fn list(
+    State(state): State<Arc<AppState>>,
+    Path(board_slug): Path<String>,
+) -> ApiResult<impl IntoResponse> {
+    let board = boards::get_by_slug(&state.pool, &board_slug).await?;
+    let versions = versions::list(&state.pool, board.id).await?;
+    Ok(Json(versions))
+}
+
+pub async fn get(
+    State(state): State<Arc<AppState>>,
+    Path((board_slug, version_number)): Path<(String, i32)>,
+) -> ApiResult<impl IntoResponse> {
+    let board = boards::get_by_slug(&state.pool, &board_slug).await?;
+    let version = versions::get_by_number(&state.pool, board.id, version_number).await?;
+    Ok(Json(version))
+}
+
+pub async fn latest(
+    State(state): State<Arc<AppState>>,
+    Path(board_slug): Path<String>,
+) -> ApiResult<impl IntoResponse> {
+    let board = boards::get_by_slug(&state.pool, &board_slug).await?;
+    let version = versions::get_latest(&state.pool, board.id).await?;
+    Ok(Json(version))
+}

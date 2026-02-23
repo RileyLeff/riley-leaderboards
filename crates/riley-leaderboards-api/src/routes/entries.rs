@@ -1,0 +1,59 @@
+use std::sync::Arc;
+
+use axum::extract::{Path, State};
+use axum::http::StatusCode;
+use axum::response::IntoResponse;
+use axum::Json;
+
+use riley_leaderboards_core::models::{CreateEntry, UpdateEntry};
+use riley_leaderboards_core::repo::{boards, entries};
+
+use crate::AppState;
+use crate::error::ApiResult;
+
+pub async fn create(
+    State(state): State<Arc<AppState>>,
+    Path(board_slug): Path<String>,
+    Json(input): Json<CreateEntry>,
+) -> ApiResult<impl IntoResponse> {
+    let board = boards::get_by_slug(&state.pool, &board_slug).await?;
+    let entry = entries::create(&state.pool, board.id, &input).await?;
+    Ok((StatusCode::CREATED, Json(entry)))
+}
+
+pub async fn list(
+    State(state): State<Arc<AppState>>,
+    Path(board_slug): Path<String>,
+) -> ApiResult<impl IntoResponse> {
+    let board = boards::get_by_slug(&state.pool, &board_slug).await?;
+    let entries = entries::list(&state.pool, board.id).await?;
+    Ok(Json(entries))
+}
+
+pub async fn get(
+    State(state): State<Arc<AppState>>,
+    Path((board_slug, entry_slug)): Path<(String, String)>,
+) -> ApiResult<impl IntoResponse> {
+    let board = boards::get_by_slug(&state.pool, &board_slug).await?;
+    let entry = entries::get_by_slug(&state.pool, board.id, &entry_slug).await?;
+    Ok(Json(entry))
+}
+
+pub async fn update(
+    State(state): State<Arc<AppState>>,
+    Path((board_slug, entry_slug)): Path<(String, String)>,
+    Json(input): Json<UpdateEntry>,
+) -> ApiResult<impl IntoResponse> {
+    let board = boards::get_by_slug(&state.pool, &board_slug).await?;
+    let entry = entries::update(&state.pool, board.id, &entry_slug, &input).await?;
+    Ok(Json(entry))
+}
+
+pub async fn delete(
+    State(state): State<Arc<AppState>>,
+    Path((board_slug, entry_slug)): Path<(String, String)>,
+) -> ApiResult<impl IntoResponse> {
+    let board = boards::get_by_slug(&state.pool, &board_slug).await?;
+    entries::delete(&state.pool, board.id, &entry_slug).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
