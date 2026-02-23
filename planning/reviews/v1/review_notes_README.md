@@ -174,3 +174,38 @@ across-boards behavior.
 For scored boards, TOML files omit position (None) but the DB stores derived
 positions (Some(N)). The diff function only compares positions when the proposed
 value explicitly sets one, preventing false change detection on every sync.
+
+## Phase 7
+
+### JWKS supports RSA keys only (scope limitation)
+EC keys (ES256/ES384/ES512) and EdDSA are not supported. If the identity
+provider uses EC keys, JWTs are rejected. Documented limitation for v1.
+
+### validate_aud = false is intentional
+JWT audience claims are not checked. For a single-purpose deployment (the
+typical case), this is fine. Multi-tenant environments should add audience
+validation in a future version.
+
+### Auth token HMAC approach is sound
+Uses HMAC-SHA256 with a fixed key purely for constant-time comparison via
+`verify_slice()`. The fixed key is not a secret — it's used only to enable
+the constant-time verification property.
+
+### `since` endpoint returns version metadata only (no placements)
+This is intentional — the endpoint is for staleness checks ("are there newer
+versions?"), not for fetching full version data. Consumers should follow up
+with a specific version endpoint if they need placements.
+
+### `board_type`/`accumulative` immutability enforced by omission
+`UpdateBoard` excludes these fields. A client sending them in PATCH gets no
+error — the fields are silently ignored. This is consistent with the pattern
+established in Phase 2.
+
+### No pagination on list endpoints — Phase 8
+All list endpoints return all records. Phase 8 will add cursor-based pagination.
+
+### CORS middleware — Phase 8
+`cors_origins` config field exists but no middleware is applied. Phase 8.
+
+### `behind_proxy` config field — Phase 8
+Parsed but unused. Intended for X-Forwarded-For handling in Phase 8.

@@ -1,8 +1,8 @@
 # v1 Workflow State
 
-**Current Phase:** 7 — Auth (COMPLETE)
-**Current Step:** Done
-**Status:** Phase 7 exhaustive review converged (3 rounds, 0 majors in final 2). 81 tests passing. Ready for Phase 8.
+**Current Phase:** 8 — CLI + Polish (IN PROGRESS)
+**Current Step:** Exhaustive review R1
+**Status:** Phase 8 implementation complete (CLI, export/import, pagination, rate limiting, CORS, tracing). 84 tests passing. Running exhaustive review.
 
 ## Progress
 
@@ -47,6 +47,14 @@
 | 7 | 7.2 | Auth module (JWKS cache, JWT, API token, middleware) | Done |
 | 7 | 7.3 | Tests (8 new, 81 total) | Done |
 | 7 | review | Exhaustive review (3 rounds, converged) | Done |
+| 8 | 8.1 | Admin CLI commands | Done |
+| 8 | 8.2 | Export/import | Done |
+| 8 | 8.3 | Cursor-based pagination | Done |
+| 8 | 8.4 | Rate limiting | Done |
+| 8 | 8.5 | CORS configuration | Done |
+| 8 | 8.6 | Request tracing | Done |
+| 8 | 8.7 | Tests (pagination, export/import) | Done |
+| 8 | review | Exhaustive review R1 | In Progress |
 
 ## Blockers
 
@@ -54,7 +62,8 @@ None.
 
 ## Recent Activity
 
-- Phase 7 implementation: auth module with JWT/API token/no-auth modes (77c58ad)
-- Phase 7 exhaustive R1: 3 majors + 11 minors, all majors fixed (c35d696)
-- Phase 7 exhaustive R2: 0 majors, 2 minors fixed (f8af5d5)
-- Phase 7 exhaustive R3: 0 majors, 1 minor fixed (a61a75f) — converged
+- Phase 8 CLI + export/import (d8c110a)
+- Phase 8 cursor-based pagination (b556791)
+- Phase 8 rate limiting, CORS, tracing (c822701)
+- Phase 8 tests: pagination + export/import round-trip (c4e6e7f)
+- Phase 8 exhaustive review R1 in progress
