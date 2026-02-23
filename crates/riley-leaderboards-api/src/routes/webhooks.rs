@@ -154,7 +154,7 @@ pub async fn github(
     let pull_result = tokio::time::timeout(
         std::time::Duration::from_secs(60),
         tokio::process::Command::new("git")
-            .args(["-C", &repo_path, "pull"])
+            .args(["-C", &repo_path, "pull", "origin", expected_branch])
             .output(),
     )
     .await;

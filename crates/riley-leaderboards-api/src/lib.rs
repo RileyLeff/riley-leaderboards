@@ -32,30 +32,20 @@ pub fn build_router(state: Arc<AppState>) -> Router {
 
     let mut app = Router::new()
         .route("/health", get(health))
-        .route(
+        .nest("/boards", board_routes(state.clone()));
+
+    // Only register the webhook route when sync config is present
+    if state.config.sync.is_some() {
+        app = app.route(
             "/webhooks/github",
             axum::routing::post(routes::webhooks::github)
                 .layer(axum::extract::DefaultBodyLimit::max(5 * 1024 * 1024)),
-        )
-        .nest("/boards", board_routes(state.clone()))
-        .with_state(state);
-
-    // CORS
-    if !server_config.cors_origins.is_empty() {
-        let cors = build_cors_layer(&server_config.cors_origins);
-        app = app.layer(cors);
+        );
     }
 
-    // Request tracing
-    app = app.layer(
-        TraceLayer::new_for_http()
-            .make_span_with(tower_http::trace::DefaultMakeSpan::new().level(tracing::Level::INFO))
-            .on_response(
-                tower_http::trace::DefaultOnResponse::new().level(tracing::Level::INFO),
-            ),
-    );
+    let mut app = app.with_state(state);
 
-    // Rate limiting
+    // Rate limiting (applied before CORS so preflight requests aren't rate-limited)
     if server_config.rate_limit_per_second > 0 {
         let governor_conf = Arc::new(
             tower_governor::governor::GovernorConfigBuilder::default()
@@ -67,6 +57,21 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         app = app.layer(tower_governor::GovernorLayer {
             config: governor_conf,
         });
+    }
+
+    // Request tracing
+    app = app.layer(
+        TraceLayer::new_for_http()
+            .make_span_with(tower_http::trace::DefaultMakeSpan::new().level(tracing::Level::INFO))
+            .on_response(
+                tower_http::trace::DefaultOnResponse::new().level(tracing::Level::INFO),
+            ),
+    );
+
+    // CORS (outermost layer — handles preflight before rate limiting)
+    if !server_config.cors_origins.is_empty() {
+        let cors = build_cors_layer(&server_config.cors_origins);
+        app = app.layer(cors);
     }
 
     app

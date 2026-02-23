@@ -385,6 +385,14 @@ pub async fn diff(
     })
 }
 
+/// Public entry point for import validation (same rules as version creation).
+pub fn validate_placements_for_import(
+    board: &Board,
+    placements: &[CreatePlacement],
+) -> Result<()> {
+    validate_placements(board, placements)
+}
+
 fn validate_placements(board: &Board, placements: &[CreatePlacement]) -> Result<()> {
     if placements.is_empty() {
         return Err(Error::Validation(

@@ -100,18 +100,52 @@ pub async fn export_board(pool: &PgPool, slug: &str) -> Result<BoardExport> {
     })
 }
 
-/// Import a board from an export. Creates the board, entries, and all versions.
+/// Import a board from an export. Creates the board, entries, and all versions
+/// inside a single transaction (atomic — all-or-nothing).
 ///
 /// Uses direct SQL inserts for versions/placements to bypass the accumulative
-/// board check (the export is trusted data). If import fails partway through,
-/// use `delete-board` to clean up and retry.
+/// board check, but validates placement data before inserting.
 ///
 /// Fails if a board with the same slug already exists.
 pub async fn import_board(pool: &PgPool, export: &BoardExport) -> Result<()> {
-    use crate::models::CreateBoard;
+    use crate::models::{CreateBoard, CreatePlacement};
     use std::collections::HashMap;
 
-    // Create the board via the normal path (validates slug, type, etc.)
+    // Pre-validate all version placements before starting the transaction
+    let board_meta = &export.board;
+    for v in &export.versions {
+        let placements: Vec<CreatePlacement> = v
+            .placements
+            .iter()
+            .map(|p| CreatePlacement {
+                entry_slug: p.entry_slug.clone(),
+                position: p.position,
+                score: p.score,
+                tier: p.tier.clone(),
+                metadata: p.metadata.clone(),
+            })
+            .collect();
+
+        // Build a temporary Board-like struct for validation
+        let temp_board = crate::models::Board {
+            id: uuid::Uuid::nil(),
+            slug: board_meta.slug.clone(),
+            name: board_meta.name.clone(),
+            board_type: board_meta.board_type.clone(),
+            sort_direction: board_meta.sort_direction.clone(),
+            tier_config: board_meta.tier_config.clone(),
+            metadata: board_meta.metadata.clone(),
+            accumulative: board_meta.accumulative,
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
+        };
+
+        super::versions::validate_placements_for_import(&temp_board, &placements)?;
+    }
+
+    let mut tx = pool.begin().await.map_err(Error::Database)?;
+
+    // Create the board
     let create_board = CreateBoard {
         slug: export.board.slug.clone(),
         name: export.board.name.clone(),
@@ -121,22 +155,57 @@ pub async fn import_board(pool: &PgPool, export: &BoardExport) -> Result<()> {
         metadata: export.board.metadata.clone(),
         accumulative: export.board.accumulative,
     };
-    let board = super::boards::create(pool, &create_board).await?;
 
-    // Collect all unique entries across all versions, create them, and build slug->id map
-    let mut entry_ids: HashMap<String, uuid::Uuid> = HashMap::new();
+    super::validate_slug(&create_board.slug)?;
+    super::validate_name(&create_board.name)?;
+
+    let board = sqlx::query_as::<_, crate::models::Board>(
+        r#"INSERT INTO boards (slug, name, board_type, sort_direction, tier_config, metadata, accumulative)
+           VALUES ($1, $2, $3, $4, $5, $6, $7)
+           RETURNING *"#,
+    )
+    .bind(&create_board.slug)
+    .bind(&create_board.name)
+    .bind(&create_board.board_type)
+    .bind(&create_board.sort_direction)
+    .bind(&create_board.tier_config)
+    .bind(&create_board.metadata)
+    .bind(create_board.accumulative)
+    .fetch_one(&mut *tx)
+    .await
+    .map_err(|e| match &e {
+        sqlx::Error::Database(db_err) if db_err.is_unique_violation() => {
+            Error::Conflict(format!(
+                "board with slug '{}' already exists",
+                create_board.slug
+            ))
+        }
+        _ => Error::Database(e),
+    })?;
+
+    // Collect all unique entries across all versions (use last-seen name),
+    // create them, and build slug->id map
+    let mut entry_names: HashMap<String, String> = HashMap::new();
     for v in &export.versions {
         for p in &v.placements {
-            if !entry_ids.contains_key(&p.entry_slug) {
-                let entry = crate::models::CreateEntry {
-                    slug: p.entry_slug.clone(),
-                    name: p.entry_name.clone(),
-                    metadata: None,
-                };
-                let created = super::entries::create(pool, board.id, &entry).await?;
-                entry_ids.insert(p.entry_slug.clone(), created.id);
-            }
+            entry_names.insert(p.entry_slug.clone(), p.entry_name.clone());
         }
+    }
+
+    let mut entry_ids: HashMap<String, uuid::Uuid> = HashMap::new();
+    for (slug, name) in &entry_names {
+        let entry = sqlx::query_as::<_, crate::models::Entry>(
+            r#"INSERT INTO entries (board_id, slug, name)
+               VALUES ($1, $2, $3)
+               RETURNING *"#,
+        )
+        .bind(board.id)
+        .bind(slug)
+        .bind(name)
+        .fetch_one(&mut *tx)
+        .await
+        .map_err(Error::Database)?;
+        entry_ids.insert(slug.clone(), entry.id);
     }
 
     // Create versions in order via direct SQL (bypasses accumulative check)
@@ -152,7 +221,7 @@ pub async fn import_board(pool: &PgPool, export: &BoardExport) -> Result<()> {
         .bind(board.id)
         .bind(v.version_number)
         .bind(&v.note)
-        .fetch_one(pool)
+        .fetch_one(&mut *tx)
         .await
         .map_err(Error::Database)?;
 
@@ -171,11 +240,23 @@ pub async fn import_board(pool: &PgPool, export: &BoardExport) -> Result<()> {
             .bind(p.score)
             .bind(&p.tier)
             .bind(&p.metadata)
-            .execute(pool)
+            .execute(&mut *tx)
             .await
             .map_err(Error::Database)?;
         }
+
+        // Derive positions for scored boards (positions are based on score + sort_direction)
+        if board.board_type == "scored" {
+            super::versions::derive_scored_positions(
+                &mut tx,
+                version.id,
+                &board.sort_direction,
+            )
+            .await?;
+        }
     }
+
+    tx.commit().await.map_err(Error::Database)?;
 
     Ok(())
 }
