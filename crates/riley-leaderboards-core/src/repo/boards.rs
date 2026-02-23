@@ -2,9 +2,10 @@ use sqlx::PgPool;
 use uuid::Uuid;
 
 use crate::error::{Error, Result};
-use crate::models::{Board, BoardSummary, CreateBoard, UpdateBoard};
+use crate::models::{Board, BoardSummary, CreateBoard, Nullable, UpdateBoard};
 
 pub async fn create(pool: &PgPool, input: &CreateBoard) -> Result<Board> {
+    super::validate_slug(&input.slug)?;
     validate_board_type(&input.board_type)?;
     validate_sort_direction(&input.sort_direction)?;
 
@@ -76,20 +77,38 @@ pub async fn update(pool: &PgPool, slug: &str, input: &UpdateBoard) -> Result<Bo
 
     let board = get_by_slug(pool, slug).await?;
 
+    // Build UPDATE dynamically so Nullable fields can distinguish
+    // absent (keep old) from null (clear to NULL) from value (set new).
+    let name = input.name.as_deref().unwrap_or(&board.name);
+    let sort_direction = input
+        .sort_direction
+        .as_deref()
+        .unwrap_or(&board.sort_direction);
+    let tier_config = match &input.tier_config {
+        Nullable::Absent => board.tier_config.as_ref(),
+        Nullable::Null => None,
+        Nullable::Value(v) => Some(v),
+    };
+    let metadata = match &input.metadata {
+        Nullable::Absent => board.metadata.as_ref(),
+        Nullable::Null => None,
+        Nullable::Value(v) => Some(v),
+    };
+
     let updated = sqlx::query_as::<_, Board>(
         r#"UPDATE boards
-           SET name = COALESCE($1, name),
-               sort_direction = COALESCE($2, sort_direction),
-               tier_config = COALESCE($3, tier_config),
-               metadata = COALESCE($4, metadata),
+           SET name = $1,
+               sort_direction = $2,
+               tier_config = $3,
+               metadata = $4,
                updated_at = now()
            WHERE id = $5
            RETURNING *"#,
     )
-    .bind(&input.name)
-    .bind(&input.sort_direction)
-    .bind(&input.tier_config)
-    .bind(&input.metadata)
+    .bind(name)
+    .bind(sort_direction)
+    .bind(tier_config)
+    .bind(metadata)
     .bind(board.id)
     .fetch_one(pool)
     .await?;

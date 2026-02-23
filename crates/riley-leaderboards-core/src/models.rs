@@ -1,6 +1,44 @@
 use chrono::{DateTime, Utc};
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use uuid::Uuid;
+
+// ── Nullable (for PATCH semantics) ─────────────────────────────────────────
+
+/// Three-state type for PATCH operations:
+/// - `None` = field absent from JSON → keep existing value
+/// - `Some(None)` = field present as `null` → clear to NULL
+/// - `Some(Some(v))` = field present with value → set to new value
+#[derive(Debug, Clone)]
+pub enum Nullable<T> {
+    Absent,
+    Null,
+    Value(T),
+}
+
+impl<T> Default for Nullable<T> {
+    fn default() -> Self {
+        Nullable::Absent
+    }
+}
+
+impl<'de, T: Deserialize<'de>> Deserialize<'de> for Nullable<T> {
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        // If this is called, the field was present in JSON
+        Option::<T>::deserialize(deserializer).map(|opt| match opt {
+            Some(v) => Nullable::Value(v),
+            None => Nullable::Null,
+        })
+    }
+}
+
+impl<T> Nullable<T> {
+    pub fn is_absent(&self) -> bool {
+        matches!(self, Nullable::Absent)
+    }
+}
 
 // ── Board ──────────────────────────────────────────────────────────────────
 
@@ -35,8 +73,10 @@ pub struct CreateBoard {
 pub struct UpdateBoard {
     pub name: Option<String>,
     pub sort_direction: Option<String>,
-    pub tier_config: Option<serde_json::Value>,
-    pub metadata: Option<serde_json::Value>,
+    #[serde(default)]
+    pub tier_config: Nullable<serde_json::Value>,
+    #[serde(default)]
+    pub metadata: Nullable<serde_json::Value>,
 }
 
 fn default_sort_direction() -> String {
@@ -66,7 +106,8 @@ pub struct CreateEntry {
 #[derive(Debug, Deserialize)]
 pub struct UpdateEntry {
     pub name: Option<String>,
-    pub metadata: Option<serde_json::Value>,
+    #[serde(default)]
+    pub metadata: Nullable<serde_json::Value>,
 }
 
 // ── Version ────────────────────────────────────────────────────────────────

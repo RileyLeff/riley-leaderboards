@@ -831,3 +831,268 @@ async fn board_delete_cascades_entries_and_versions() {
 
     cleanup(&state, schema).await;
 }
+
+// ── Slug validation ────────────────────────────────────────────────────────
+
+#[tokio::test]
+async fn invalid_board_slug_returns_400() {
+    let schema = "test_invalid_slug";
+    let (state, app) = setup(schema).await;
+
+    // Uppercase
+    let resp = app.clone().oneshot(json_request(
+        "POST",
+        "/boards",
+        Some(serde_json::json!({
+            "slug": "Bad-Slug",
+            "name": "Bad",
+            "board_type": "ordered"
+        })),
+    )).await.unwrap();
+    assert_eq!(resp.status(), 400);
+
+    // Spaces
+    let resp = app.clone().oneshot(json_request(
+        "POST",
+        "/boards",
+        Some(serde_json::json!({
+            "slug": "bad slug",
+            "name": "Bad",
+            "board_type": "ordered"
+        })),
+    )).await.unwrap();
+    assert_eq!(resp.status(), 400);
+
+    // Leading hyphen
+    let resp = app.clone().oneshot(json_request(
+        "POST",
+        "/boards",
+        Some(serde_json::json!({
+            "slug": "-bad",
+            "name": "Bad",
+            "board_type": "ordered"
+        })),
+    )).await.unwrap();
+    assert_eq!(resp.status(), 400);
+
+    cleanup(&state, schema).await;
+}
+
+#[tokio::test]
+async fn invalid_entry_slug_returns_400() {
+    let schema = "test_entry_invalid_slug";
+    let (state, app) = setup(schema).await;
+
+    app.clone().oneshot(json_request(
+        "POST",
+        "/boards",
+        Some(serde_json::json!({
+            "slug": "board",
+            "name": "Board",
+            "board_type": "ordered"
+        })),
+    )).await.unwrap();
+
+    let resp = app.clone().oneshot(json_request(
+        "POST",
+        "/boards/board/entries",
+        Some(serde_json::json!({
+            "slug": "Bad Entry!",
+            "name": "Bad"
+        })),
+    )).await.unwrap();
+    assert_eq!(resp.status(), 400);
+
+    cleanup(&state, schema).await;
+}
+
+// ── Nullable PATCH semantics ───────────────────────────────────────────────
+
+#[tokio::test]
+async fn board_patch_can_clear_metadata_to_null() {
+    let schema = "test_patch_clear";
+    let (state, app) = setup(schema).await;
+
+    // Create board with metadata
+    app.clone().oneshot(json_request(
+        "POST",
+        "/boards",
+        Some(serde_json::json!({
+            "slug": "meta-board",
+            "name": "Board with Metadata",
+            "board_type": "ordered",
+            "metadata": { "description": "some description" }
+        })),
+    )).await.unwrap();
+
+    // Verify metadata is set
+    let resp = app.clone().oneshot(json_request("GET", "/boards/meta-board", None)).await.unwrap();
+    let board = json_body(resp).await;
+    assert!(board["metadata"].is_object());
+
+    // PATCH with metadata: null to clear it
+    let resp = app.clone().oneshot(json_request(
+        "PATCH",
+        "/boards/meta-board",
+        Some(serde_json::json!({
+            "metadata": null
+        })),
+    )).await.unwrap();
+    assert_eq!(resp.status(), 200);
+    let updated = json_body(resp).await;
+    assert!(updated["metadata"].is_null());
+
+    // Verify it persisted
+    let resp = app.clone().oneshot(json_request("GET", "/boards/meta-board", None)).await.unwrap();
+    let board = json_body(resp).await;
+    assert!(board["metadata"].is_null());
+
+    cleanup(&state, schema).await;
+}
+
+#[tokio::test]
+async fn board_patch_omitted_fields_keep_old_values() {
+    let schema = "test_patch_omit";
+    let (state, app) = setup(schema).await;
+
+    app.clone().oneshot(json_request(
+        "POST",
+        "/boards",
+        Some(serde_json::json!({
+            "slug": "keep-board",
+            "name": "Original",
+            "board_type": "ordered",
+            "metadata": { "key": "value" }
+        })),
+    )).await.unwrap();
+
+    // PATCH only name — metadata should stay
+    let resp = app.clone().oneshot(json_request(
+        "PATCH",
+        "/boards/keep-board",
+        Some(serde_json::json!({
+            "name": "Updated Name"
+        })),
+    )).await.unwrap();
+    assert_eq!(resp.status(), 200);
+    let updated = json_body(resp).await;
+    assert_eq!(updated["name"], "Updated Name");
+    assert_eq!(updated["metadata"]["key"], "value");
+
+    cleanup(&state, schema).await;
+}
+
+// ── Entry deletion with placements ─────────────────────────────────────────
+
+#[tokio::test]
+async fn entry_delete_with_placements_returns_409() {
+    let schema = "test_entry_del_conflict";
+    let (state, app) = setup(schema).await;
+
+    app.clone().oneshot(json_request(
+        "POST",
+        "/boards",
+        Some(serde_json::json!({
+            "slug": "board",
+            "name": "Board",
+            "board_type": "ordered"
+        })),
+    )).await.unwrap();
+
+    app.clone().oneshot(json_request(
+        "POST",
+        "/boards/board/entries",
+        Some(serde_json::json!({ "slug": "item", "name": "Item" })),
+    )).await.unwrap();
+
+    // Create a version with this entry
+    app.clone().oneshot(json_request(
+        "POST",
+        "/boards/board/versions",
+        Some(serde_json::json!({
+            "placements": [{ "entry_slug": "item", "position": 1 }]
+        })),
+    )).await.unwrap();
+
+    // Try to delete the entry — should be rejected
+    let resp = app.clone().oneshot(json_request(
+        "DELETE",
+        "/boards/board/entries/item",
+        None,
+    )).await.unwrap();
+    assert_eq!(resp.status(), 409);
+
+    cleanup(&state, schema).await;
+}
+
+#[tokio::test]
+async fn entry_delete_without_placements_succeeds() {
+    let schema = "test_entry_del_ok";
+    let (state, app) = setup(schema).await;
+
+    app.clone().oneshot(json_request(
+        "POST",
+        "/boards",
+        Some(serde_json::json!({
+            "slug": "board",
+            "name": "Board",
+            "board_type": "ordered"
+        })),
+    )).await.unwrap();
+
+    app.clone().oneshot(json_request(
+        "POST",
+        "/boards/board/entries",
+        Some(serde_json::json!({ "slug": "unused", "name": "Unused" })),
+    )).await.unwrap();
+
+    // Delete entry with no placements — should work
+    let resp = app.clone().oneshot(json_request(
+        "DELETE",
+        "/boards/board/entries/unused",
+        None,
+    )).await.unwrap();
+    assert_eq!(resp.status(), 204);
+
+    cleanup(&state, schema).await;
+}
+
+// ── Ordered board duplicate positions ──────────────────────────────────────
+
+#[tokio::test]
+async fn ordered_board_duplicate_positions_returns_400() {
+    let schema = "test_dup_positions";
+    let (state, app) = setup(schema).await;
+
+    app.clone().oneshot(json_request(
+        "POST",
+        "/boards",
+        Some(serde_json::json!({
+            "slug": "board",
+            "name": "Board",
+            "board_type": "ordered"
+        })),
+    )).await.unwrap();
+
+    for slug in ["a", "b"] {
+        app.clone().oneshot(json_request(
+            "POST",
+            "/boards/board/entries",
+            Some(serde_json::json!({ "slug": slug, "name": slug })),
+        )).await.unwrap();
+    }
+
+    let resp = app.clone().oneshot(json_request(
+        "POST",
+        "/boards/board/versions",
+        Some(serde_json::json!({
+            "placements": [
+                { "entry_slug": "a", "position": 1 },
+                { "entry_slug": "b", "position": 1 }
+            ]
+        })),
+    )).await.unwrap();
+    assert_eq!(resp.status(), 400);
+
+    cleanup(&state, schema).await;
+}

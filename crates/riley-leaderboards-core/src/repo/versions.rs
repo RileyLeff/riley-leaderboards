@@ -15,7 +15,15 @@ pub async fn create(
 
     let mut tx = pool.begin().await?;
 
-    // Get next version number
+    // Lock the board row to serialize concurrent version creation.
+    // Without this, two transactions could read the same MAX(version_number)
+    // and both try to insert the same next number.
+    sqlx::query("SELECT id FROM boards WHERE id = $1 FOR UPDATE")
+        .bind(board.id)
+        .fetch_one(&mut *tx)
+        .await?;
+
+    // Get next version number (now safe — board row is locked)
     let next_number: i32 = sqlx::query_scalar(
         "SELECT COALESCE(MAX(version_number), 0) + 1 FROM versions WHERE board_id = $1",
     )
@@ -151,13 +159,26 @@ async fn fetch_placements<'e, E>(executor: E, version_id: Uuid) -> Result<Vec<Pl
 where
     E: sqlx::Executor<'e, Database = sqlx::Postgres>,
 {
+    // For tiered boards, use the board's tier_config to order by tier position.
+    // For non-tiered boards, tier is null and the LATERAL join produces no match,
+    // so tier_ord defaults to a high value and ordering falls through to position.
     let placements = sqlx::query_as::<_, PlacementWithEntry>(
         r#"SELECT p.id, p.version_id, p.entry_id, p.position, p.score, p.tier, p.metadata,
                   e.slug AS entry_slug, e.name AS entry_name
            FROM placements p
            JOIN entries e ON e.id = p.entry_id
+           JOIN versions v ON v.id = p.version_id
+           JOIN boards b ON b.id = v.board_id
+           LEFT JOIN LATERAL (
+               SELECT (t.obj->>'position')::int AS tier_ord
+               FROM jsonb_array_elements(b.tier_config->'tiers') AS t(obj)
+               WHERE t.obj->>'key' = p.tier
+               LIMIT 1
+           ) tc ON true
            WHERE p.version_id = $1
-           ORDER BY COALESCE(p.position, 2147483647) ASC, e.name ASC"#,
+           ORDER BY COALESCE(tc.tier_ord, 2147483647) ASC,
+                    COALESCE(p.position, 2147483647) ASC,
+                    e.name ASC"#,
     )
     .bind(version_id)
     .fetch_all(executor)
@@ -217,13 +238,19 @@ fn validate_placements(board: &Board, placements: &[CreatePlacement]) -> Result<
     match board.board_type.as_str() {
         "ordered" => {
             // Ordered boards: positions are optional (derived from array order)
-            // but if provided, must be positive
+            // but if provided, must be positive and unique.
+            let mut seen_positions = std::collections::HashSet::new();
             for p in placements {
                 if let Some(pos) = p.position {
                     if pos < 1 {
                         return Err(Error::Validation(format!(
                             "position must be >= 1, got {pos} for entry '{}'",
                             p.entry_slug
+                        )));
+                    }
+                    if !seen_positions.insert(pos) {
+                        return Err(Error::Validation(format!(
+                            "duplicate position {pos} in ordered board placements"
                         )));
                     }
                 }

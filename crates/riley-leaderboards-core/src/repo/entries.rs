@@ -2,9 +2,11 @@ use sqlx::PgPool;
 use uuid::Uuid;
 
 use crate::error::{Error, Result};
-use crate::models::{CreateEntry, Entry, UpdateEntry};
+use crate::models::{CreateEntry, Entry, Nullable, UpdateEntry};
 
 pub async fn create(pool: &PgPool, board_id: Uuid, input: &CreateEntry) -> Result<Entry> {
+    super::validate_slug(&input.slug)?;
+
     let entry = sqlx::query_as::<_, Entry>(
         r#"INSERT INTO entries (board_id, slug, name, metadata)
            VALUES ($1, $2, $3, $4)
@@ -56,19 +58,25 @@ pub async fn update(
     slug: &str,
     input: &UpdateEntry,
 ) -> Result<Entry> {
-    // Verify it exists first
     let entry = get_by_slug(pool, board_id, slug).await?;
+
+    let name = input.name.as_deref().unwrap_or(&entry.name);
+    let metadata = match &input.metadata {
+        Nullable::Absent => entry.metadata.as_ref(),
+        Nullable::Null => None,
+        Nullable::Value(v) => Some(v),
+    };
 
     let updated = sqlx::query_as::<_, Entry>(
         r#"UPDATE entries
-           SET name = COALESCE($1, name),
-               metadata = COALESCE($2, metadata),
+           SET name = $1,
+               metadata = $2,
                updated_at = now()
            WHERE id = $3
            RETURNING *"#,
     )
-    .bind(&input.name)
-    .bind(&input.metadata)
+    .bind(name)
+    .bind(metadata)
     .bind(entry.id)
     .fetch_one(pool)
     .await?;
@@ -77,9 +85,24 @@ pub async fn update(
 }
 
 pub async fn delete(pool: &PgPool, board_id: Uuid, slug: &str) -> Result<()> {
-    let result = sqlx::query("DELETE FROM entries WHERE board_id = $1 AND slug = $2")
-        .bind(board_id)
-        .bind(slug)
+    let entry = get_by_slug(pool, board_id, slug).await?;
+
+    // Reject deletion if the entry has any placements — this would silently
+    // mutate historical versions via CASCADE, contradicting version immutability.
+    let placement_count: (i64,) =
+        sqlx::query_as("SELECT count(*) FROM placements WHERE entry_id = $1")
+            .bind(entry.id)
+            .fetch_one(pool)
+            .await?;
+    if placement_count.0 > 0 {
+        return Err(Error::Conflict(format!(
+            "entry '{slug}' cannot be deleted because it has placements in {} version(s)",
+            placement_count.0
+        )));
+    }
+
+    let result = sqlx::query("DELETE FROM entries WHERE id = $1")
+        .bind(entry.id)
         .execute(pool)
         .await?;
 
