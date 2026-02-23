@@ -178,3 +178,80 @@ pub struct BoardSummary {
     pub latest_version: Option<i32>,
     pub entry_count: i64,
 }
+
+// ── History + Diffing ─────────────────────────────────────────────────────
+
+/// A single entry's placement in one version (for history endpoint).
+#[derive(Debug, Clone, Serialize, sqlx::FromRow)]
+pub struct EntryHistoryItem {
+    pub version_number: i32,
+    pub position: Option<i32>,
+    pub score: Option<f64>,
+    pub tier: Option<String>,
+    pub metadata: Option<serde_json::Value>,
+    pub created_at: DateTime<Utc>,
+}
+
+/// Full diff between two versions.
+#[derive(Debug, Serialize)]
+pub struct VersionDiff {
+    pub from_version: i32,
+    pub to_version: i32,
+    pub added: Vec<DiffEntry>,
+    pub removed: Vec<DiffEntry>,
+    pub moved: Vec<DiffMovedEntry>,
+    pub unchanged: Vec<DiffEntry>,
+}
+
+/// An entry that was added, removed, or unchanged between versions.
+#[derive(Debug, Serialize)]
+pub struct DiffEntry {
+    pub entry_slug: String,
+    pub entry_name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub position: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub score: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tier: Option<String>,
+}
+
+/// An entry that moved between versions (position, score, or tier changed).
+#[derive(Debug, Serialize)]
+pub struct DiffMovedEntry {
+    pub entry_slug: String,
+    pub entry_name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub from_position: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub to_position: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub from_score: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub to_score: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub from_tier: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub to_tier: Option<String>,
+}
+
+// ── References ────────────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+pub struct BoardReference {
+    pub id: Uuid,
+    pub board_id: Uuid,
+    pub pinned_version_id: Option<Uuid>,
+    pub uri: String,
+    pub ref_type: String,
+    pub label: Option<String>,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CreateReference {
+    pub pinned_version_number: Option<i32>,
+    pub uri: String,
+    pub ref_type: String,
+    pub label: Option<String>,
+}

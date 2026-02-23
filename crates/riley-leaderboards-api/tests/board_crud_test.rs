@@ -1674,3 +1674,218 @@ async fn since_returns_newer_versions() {
 
     cleanup(&state, schema).await;
 }
+
+// ── Phase 4: References ──────────────────────────────────────────────────
+
+#[tokio::test]
+async fn reference_create_list_delete() {
+    let schema = "test_ref_crud";
+    let (state, app) = setup(schema).await;
+
+    // Create board with an entry and version
+    app.clone().oneshot(json_request(
+        "POST",
+        "/boards",
+        Some(serde_json::json!({
+            "slug": "sandwiches",
+            "name": "Sandwiches",
+            "board_type": "ordered"
+        })),
+    )).await.unwrap();
+
+    app.clone().oneshot(json_request(
+        "POST",
+        "/boards/sandwiches/entries",
+        Some(serde_json::json!({ "slug": "item", "name": "Item" })),
+    )).await.unwrap();
+
+    app.clone().oneshot(json_request(
+        "POST",
+        "/boards/sandwiches/versions",
+        Some(serde_json::json!({
+            "note": "v1",
+            "placements": [{ "entry_slug": "item", "position": 1 }]
+        })),
+    )).await.unwrap();
+
+    // Create a reference pinned to version 1
+    let resp = app.clone().oneshot(json_request(
+        "POST",
+        "/boards/sandwiches/references",
+        Some(serde_json::json!({
+            "pinned_version_number": 1,
+            "uri": "/blog/sandwich-rankings",
+            "ref_type": "embed",
+            "label": "Blog Post"
+        })),
+    )).await.unwrap();
+    assert_eq!(resp.status(), 201);
+    let reference = json_body(resp).await;
+    assert_eq!(reference["uri"], "/blog/sandwich-rankings");
+    assert_eq!(reference["ref_type"], "embed");
+    assert_eq!(reference["label"], "Blog Post");
+    assert!(reference["pinned_version_id"].is_string()); // resolved to UUID
+    let ref_id = reference["id"].as_str().unwrap().to_string();
+
+    // Create a reference without pinned version (follow latest)
+    let resp = app.clone().oneshot(json_request(
+        "POST",
+        "/boards/sandwiches/references",
+        Some(serde_json::json!({
+            "uri": "https://forestroyale.rileyleff.com",
+            "ref_type": "context"
+        })),
+    )).await.unwrap();
+    assert_eq!(resp.status(), 201);
+    let ref2 = json_body(resp).await;
+    assert!(ref2["pinned_version_id"].is_null());
+
+    // List references
+    let resp = app.clone().oneshot(json_request(
+        "GET",
+        "/boards/sandwiches/references",
+        None,
+    )).await.unwrap();
+    assert_eq!(resp.status(), 200);
+    let refs = json_body(resp).await;
+    assert_eq!(refs.as_array().unwrap().len(), 2);
+
+    // Delete first reference
+    let resp = app.clone().oneshot(json_request(
+        "DELETE",
+        &format!("/boards/sandwiches/references/{ref_id}"),
+        None,
+    )).await.unwrap();
+    assert_eq!(resp.status(), 204);
+
+    // Verify only one remains
+    let resp = app.clone().oneshot(json_request(
+        "GET",
+        "/boards/sandwiches/references",
+        None,
+    )).await.unwrap();
+    let refs = json_body(resp).await;
+    assert_eq!(refs.as_array().unwrap().len(), 1);
+
+    cleanup(&state, schema).await;
+}
+
+#[tokio::test]
+async fn reference_invalid_ref_type_returns_400() {
+    let schema = "test_ref_invalid_type";
+    let (state, app) = setup(schema).await;
+
+    app.clone().oneshot(json_request(
+        "POST",
+        "/boards",
+        Some(serde_json::json!({
+            "slug": "board",
+            "name": "Board",
+            "board_type": "ordered"
+        })),
+    )).await.unwrap();
+
+    let resp = app.clone().oneshot(json_request(
+        "POST",
+        "/boards/board/references",
+        Some(serde_json::json!({
+            "uri": "/blog",
+            "ref_type": "invalid"
+        })),
+    )).await.unwrap();
+    assert_eq!(resp.status(), 400);
+    let body = json_body(resp).await;
+    assert!(body["error"].as_str().unwrap().contains("invalid ref_type"));
+
+    cleanup(&state, schema).await;
+}
+
+#[tokio::test]
+async fn reference_nonexistent_version_returns_404() {
+    let schema = "test_ref_no_version";
+    let (state, app) = setup(schema).await;
+
+    app.clone().oneshot(json_request(
+        "POST",
+        "/boards",
+        Some(serde_json::json!({
+            "slug": "board",
+            "name": "Board",
+            "board_type": "ordered"
+        })),
+    )).await.unwrap();
+
+    let resp = app.clone().oneshot(json_request(
+        "POST",
+        "/boards/board/references",
+        Some(serde_json::json!({
+            "pinned_version_number": 999,
+            "uri": "/blog",
+            "ref_type": "embed"
+        })),
+    )).await.unwrap();
+    assert_eq!(resp.status(), 404);
+
+    cleanup(&state, schema).await;
+}
+
+#[tokio::test]
+async fn reference_delete_nonexistent_returns_404() {
+    let schema = "test_ref_del_404";
+    let (state, app) = setup(schema).await;
+
+    app.clone().oneshot(json_request(
+        "POST",
+        "/boards",
+        Some(serde_json::json!({
+            "slug": "board",
+            "name": "Board",
+            "board_type": "ordered"
+        })),
+    )).await.unwrap();
+
+    let resp = app.clone().oneshot(json_request(
+        "DELETE",
+        "/boards/board/references/00000000-0000-0000-0000-000000000000",
+        None,
+    )).await.unwrap();
+    assert_eq!(resp.status(), 404);
+
+    cleanup(&state, schema).await;
+}
+
+#[tokio::test]
+async fn board_delete_cascades_references() {
+    let schema = "test_ref_cascade";
+    let (state, app) = setup(schema).await;
+
+    app.clone().oneshot(json_request(
+        "POST",
+        "/boards",
+        Some(serde_json::json!({
+            "slug": "board",
+            "name": "Board",
+            "board_type": "ordered"
+        })),
+    )).await.unwrap();
+
+    // Create reference (no pinned version)
+    app.clone().oneshot(json_request(
+        "POST",
+        "/boards/board/references",
+        Some(serde_json::json!({
+            "uri": "/page",
+            "ref_type": "citation"
+        })),
+    )).await.unwrap();
+
+    // Delete board — references should cascade
+    let resp = app.clone().oneshot(json_request("DELETE", "/boards/board", None)).await.unwrap();
+    assert_eq!(resp.status(), 204);
+
+    // Board gone
+    let resp = app.clone().oneshot(json_request("GET", "/boards/board", None)).await.unwrap();
+    assert_eq!(resp.status(), 404);
+
+    cleanup(&state, schema).await;
+}

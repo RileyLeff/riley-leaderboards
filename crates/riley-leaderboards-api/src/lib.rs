@@ -55,6 +55,14 @@ fn board_routes() -> Router<Arc<AppState>> {
         .route("/{slug}/latest", get(routes::versions::latest))
         .route("/{slug}/diff", get(routes::versions::diff))
         .route("/{slug}/since/{version_number}", get(routes::versions::since))
+        .route(
+            "/{slug}/references",
+            get(routes::references::list).post(routes::references::create),
+        )
+        .route(
+            "/{slug}/references/{reference_id}",
+            axum::routing::delete(routes::references::delete),
+        )
 }
 
 async fn health(State(state): State<Arc<AppState>>) -> impl IntoResponse {
