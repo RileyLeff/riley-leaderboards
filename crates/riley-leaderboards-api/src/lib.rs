@@ -9,6 +9,8 @@ use axum::{Json, Router, routing::get};
 use riley_leaderboards_core::config::RileyLeaderboardsConfig;
 use serde_json::json;
 use sqlx::PgPool;
+use tower_http::cors::CorsLayer;
+use tower_http::trace::TraceLayer;
 
 pub mod auth;
 mod error;
@@ -21,7 +23,14 @@ pub struct AppState {
 }
 
 pub fn build_router(state: Arc<AppState>) -> Router {
-    Router::new()
+    let server_config = state
+        .config
+        .server
+        .as_ref()
+        .cloned()
+        .unwrap_or_default();
+
+    let mut app = Router::new()
         .route("/health", get(health))
         .route(
             "/webhooks/github",
@@ -29,7 +38,64 @@ pub fn build_router(state: Arc<AppState>) -> Router {
                 .layer(axum::extract::DefaultBodyLimit::max(5 * 1024 * 1024)),
         )
         .nest("/boards", board_routes(state.clone()))
-        .with_state(state)
+        .with_state(state);
+
+    // CORS
+    if !server_config.cors_origins.is_empty() {
+        let cors = build_cors_layer(&server_config.cors_origins);
+        app = app.layer(cors);
+    }
+
+    // Request tracing
+    app = app.layer(
+        TraceLayer::new_for_http()
+            .make_span_with(tower_http::trace::DefaultMakeSpan::new().level(tracing::Level::INFO))
+            .on_response(
+                tower_http::trace::DefaultOnResponse::new().level(tracing::Level::INFO),
+            ),
+    );
+
+    // Rate limiting
+    if server_config.rate_limit_per_second > 0 {
+        let governor_conf = Arc::new(
+            tower_governor::governor::GovernorConfigBuilder::default()
+                .per_second(server_config.rate_limit_per_second)
+                .burst_size(server_config.rate_limit_burst)
+                .finish()
+                .expect("invalid rate limit config"),
+        );
+        app = app.layer(tower_governor::GovernorLayer {
+            config: governor_conf,
+        });
+    }
+
+    app
+}
+
+fn build_cors_layer(origins: &[String]) -> CorsLayer {
+    use axum::http::header;
+    use tower_http::cors::AllowOrigin;
+
+    let allow_origin = if origins.iter().any(|o| o == "*") {
+        AllowOrigin::any()
+    } else {
+        let parsed: Vec<axum::http::HeaderValue> = origins
+            .iter()
+            .filter_map(|o| o.parse().ok())
+            .collect();
+        AllowOrigin::list(parsed)
+    };
+
+    CorsLayer::new()
+        .allow_origin(allow_origin)
+        .allow_methods([
+            axum::http::Method::GET,
+            axum::http::Method::POST,
+            axum::http::Method::PATCH,
+            axum::http::Method::DELETE,
+            axum::http::Method::OPTIONS,
+        ])
+        .allow_headers([header::CONTENT_TYPE, header::AUTHORIZATION])
 }
 
 fn board_routes(state: Arc<AppState>) -> Router<Arc<AppState>> {

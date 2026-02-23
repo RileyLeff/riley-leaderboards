@@ -35,6 +35,12 @@ pub struct ServerConfig {
     pub cors_origins: Vec<String>,
     #[serde(default)]
     pub behind_proxy: bool,
+    /// Requests per second per IP. 0 = disabled.
+    #[serde(default)]
+    pub rate_limit_per_second: u64,
+    /// Rate limit burst size.
+    #[serde(default = "default_rate_limit_burst")]
+    pub rate_limit_burst: u32,
 }
 
 impl Default for ServerConfig {
@@ -44,8 +50,14 @@ impl Default for ServerConfig {
             port: default_port(),
             cors_origins: Vec::new(),
             behind_proxy: false,
+            rate_limit_per_second: 0,
+            rate_limit_burst: default_rate_limit_burst(),
         }
     }
+}
+
+fn default_rate_limit_burst() -> u32 {
+    50
 }
 
 #[derive(Debug, Clone, Deserialize)]
