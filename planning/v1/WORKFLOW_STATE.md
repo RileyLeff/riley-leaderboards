@@ -1,8 +1,8 @@
 # v1 Workflow State
 
-**Current Phase:** 8 — CLI + Polish (IN PROGRESS)
-**Current Step:** Exhaustive review R1
-**Status:** Phase 8 implementation complete (CLI, export/import, pagination, rate limiting, CORS, tracing). 84 tests passing. Running exhaustive review.
+**Current Phase:** 8 — CLI + Polish (COMPLETE)
+**Current Step:** Done
+**Status:** Phase 8 complete. All implementation done, 84 tests passing, exhaustive review converged (3 rounds, 0 majors in final 2).
 
 ## Progress
 
@@ -54,7 +54,7 @@
 | 8 | 8.5 | CORS configuration | Done |
 | 8 | 8.6 | Request tracing | Done |
 | 8 | 8.7 | Tests (pagination, export/import) | Done |
-| 8 | review | Exhaustive review R1 | In Progress |
+| 8 | review | Exhaustive review (3 rounds, converged) | Done |
 
 ## Blockers
 
@@ -66,4 +66,5 @@ None.
 - Phase 8 cursor-based pagination (b556791)
 - Phase 8 rate limiting, CORS, tracing (c822701)
 - Phase 8 tests: pagination + export/import round-trip (c4e6e7f)
-- Phase 8 exhaustive review R1 in progress
+- Phase 8 R1 fixes: transactional import, validation, layer ordering (bbd426a)
+- Phase 8 exhaustive review converged: 3 rounds, 0 majors in final 2
