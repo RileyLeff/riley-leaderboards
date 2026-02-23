@@ -56,7 +56,16 @@ async fn main() -> Result<()> {
             db::migrate(&pool).await?;
             tracing::info!("migrations complete");
 
-            let state = Arc::new(AppState { pool, config });
+            let auth_mode =
+                riley_leaderboards_api::auth::AuthMode::from_config(config.auth.as_ref())
+                    .await
+                    .context("failed to initialize auth")?;
+
+            let state = Arc::new(AppState {
+                pool,
+                config,
+                auth_mode,
+            });
             riley_leaderboards_api::serve(state).await?;
         }
         Command::Migrate => {

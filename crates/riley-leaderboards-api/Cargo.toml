@@ -20,6 +20,8 @@ anyhow = { workspace = true }
 hmac = { workspace = true }
 sha2 = { workspace = true }
 hex = { workspace = true }
+jsonwebtoken = { workspace = true }
+reqwest = { workspace = true }
 
 [dev-dependencies]
 http = { workspace = true }

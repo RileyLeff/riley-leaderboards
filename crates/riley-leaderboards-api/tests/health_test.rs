@@ -26,13 +26,18 @@ async fn health_returns_ok() {
             max_connections: 2,
             schema: Some("test_health_endpoint".to_string()),
         },
+        auth: None,
         sync: None,
     };
 
     let pool = db::connect(&config.database).await.expect("connect failed");
     db::migrate(&pool).await.expect("migrate failed");
 
-    let state = Arc::new(AppState { pool: pool.clone(), config });
+    let state = Arc::new(AppState {
+        pool: pool.clone(),
+        config,
+        auth_mode: riley_leaderboards_api::auth::AuthMode::NoAuth,
+    });
     let app = build_router(state);
 
     let response = app

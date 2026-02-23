@@ -26,13 +26,18 @@ async fn setup(schema: &str) -> (Arc<AppState>, axum::Router) {
             max_connections: 2,
             schema: Some(schema.to_string()),
         },
+        auth: None,
         sync: None,
     };
 
     let pool = db::connect(&config.database).await.expect("connect failed");
     db::migrate(&pool).await.expect("migrate failed");
 
-    let state = Arc::new(AppState { pool, config });
+    let state = Arc::new(AppState {
+        pool,
+        config,
+        auth_mode: riley_leaderboards_api::auth::AuthMode::NoAuth,
+    });
     let router = build_router(state.clone());
     (state, router)
 }
@@ -2429,13 +2434,18 @@ async fn setup_with_sync(schema: &str) -> (Arc<AppState>, axum::Router) {
             max_connections: 2,
             schema: Some(schema.to_string()),
         },
+        auth: None,
         sync: None,
     };
 
     let pool = db::connect(&config.database).await.expect("connect failed");
     db::migrate(&pool).await.expect("migrate failed");
 
-    let state = Arc::new(AppState { pool, config });
+    let state = Arc::new(AppState {
+        pool,
+        config,
+        auth_mode: riley_leaderboards_api::auth::AuthMode::NoAuth,
+    });
     let router = build_router(state.clone());
     (state, router)
 }
@@ -2943,6 +2953,7 @@ async fn webhook_missing_signature_returns_400() {
             max_connections: 2,
             schema: Some(schema.to_string()),
         },
+        auth: None,
         sync: Some(riley_leaderboards_core::config::SyncConfig {
             repo_path: Some("/tmp/nonexistent".to_string()),
             webhook_secret: Some(ConfigValue::new("test-secret")),
@@ -2951,7 +2962,11 @@ async fn webhook_missing_signature_returns_400() {
     };
     let pool = db::connect(&config.database).await.expect("connect failed");
     db::migrate(&pool).await.expect("migrate failed");
-    let state = Arc::new(AppState { pool: pool.clone(), config });
+    let state = Arc::new(AppState {
+        pool: pool.clone(),
+        config,
+        auth_mode: riley_leaderboards_api::auth::AuthMode::NoAuth,
+    });
     let app = build_router(state);
 
     let resp = app
@@ -2986,6 +3001,7 @@ async fn webhook_invalid_signature_returns_401() {
             max_connections: 2,
             schema: Some(schema.to_string()),
         },
+        auth: None,
         sync: Some(riley_leaderboards_core::config::SyncConfig {
             repo_path: Some("/tmp/nonexistent".to_string()),
             webhook_secret: Some(ConfigValue::new("test-secret")),
@@ -2994,7 +3010,11 @@ async fn webhook_invalid_signature_returns_401() {
     };
     let pool = db::connect(&config.database).await.expect("connect failed");
     db::migrate(&pool).await.expect("migrate failed");
-    let state = Arc::new(AppState { pool: pool.clone(), config });
+    let state = Arc::new(AppState {
+        pool: pool.clone(),
+        config,
+        auth_mode: riley_leaderboards_api::auth::AuthMode::NoAuth,
+    });
     let app = build_router(state);
 
     let resp = app
@@ -3084,6 +3104,7 @@ position = 1
             max_connections: 2,
             schema: Some(schema.to_string()),
         },
+        auth: None,
         sync: Some(riley_leaderboards_core::config::SyncConfig {
             repo_path: Some(work_dir.path().to_string_lossy().to_string()),
             webhook_secret: Some(ConfigValue::new("test-secret")),
@@ -3092,7 +3113,11 @@ position = 1
     };
     let pool = db::connect(&config.database).await.expect("connect failed");
     db::migrate(&pool).await.expect("migrate failed");
-    let state = Arc::new(AppState { pool: pool.clone(), config });
+    let state = Arc::new(AppState {
+        pool: pool.clone(),
+        config,
+        auth_mode: riley_leaderboards_api::auth::AuthMode::NoAuth,
+    });
     let app = build_router(state);
 
     // Compute valid HMAC signature
@@ -3136,6 +3161,578 @@ position = 1
         .unwrap();
     assert_eq!(version.version.version_number, 1);
     assert_eq!(version.version.note.as_deref(), Some("Update rankings"));
+
+    sqlx::query(&format!("DROP SCHEMA IF EXISTS \"{schema}\" CASCADE"))
+        .execute(&pool)
+        .await
+        .unwrap();
+    pool.close().await;
+}
+
+// ── Phase 7: Auth ───────────────────────────────────────────────────────
+
+const TEST_RSA_PRIVATE_KEY: &str = "-----BEGIN PRIVATE KEY-----
+MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQCNwoHDhRndaP6w
++w2K7a0z2TuLBWzoVe6A4A00QpzpiautWCTnQSfTHAU343GvCGEyDe8sNVUIOLqR
++0h+zLEYb0yu1+PYnz8G4J1SGPec8U0wy9w6pGnA/eE0c5qfUzVatO4rxdp0NmPo
+Zk0ZZa3TJc+gKSICij7Z4N1d5Mux3/FLZO/gE/WPctFANJFitGU+VZgPVvrfcpc5
+joetYPu2LUHgN7deKbEnLXRbffqI6gJFSVM04prboBAyI/s6VekMChkKW9YiKjGf
+Sf9kfapIQjiT6GtSt82futLB6Ll7qBFtw6+bBKFaRe7qmrf+UikyQfC15iMXXp0L
+OIHscJ09AgMBAAECggEAAR4B0M0pPYX4z+NCoZAq98gkAH379D7NIOXjJMDLpMmJ
+eVXDALGSQ0cqwVyBBlyeC3txoZsP/v8XdVQSJ7GsSaGC7LPV31yt7ftyMfXxaaK7
+NYG9zBaEoNk/X57znoLU3lCjueOWy6isE+ZOgD89Zfcb0krQsk1tnmD3zagidNXo
+e7If+oqEd9a7gRPhhbE8kwFbt/7JmxqcjqM4sr/icMPHHiI3MFNqLZgM2gMcW8IR
+6/3jGMOQtRxV7aT+7mGKqVLfzYloPblAp380nWPDZsoOf+rZAskr2qCYPo2SVqyG
+ntz6+Fw1/4lod15UNxCYdW6+MmFrEXRibTuIJ/4UYQKBgQDAF4/Iqm8BENvjnwMe
+GyBtrBNHLf/dT/vc5nUTxnMHXGhZ0MqgX/ILRoRk9g99oA4T2Bv/fpGjyvtgPTQz
+fPHy20M9zorX64t/hTyYcGEtWMvzIksl2gn9NaN0TNFqK8jf7f5JnU3SH7xv+yxk
+uN3vDnItjwjb6kEXiPKO/deNbQKBgQC87CiVKQHiOhdgtpARmflxIcgHWYfi4WKT
+C5avJVbv0N0A4uacTPkx5IMrnfQgyOzxHzU2pGSOpRE2yB5VTqCoMYCo+E4BXsUr
+KbwPrE2pBYn0K83hSQHBpRkq1lQUdN1QCUMgbqGRJoKOKcVE80VgidBxD8KJ50DF
+Y5BZxBp9EQKBgEDvNhG1W3TWyB44AIvKy7mHM7UaHaYohZF07hrTOMtCN5w08moo
+RN/+5H5kl3P2CQw4P66skHr4AOXVirHlCLz51c8s5M58t1lSJtu5EYCMxdTYwOJ4
+xGuuGCUWWqwzROI9x3oHDOl9BOwt0iHyREOtdHdmJK6Cj6JvDt+7e4Q5AoGBALBb
+W/7xytpeFBiqE476x0n+mPWTdDAs6ZIOzVkuaBtyQ/xh05iwmicjA/eheZVpOxZT
+ZZ9ekqg+GvWilf5YaczYeRxCvr60syX5zZ5r4AsaKo+OnJ/jQQp9jiLY9KAr/7SJ
+EOqjm5sd8d23zHjzBx55R+VjKt0EzQf2S3ggggGhAoGAb0vcYtuh/vjY+3AqUAsw
+WZGgVBrlFZQrCBD91A/e/pST2dd/TQBbofW0a8GXYGhR8CwLZ7GJzgdmfyHaOSXN
+9K6tQ87hWREFWgBVel3+wl4U3WPb4NFp0Jt/sE2g+gHbCGt+BooaGk+fqlTpRlsD
+2NOpUy2KL4uigc/vwiB0qTQ=
+-----END PRIVATE KEY-----";
+
+const TEST_RSA_PUBLIC_KEY: &str = "-----BEGIN PUBLIC KEY-----
+MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAjcKBw4UZ3Wj+sPsNiu2t
+M9k7iwVs6FXugOANNEKc6YmrrVgk50En0xwFN+NxrwhhMg3vLDVVCDi6kftIfsyx
+GG9Mrtfj2J8/BuCdUhj3nPFNMMvcOqRpwP3hNHOan1M1WrTuK8XadDZj6GZNGWWt
+0yXPoCkiAoo+2eDdXeTLsd/xS2Tv4BP1j3LRQDSRYrRlPlWYD1b633KXOY6HrWD7
+ti1B4De3XimxJy10W336iOoCRUlTNOKa26AQMiP7OlXpDAoZClvWIioxn0n/ZH2q
+SEI4k+hrUrfNn7rSwei5e6gRbcOvmwShWkXu6pq3/lIpMkHwteYjF16dCziB7HCd
+PQIDAQAB
+-----END PUBLIC KEY-----";
+
+fn make_test_jwt(roles: &[&str], exp_offset_secs: i64) -> String {
+    use jsonwebtoken::{Algorithm, EncodingKey, Header};
+
+    let mut header = Header::new(Algorithm::RS256);
+    header.kid = Some("test-key-1".to_string());
+
+    let now = chrono::Utc::now().timestamp();
+    let claims = serde_json::json!({
+        "sub": "test-user",
+        "roles": roles,
+        "iat": now,
+        "exp": now + exp_offset_secs,
+    });
+
+    let key = EncodingKey::from_rsa_pem(TEST_RSA_PRIVATE_KEY.as_bytes()).unwrap();
+    jsonwebtoken::encode(&header, &claims, &key).unwrap()
+}
+
+fn setup_jwt_auth_state(
+    pool: sqlx::PgPool,
+    config: RileyLeaderboardsConfig,
+    required_role: Option<String>,
+) -> (Arc<AppState>, axum::Router) {
+    let decoding_key =
+        jsonwebtoken::DecodingKey::from_rsa_pem(TEST_RSA_PUBLIC_KEY.as_bytes()).unwrap();
+    let jwks_cache = riley_leaderboards_api::auth::JwksCache::from_static(
+        "test-key-1".to_string(),
+        decoding_key,
+        jsonwebtoken::Algorithm::RS256,
+    );
+    let auth_mode = riley_leaderboards_api::auth::AuthMode::Jwt {
+        jwks_cache: Arc::new(jwks_cache),
+        required_role,
+    };
+    let state = Arc::new(AppState {
+        pool,
+        config,
+        auth_mode,
+    });
+    let router = build_router(state.clone());
+    (state, router)
+}
+
+#[tokio::test]
+async fn auth_api_token_write_requires_token() {
+    let schema = "test_auth_api_token";
+    let config = RileyLeaderboardsConfig {
+        server: None,
+        database: DatabaseConfig {
+            url: ConfigValue::new(test_db_url()),
+            max_connections: 2,
+            schema: Some(schema.to_string()),
+        },
+        auth: None,
+        sync: None,
+    };
+    let pool = db::connect(&config.database).await.expect("connect failed");
+    db::migrate(&pool).await.expect("migrate failed");
+
+    // Set up with API token auth
+    let token_hash = {
+        use hmac::{Hmac, Mac};
+        use sha2::Sha256;
+        let mut mac =
+            Hmac::<Sha256>::new_from_slice(b"riley-leaderboards-api-token").unwrap();
+        mac.update(b"test-api-secret-123");
+        mac.finalize().into_bytes().to_vec()
+    };
+    let auth_mode = riley_leaderboards_api::auth::AuthMode::ApiToken { token_hash };
+    let state = Arc::new(AppState {
+        pool: pool.clone(),
+        config,
+        auth_mode,
+    });
+    let app = build_router(state);
+
+    // POST without token → 401
+    let resp = app
+        .clone()
+        .oneshot(json_request(
+            "POST",
+            "/boards",
+            Some(serde_json::json!({
+                "slug": "test-board",
+                "name": "Test Board",
+                "board_type": "ordered"
+            })),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 401);
+
+    // POST with wrong token → 401
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/boards")
+                .header("content-type", "application/json")
+                .header("authorization", "Bearer wrong-token")
+                .body(Body::from(
+                    serde_json::to_vec(&serde_json::json!({
+                        "slug": "test-board",
+                        "name": "Test Board",
+                        "board_type": "ordered"
+                    }))
+                    .unwrap(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 401);
+
+    // POST with valid token → 201
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/boards")
+                .header("content-type", "application/json")
+                .header("authorization", "Bearer test-api-secret-123")
+                .body(Body::from(
+                    serde_json::to_vec(&serde_json::json!({
+                        "slug": "test-board",
+                        "name": "Test Board",
+                        "board_type": "ordered"
+                    }))
+                    .unwrap(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 201);
+
+    // GET without token → 200 (reads are public)
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/boards")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200);
+
+    sqlx::query(&format!("DROP SCHEMA IF EXISTS \"{schema}\" CASCADE"))
+        .execute(&pool)
+        .await
+        .unwrap();
+    pool.close().await;
+}
+
+#[tokio::test]
+async fn auth_jwt_valid_token_allows_write() {
+    let schema = "test_auth_jwt_valid";
+    let config = RileyLeaderboardsConfig {
+        server: None,
+        database: DatabaseConfig {
+            url: ConfigValue::new(test_db_url()),
+            max_connections: 2,
+            schema: Some(schema.to_string()),
+        },
+        auth: None,
+        sync: None,
+    };
+    let pool = db::connect(&config.database).await.expect("connect failed");
+    db::migrate(&pool).await.expect("migrate failed");
+
+    let (state, app) =
+        setup_jwt_auth_state(pool.clone(), config, Some("admin".to_string()));
+
+    let token = make_test_jwt(&["admin"], 3600);
+
+    // POST with valid JWT → 201
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/boards")
+                .header("content-type", "application/json")
+                .header("authorization", format!("Bearer {token}"))
+                .body(Body::from(
+                    serde_json::to_vec(&serde_json::json!({
+                        "slug": "jwt-board",
+                        "name": "JWT Board",
+                        "board_type": "ordered"
+                    }))
+                    .unwrap(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 201);
+
+    // GET without JWT → 200 (reads are public)
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/boards/jwt-board")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200);
+
+    cleanup(&state, schema).await;
+}
+
+#[tokio::test]
+async fn auth_jwt_expired_token_rejected() {
+    let schema = "test_auth_jwt_expired";
+    let config = RileyLeaderboardsConfig {
+        server: None,
+        database: DatabaseConfig {
+            url: ConfigValue::new(test_db_url()),
+            max_connections: 2,
+            schema: Some(schema.to_string()),
+        },
+        auth: None,
+        sync: None,
+    };
+    let pool = db::connect(&config.database).await.expect("connect failed");
+    db::migrate(&pool).await.expect("migrate failed");
+
+    let (_state, app) =
+        setup_jwt_auth_state(pool.clone(), config, Some("admin".to_string()));
+
+    // Create an expired JWT (exp = 1 second ago)
+    // Offset must exceed jsonwebtoken's 60-second leeway
+    let token = make_test_jwt(&["admin"], -120);
+
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/boards")
+                .header("content-type", "application/json")
+                .header("authorization", format!("Bearer {token}"))
+                .body(Body::from(
+                    serde_json::to_vec(&serde_json::json!({
+                        "slug": "expired-board",
+                        "name": "Expired Board",
+                        "board_type": "ordered"
+                    }))
+                    .unwrap(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 401);
+
+    sqlx::query(&format!("DROP SCHEMA IF EXISTS \"{schema}\" CASCADE"))
+        .execute(&pool)
+        .await
+        .unwrap();
+    pool.close().await;
+}
+
+#[tokio::test]
+async fn auth_jwt_wrong_role_rejected() {
+    let schema = "test_auth_jwt_role";
+    let config = RileyLeaderboardsConfig {
+        server: None,
+        database: DatabaseConfig {
+            url: ConfigValue::new(test_db_url()),
+            max_connections: 2,
+            schema: Some(schema.to_string()),
+        },
+        auth: None,
+        sync: None,
+    };
+    let pool = db::connect(&config.database).await.expect("connect failed");
+    db::migrate(&pool).await.expect("migrate failed");
+
+    let (_state, app) =
+        setup_jwt_auth_state(pool.clone(), config, Some("admin".to_string()));
+
+    // Create a JWT with the wrong role
+    let token = make_test_jwt(&["viewer"], 3600);
+
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/boards")
+                .header("content-type", "application/json")
+                .header("authorization", format!("Bearer {token}"))
+                .body(Body::from(
+                    serde_json::to_vec(&serde_json::json!({
+                        "slug": "wrong-role-board",
+                        "name": "Wrong Role Board",
+                        "board_type": "ordered"
+                    }))
+                    .unwrap(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 401);
+    let body = json_body(resp).await;
+    assert!(body["error"]
+        .as_str()
+        .unwrap()
+        .contains("insufficient permissions"));
+
+    sqlx::query(&format!("DROP SCHEMA IF EXISTS \"{schema}\" CASCADE"))
+        .execute(&pool)
+        .await
+        .unwrap();
+    pool.close().await;
+}
+
+#[tokio::test]
+async fn auth_jwt_no_required_role_any_jwt_passes() {
+    let schema = "test_auth_jwt_no_role";
+    let config = RileyLeaderboardsConfig {
+        server: None,
+        database: DatabaseConfig {
+            url: ConfigValue::new(test_db_url()),
+            max_connections: 2,
+            schema: Some(schema.to_string()),
+        },
+        auth: None,
+        sync: None,
+    };
+    let pool = db::connect(&config.database).await.expect("connect failed");
+    db::migrate(&pool).await.expect("migrate failed");
+
+    // No required_role — any valid JWT should pass
+    let (state, app) = setup_jwt_auth_state(pool.clone(), config, None);
+
+    let token = make_test_jwt(&[], 3600);
+
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/boards")
+                .header("content-type", "application/json")
+                .header("authorization", format!("Bearer {token}"))
+                .body(Body::from(
+                    serde_json::to_vec(&serde_json::json!({
+                        "slug": "no-role-board",
+                        "name": "No Role Board",
+                        "board_type": "ordered"
+                    }))
+                    .unwrap(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 201);
+
+    cleanup(&state, schema).await;
+}
+
+#[tokio::test]
+async fn auth_no_auth_mode_allows_everything() {
+    let schema = "test_auth_no_auth";
+    let (state, app) = setup(schema).await;
+
+    // POST without any auth → 201 (no-auth mode)
+    let resp = app
+        .oneshot(json_request(
+            "POST",
+            "/boards",
+            Some(serde_json::json!({
+                "slug": "open-board",
+                "name": "Open Board",
+                "board_type": "ordered"
+            })),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 201);
+
+    cleanup(&state, schema).await;
+}
+
+#[tokio::test]
+async fn auth_jwt_missing_token_returns_401() {
+    let schema = "test_auth_jwt_missing";
+    let config = RileyLeaderboardsConfig {
+        server: None,
+        database: DatabaseConfig {
+            url: ConfigValue::new(test_db_url()),
+            max_connections: 2,
+            schema: Some(schema.to_string()),
+        },
+        auth: None,
+        sync: None,
+    };
+    let pool = db::connect(&config.database).await.expect("connect failed");
+    db::migrate(&pool).await.expect("migrate failed");
+
+    let (_state, app) =
+        setup_jwt_auth_state(pool.clone(), config, Some("admin".to_string()));
+
+    // POST without Authorization header → 401
+    let resp = app
+        .oneshot(json_request(
+            "POST",
+            "/boards",
+            Some(serde_json::json!({
+                "slug": "missing-token-board",
+                "name": "Missing Token",
+                "board_type": "ordered"
+            })),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 401);
+    let body = json_body(resp).await;
+    assert!(body["error"]
+        .as_str()
+        .unwrap()
+        .contains("missing"));
+
+    sqlx::query(&format!("DROP SCHEMA IF EXISTS \"{schema}\" CASCADE"))
+        .execute(&pool)
+        .await
+        .unwrap();
+    pool.close().await;
+}
+
+#[tokio::test]
+async fn auth_jwks_fetch_from_mock_server() {
+    let schema = "test_auth_jwks_fetch";
+    let config = RileyLeaderboardsConfig {
+        server: None,
+        database: DatabaseConfig {
+            url: ConfigValue::new(test_db_url()),
+            max_connections: 2,
+            schema: Some(schema.to_string()),
+        },
+        auth: None,
+        sync: None,
+    };
+    let pool = db::connect(&config.database).await.expect("connect failed");
+    db::migrate(&pool).await.expect("migrate failed");
+
+    // Start a mock JWKS server
+    let jwks_json = serde_json::json!({
+        "keys": [{
+            "kty": "RSA",
+            "kid": "test-key-1",
+            "use": "sig",
+            "alg": "RS256",
+            "n": "jcKBw4UZ3Wj-sPsNiu2tM9k7iwVs6FXugOANNEKc6YmrrVgk50En0xwFN-NxrwhhMg3vLDVVCDi6kftIfsyxGG9Mrtfj2J8_BuCdUhj3nPFNMMvcOqRpwP3hNHOan1M1WrTuK8XadDZj6GZNGWWt0yXPoCkiAoo-2eDdXeTLsd_xS2Tv4BP1j3LRQDSRYrRlPlWYD1b633KXOY6HrWD7ti1B4De3XimxJy10W336iOoCRUlTNOKa26AQMiP7OlXpDAoZClvWIioxn0n_ZH2qSEI4k-hrUrfNn7rSwei5e6gRbcOvmwShWkXu6pq3_lIpMkHwteYjF16dCziB7HCdPQ",
+            "e": "AQAB"
+        }]
+    });
+    let jwks_handler = {
+        let jwks = jwks_json.clone();
+        move || {
+            let jwks = jwks.clone();
+            async move { axum::Json(jwks) }
+        }
+    };
+    let mock_app = axum::Router::new().route(
+        "/.well-known/jwks.json",
+        axum::routing::get(jwks_handler),
+    );
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let mock_addr = listener.local_addr().unwrap();
+    tokio::spawn(async move {
+        axum::serve(listener, mock_app).await.unwrap();
+    });
+
+    let jwks_url = format!("http://{mock_addr}/.well-known/jwks.json");
+
+    // Create JwksCache from real HTTP fetch
+    let jwks_cache =
+        riley_leaderboards_api::auth::JwksCache::new(&jwks_url).await.unwrap();
+    let jwks_cache = Arc::new(jwks_cache);
+
+    let auth_mode = riley_leaderboards_api::auth::AuthMode::Jwt {
+        jwks_cache,
+        required_role: Some("admin".to_string()),
+    };
+    let state = Arc::new(AppState {
+        pool: pool.clone(),
+        config,
+        auth_mode,
+    });
+    let app = build_router(state);
+
+    // Sign a JWT with the test private key
+    let token = make_test_jwt(&["admin"], 3600);
+
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/boards")
+                .header("content-type", "application/json")
+                .header("authorization", format!("Bearer {token}"))
+                .body(Body::from(
+                    serde_json::to_vec(&serde_json::json!({
+                        "slug": "jwks-board",
+                        "name": "JWKS Board",
+                        "board_type": "ordered"
+                    }))
+                    .unwrap(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 201);
 
     sqlx::query(&format!("DROP SCHEMA IF EXISTS \"{schema}\" CASCADE"))
         .execute(&pool)

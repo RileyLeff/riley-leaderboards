@@ -9,6 +9,14 @@ url = "env:DATABASE_URL"               # postgres://user:pass@host/db
 max_connections = 10
 # schema = "leaderboards"              # optional, defaults to "public"
 
+# [auth]
+# # JWT mode (with riley_auth or any JWKS-compatible issuer):
+# jwks_url = "https://auth.rileyleff.com/.well-known/jwks.json"
+# required_role = "admin"
+#
+# # API token mode (standalone, mutually exclusive with jwks_url):
+# api_token = "env:LEADERBOARDS_API_TOKEN"
+
 # [sync]
 # repo_path = "/var/lib/leaderboards/boards"   # local checkout of boards repo
 # webhook_secret = "env:WEBHOOK_SECRET"        # GitHub webhook HMAC secret

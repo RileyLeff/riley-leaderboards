@@ -7,7 +7,15 @@ use crate::error::{Error, Result};
 pub struct RileyLeaderboardsConfig {
     pub server: Option<ServerConfig>,
     pub database: DatabaseConfig,
+    pub auth: Option<AuthConfig>,
     pub sync: Option<SyncConfig>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct AuthConfig {
+    pub jwks_url: Option<String>,
+    pub required_role: Option<String>,
+    pub api_token: Option<ConfigValue>,
 }
 
 #[derive(Debug, Clone, Deserialize)]

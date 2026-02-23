@@ -3,18 +3,21 @@ use std::sync::Arc;
 
 use axum::extract::State;
 use axum::http::StatusCode;
+use axum::middleware;
 use axum::response::IntoResponse;
 use axum::{Json, Router, routing::get};
 use riley_leaderboards_core::config::RileyLeaderboardsConfig;
 use serde_json::json;
 use sqlx::PgPool;
 
+pub mod auth;
 mod error;
 mod routes;
 
 pub struct AppState {
     pub pool: PgPool,
     pub config: RileyLeaderboardsConfig,
+    pub auth_mode: auth::AuthMode,
 }
 
 pub fn build_router(state: Arc<AppState>) -> Router {
@@ -25,11 +28,11 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             axum::routing::post(routes::webhooks::github)
                 .layer(axum::extract::DefaultBodyLimit::max(5 * 1024 * 1024)),
         )
-        .nest("/boards", board_routes())
+        .nest("/boards", board_routes(state.clone()))
         .with_state(state)
 }
 
-fn board_routes() -> Router<Arc<AppState>> {
+fn board_routes(state: Arc<AppState>) -> Router<Arc<AppState>> {
     Router::new()
         .route("/", get(routes::boards::list).post(routes::boards::create))
         .route(
@@ -73,6 +76,10 @@ fn board_routes() -> Router<Arc<AppState>> {
             "/{slug}/snapshot",
             axum::routing::post(routes::scores::snapshot),
         )
+        .layer(middleware::from_fn_with_state(
+            state,
+            auth::require_auth,
+        ))
 }
 
 async fn health(State(state): State<Arc<AppState>>) -> impl IntoResponse {
