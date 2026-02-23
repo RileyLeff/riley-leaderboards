@@ -57,12 +57,48 @@ database. Harmless in dev, but if it causes flaky tests, consider Drop guards.
 which PostgreSQL accepts silently. `validate` confirms the database is
 reachable but does not verify the configured schema exists.
 
-### Cross-board integrity not enforced at schema level (Phase 2 action item)
-Codex flagged (late, after convergence) that the schema allows cross-board
-data: a placement could link a version from board A with an entry from board B.
-Same for accumulated_scores and board_references. This is harmless in Phase 1
-(no write paths exist), but Phase 2 MUST enforce this invariant. Options:
-- Application-level validation in CRUD handlers (simplest, most common)
-- Composite FKs with redundant board_id columns (most robust)
-- Database triggers (most invisible to application code)
-Decision deferred to Phase 2 start.
+### Cross-board integrity enforced at application level (resolved in Phase 2)
+Codex flagged that the schema allows cross-board data. Phase 2 resolves this
+with application-level enforcement: version creation resolves entry slugs via
+`WHERE board_id = $1 AND slug = $2`, ensuring placements always reference
+entries belonging to the same board. Schema-level loophole exists (raw SQL
+could bypass) but acceptable since the service is the only writer.
+
+## Phase 2
+
+### board_type and accumulative are immutable via PATCH (intentional)
+`UpdateBoard` excludes `board_type` and `accumulative`. These are set at
+creation time and cannot be changed. This aligns with the plan and soul doc.
+
+### Nonexistent entry in version creation returns 400, not 404
+When a placement references an entry slug that doesn't exist on the board,
+this returns `Error::Validation` (400) not `Error::NotFound` (404). The entry
+is not a standalone resource being looked up — it's a validation failure in
+the context of version creation.
+
+### Mixed explicit/implicit positions in ordered boards are rejected
+When ordered board placements mix explicit and implicit positions, the resolved
+positions (explicit or derived from array index) must be unique. Collisions
+between explicit and implicit positions return 400.
+
+### ON DELETE CASCADE on placements.entry_id is intentional layering
+Application code rejects entry deletion when placements exist (409). The
+schema-level CASCADE remains for board-level deletion (board → entries →
+placements cascade correctly). Two-layer approach: app protects entry-level,
+schema handles board-level.
+
+### Safety limits (max_entries_per_version, etc.) are Phase 8
+Plan specifies limits but these are operational concerns, not core CRUD.
+Will be implemented in Phase 8 (polish/deployment).
+
+### N+1 queries in version creation are acceptable (Phase 8)
+Each placement does slug lookup + insert individually. Acceptable at expected
+scale. Batch optimization (WHERE slug = ANY($1)) deferred to Phase 8.
+
+### Scored board tiebreaking uses placement ID
+When scores are equal, `ROW_NUMBER()` uses `id ASC` as a tiebreaker for
+deterministic position assignment across transactions.
+
+### PlacementWithEntry doesn't include entry metadata (future enhancement)
+Response includes entry slug and name only. Full entry metadata could be
+added to the placement response in a future phase if needed.
