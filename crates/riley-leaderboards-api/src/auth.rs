@@ -153,13 +153,13 @@ impl JwksCache {
         }
 
         if new_keys.is_empty() {
-            tracing::warn!("JWKS refresh returned zero usable keys");
+            tracing::warn!("JWKS refresh returned zero usable keys — not updating last_refresh");
         } else {
             tracing::info!("JWKS refreshed: {} keys", new_keys.len());
+            *self.last_refresh.write().await = std::time::Instant::now();
         }
 
         *self.keys.write().await = new_keys;
-        *self.last_refresh.write().await = std::time::Instant::now();
         Ok(())
     }
 
