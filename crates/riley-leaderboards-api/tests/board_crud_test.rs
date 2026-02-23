@@ -4712,7 +4712,7 @@ async fn auth_from_config_read_tokens_without_admin_is_error() {
     let result = riley_leaderboards_api::auth::AuthMode::from_config(Some(&config)).await;
     let err_msg = result.err().expect("read_tokens without admin auth should fail").to_string();
     assert!(
-        err_msg.contains("no way to write"),
+        err_msg.contains("no auth mechanism"),
         "expected misconfig error, got: {err_msg}"
     );
 }
@@ -4745,5 +4745,68 @@ async fn auth_from_config_none_is_no_auth() {
     assert!(
         matches!(mode, riley_leaderboards_api::auth::AuthMode::NoAuth),
         "expected NoAuth mode"
+    );
+}
+
+#[tokio::test]
+async fn auth_from_config_empty_auth_section_is_no_auth() {
+    use riley_leaderboards_core::config::AuthConfig;
+
+    let config = AuthConfig {
+        jwks_url: None,
+        required_role: None,
+        admin_token: None,
+        api_token: None,
+        read_tokens: vec![],
+        require_read_auth: false,
+    };
+
+    let mode = riley_leaderboards_api::auth::AuthMode::from_config(Some(&config))
+        .await
+        .expect("empty [auth] section should produce NoAuth");
+    assert!(
+        matches!(mode, riley_leaderboards_api::auth::AuthMode::NoAuth),
+        "expected NoAuth mode"
+    );
+}
+
+#[tokio::test]
+async fn auth_from_config_required_role_without_auth_mode_is_error() {
+    use riley_leaderboards_core::config::AuthConfig;
+
+    let config = AuthConfig {
+        jwks_url: None,
+        required_role: Some("admin".to_string()),
+        admin_token: None,
+        api_token: None,
+        read_tokens: vec![],
+        require_read_auth: false,
+    };
+
+    let result = riley_leaderboards_api::auth::AuthMode::from_config(Some(&config)).await;
+    assert!(
+        result.err().is_some(),
+        "required_role without auth mode should fail"
+    );
+}
+
+#[tokio::test]
+async fn auth_from_config_jwks_and_admin_token_mutual_exclusion() {
+    use riley_leaderboards_core::config::AuthConfig;
+
+    let config = AuthConfig {
+        jwks_url: Some("https://example.com/.well-known/jwks.json".to_string()),
+        required_role: None,
+        admin_token: Some(ConfigValue::new("secret")),
+        api_token: None,
+        read_tokens: vec![],
+        require_read_auth: false,
+    };
+
+    let result = riley_leaderboards_api::auth::AuthMode::from_config(Some(&config)).await;
+    let err_msg = result.err().expect("jwks_url + admin_token should fail").to_string();
+    assert!(
+        err_msg.contains("mutually exclusive"),
+        "expected mutual exclusion error, got: {err_msg}"
     );
 }

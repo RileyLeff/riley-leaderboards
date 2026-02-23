@@ -90,10 +90,14 @@ impl AuthMode {
                 })
             }
             (None, None) => {
-                if !read_token_hashes.is_empty() || require_read_auth {
+                if !read_token_hashes.is_empty()
+                    || require_read_auth
+                    || auth.required_role.is_some()
+                {
                     anyhow::bail!(
-                        "auth config: read_tokens or require_read_auth set without admin_token \
-                         or jwks_url — there would be no way to write"
+                        "auth config: auth fields (read_tokens, require_read_auth, or \
+                         required_role) set without admin_token or jwks_url — no auth \
+                         mechanism is configured"
                     );
                 }
                 Ok(Self::NoAuth)
@@ -383,6 +387,7 @@ async fn validate_jwt(
     // Decode and validate
     let mut validation = Validation::new(expected_alg);
     validation.validate_exp = true;
+    validation.validate_nbf = true;
     validation.validate_aud = false; // we don't enforce audience
 
     let token_data = decode::<Claims>(token, &key, &validation)
