@@ -27,7 +27,49 @@ pub async fn create(
     Path(board_slug): Path<String>,
     Json(input): Json<CreateVersion>,
 ) -> ApiResult<impl IntoResponse> {
+    let limits = state.config.effective_limits();
+
+    // Safety limit: max entries per version
+    if input.placements.len() > limits.max_entries_per_version {
+        return Err(CoreError::Validation(format!(
+            "too many placements ({}, max {})",
+            input.placements.len(),
+            limits.max_entries_per_version,
+        ))
+        .into());
+    }
+
+    // Safety limit: metadata size
+    if let Some(ref meta) = input.metadata {
+        let size = serde_json::to_string(meta)
+            .map(|s| s.len())
+            .unwrap_or(0);
+        if size > limits.max_metadata_size_bytes {
+            return Err(CoreError::Validation(format!(
+                "metadata too large ({size} bytes, max {})",
+                limits.max_metadata_size_bytes,
+            ))
+            .into());
+        }
+    }
+
     let board = boards::get_by_slug(&state.pool, &board_slug).await?;
+
+    // Safety limit: max versions per board
+    let version_count: (i64,) =
+        sqlx::query_as("SELECT count(*) FROM versions WHERE board_id = $1")
+            .bind(board.id)
+            .fetch_one(&state.pool)
+            .await
+            .map_err(CoreError::Database)?;
+    if version_count.0 >= limits.max_versions_per_board {
+        return Err(CoreError::Validation(format!(
+            "board has too many versions ({}, max {})",
+            version_count.0, limits.max_versions_per_board,
+        ))
+        .into());
+    }
+
     let version = versions::create(&state.pool, &board, &input).await?;
     outbound_webhooks::fire(
         &state.config.webhooks,
@@ -81,7 +123,8 @@ pub async fn latest(
         let mut redis = state.redis.clone().ok_or(CoreError::ServiceUnavailable(
             "Redis is required for realtime boards but not configured".to_string(),
         ))?;
-        let standings = realtime::latest(&mut redis, &board).await?;
+        let prefix = state.config.redis_key_prefix();
+        let standings = realtime::latest(&mut redis, &board, prefix).await?;
         return Ok(Json(standings));
     }
 

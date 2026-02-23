@@ -25,7 +25,8 @@ pub async fn submit(
         let mut redis = state.redis.clone().ok_or(CoreError::ServiceUnavailable(
             "Redis is required for realtime boards but not configured".to_string(),
         ))?;
-        realtime::submit(&state.pool, &mut redis, &board, &input).await?;
+        let prefix = state.config.redis_key_prefix();
+        realtime::submit(&state.pool, &mut redis, &board, &input, prefix).await?;
 
         // Publish SSE score.updated event (debounced per-board)
         if let Some(ref event_bus) = state.event_bus {
@@ -55,12 +56,14 @@ pub async fn snapshot(
         let mut redis = state.redis.clone().ok_or(CoreError::ServiceUnavailable(
             "Redis is required for realtime boards but not configured".to_string(),
         ))?;
+        let prefix = state.config.redis_key_prefix();
         realtime::snapshot(
             &state.pool,
             &mut redis,
             &board,
             input.note.as_deref(),
             input.metadata.as_ref(),
+            prefix,
         )
         .await?
     } else {

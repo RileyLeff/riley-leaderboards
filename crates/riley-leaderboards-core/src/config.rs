@@ -10,14 +10,56 @@ pub struct RileyLeaderboardsConfig {
     pub redis: Option<RedisConfig>,
     pub auth: Option<AuthConfig>,
     pub sync: Option<SyncConfig>,
+    pub limits: Option<LimitsConfig>,
     /// Outbound webhook destinations, notified on board/version events.
     #[serde(default)]
     pub webhooks: Vec<WebhookConfig>,
 }
 
+impl RileyLeaderboardsConfig {
+    /// Redis key prefix from config, defaulting to `"rl"`.
+    pub fn redis_key_prefix(&self) -> &str {
+        self.redis
+            .as_ref()
+            .map(|r| r.key_prefix.as_str())
+            .unwrap_or("rl")
+    }
+
+    /// Safety limits from config, falling back to defaults.
+    pub fn effective_limits(&self) -> LimitsConfig {
+        self.limits.clone().unwrap_or_default()
+    }
+}
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct RedisConfig {
     pub url: ConfigValue,
+    /// Prefix for all Redis keys. Default: `"rl"`.
+    #[serde(default = "default_redis_key_prefix")]
+    pub key_prefix: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct LimitsConfig {
+    /// Maximum entries per version. Default: 10000.
+    #[serde(default = "default_max_entries_per_version")]
+    pub max_entries_per_version: usize,
+    /// Maximum versions per board. Default: 1000.
+    #[serde(default = "default_max_versions_per_board")]
+    pub max_versions_per_board: i64,
+    /// Maximum metadata JSON size in bytes. Default: 1MB.
+    #[serde(default = "default_max_metadata_size_bytes")]
+    pub max_metadata_size_bytes: usize,
+}
+
+impl Default for LimitsConfig {
+    fn default() -> Self {
+        Self {
+            max_entries_per_version: default_max_entries_per_version(),
+            max_versions_per_board: default_max_versions_per_board(),
+            max_metadata_size_bytes: default_max_metadata_size_bytes(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -102,6 +144,12 @@ pub struct ServerConfig {
     /// Minimum interval (ms) between score.updated SSE events per board.
     #[serde(default = "default_sse_score_debounce_ms")]
     pub sse_score_debounce_ms: u64,
+    /// SSE connection timeout in seconds. 0 = no timeout. Default: 1800 (30 min).
+    #[serde(default = "default_sse_timeout_secs")]
+    pub sse_timeout_secs: u64,
+    /// Broadcast channel buffer size per board. Default: 256.
+    #[serde(default = "default_sse_broadcast_buffer")]
+    pub sse_broadcast_buffer: usize,
 }
 
 impl Default for ServerConfig {
@@ -116,6 +164,8 @@ impl Default for ServerConfig {
             sse_enabled: false,
             sse_max_connections: default_sse_max_connections(),
             sse_score_debounce_ms: default_sse_score_debounce_ms(),
+            sse_timeout_secs: default_sse_timeout_secs(),
+            sse_broadcast_buffer: default_sse_broadcast_buffer(),
         }
     }
 }
@@ -130,6 +180,30 @@ fn default_sse_max_connections() -> usize {
 
 fn default_sse_score_debounce_ms() -> u64 {
     1000
+}
+
+fn default_sse_timeout_secs() -> u64 {
+    1800
+}
+
+fn default_sse_broadcast_buffer() -> usize {
+    256
+}
+
+fn default_redis_key_prefix() -> String {
+    "rl".to_string()
+}
+
+fn default_max_entries_per_version() -> usize {
+    10_000
+}
+
+fn default_max_versions_per_board() -> i64 {
+    1_000
+}
+
+fn default_max_metadata_size_bytes() -> usize {
+    1_048_576 // 1 MB
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -384,6 +458,7 @@ url = "postgres://localhost/leaderboards"
             redis: None,
             auth: None,
             sync: None,
+            limits: None,
             webhooks: vec![WebhookConfig {
                 url: "https://example.com".to_string(),
                 events: vec![WebhookEvent::VersionCreated],
@@ -407,6 +482,7 @@ url = "postgres://localhost/leaderboards"
             redis: None,
             auth: None,
             sync: None,
+            limits: None,
             webhooks: vec![WebhookConfig {
                 url: "https://example.com".to_string(),
                 events: vec![WebhookEvent::VersionCreated],
@@ -430,6 +506,7 @@ url = "postgres://localhost/leaderboards"
             redis: None,
             auth: None,
             sync: None,
+            limits: None,
             webhooks: vec![WebhookConfig {
                 url: "https://example.com".to_string(),
                 events: vec![WebhookEvent::VersionCreated],
@@ -438,5 +515,93 @@ url = "postgres://localhost/leaderboards"
             }],
         };
         validate_webhook_board_patterns(&config).unwrap();
+    }
+
+    #[test]
+    fn parse_redis_config_defaults() {
+        let toml_str = r#"
+[database]
+url = "postgres://localhost/leaderboards"
+
+[redis]
+url = "redis://localhost:6379"
+"#;
+        let config: RileyLeaderboardsConfig = toml::from_str(toml_str).unwrap();
+        let redis = config.redis.unwrap();
+        assert_eq!(redis.key_prefix, "rl");
+    }
+
+    #[test]
+    fn parse_redis_config_custom_prefix() {
+        let toml_str = r#"
+[database]
+url = "postgres://localhost/leaderboards"
+
+[redis]
+url = "redis://localhost:6379"
+key_prefix = "myapp"
+"#;
+        let config: RileyLeaderboardsConfig = toml::from_str(toml_str).unwrap();
+        let redis = config.redis.unwrap();
+        assert_eq!(redis.key_prefix, "myapp");
+    }
+
+    #[test]
+    fn parse_limits_config() {
+        let toml_str = r#"
+[database]
+url = "postgres://localhost/leaderboards"
+
+[limits]
+max_entries_per_version = 500
+max_versions_per_board = 100
+max_metadata_size_bytes = 2048
+"#;
+        let config: RileyLeaderboardsConfig = toml::from_str(toml_str).unwrap();
+        let limits = config.limits.unwrap();
+        assert_eq!(limits.max_entries_per_version, 500);
+        assert_eq!(limits.max_versions_per_board, 100);
+        assert_eq!(limits.max_metadata_size_bytes, 2048);
+    }
+
+    #[test]
+    fn effective_limits_uses_defaults() {
+        let toml_str = r#"
+[database]
+url = "postgres://localhost/leaderboards"
+"#;
+        let config: RileyLeaderboardsConfig = toml::from_str(toml_str).unwrap();
+        assert!(config.limits.is_none());
+        let limits = config.effective_limits();
+        assert_eq!(limits.max_entries_per_version, 10_000);
+        assert_eq!(limits.max_versions_per_board, 1_000);
+        assert_eq!(limits.max_metadata_size_bytes, 1_048_576);
+    }
+
+    #[test]
+    fn parse_sse_config_with_new_fields() {
+        let toml_str = r#"
+[server]
+sse_enabled = true
+sse_timeout_secs = 3600
+sse_broadcast_buffer = 512
+
+[database]
+url = "postgres://localhost/leaderboards"
+"#;
+        let config: RileyLeaderboardsConfig = toml::from_str(toml_str).unwrap();
+        let server = config.server.unwrap();
+        assert_eq!(server.sse_timeout_secs, 3600);
+        assert_eq!(server.sse_broadcast_buffer, 512);
+    }
+
+    #[test]
+    fn redis_key_prefix_helper() {
+        let toml_str = r#"
+[database]
+url = "postgres://localhost/leaderboards"
+"#;
+        let config: RileyLeaderboardsConfig = toml::from_str(toml_str).unwrap();
+        assert_eq!(config.redis_key_prefix(), "rl"); // default when no redis config
     }
 }

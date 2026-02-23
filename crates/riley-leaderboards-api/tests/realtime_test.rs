@@ -34,6 +34,7 @@ async fn setup_with_redis(schema: &str) -> (Arc<AppState>, axum::Router) {
         redis: None,
         auth: None,
         sync: None,
+        limits: None,
         webhooks: vec![],
     };
 
@@ -69,6 +70,7 @@ async fn setup_no_redis(schema: &str) -> (Arc<AppState>, axum::Router) {
         redis: None,
         auth: None,
         sync: None,
+        limits: None,
         webhooks: vec![],
     };
 

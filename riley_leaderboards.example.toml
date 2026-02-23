@@ -6,11 +6,22 @@ behind_proxy = false
 # sse_enabled = false                   # enable SSE streaming endpoint
 # sse_max_connections = 1000            # max concurrent SSE connections per server
 # sse_score_debounce_ms = 1000          # min interval between score.updated events per board
+# sse_timeout_secs = 1800               # SSE connection timeout (0 = no timeout, default 30 min)
+# sse_broadcast_buffer = 256            # broadcast channel buffer size per board
 
 [database]
 url = "env:DATABASE_URL"               # postgres://user:pass@host/db
 max_connections = 10
 # schema = "leaderboards"              # optional, defaults to "public"
+
+# [redis]
+# url = "env:REDIS_URL"                # redis://host:6379
+# key_prefix = "rl"                    # prefix for all Redis keys (default: "rl")
+
+# [limits]
+# max_entries_per_version = 10000      # max placements per version (default: 10000)
+# max_versions_per_board = 1000        # max versions per board (default: 1000)
+# max_metadata_size_bytes = 1048576    # max metadata JSON size in bytes (default: 1MB)
 
 # [auth]
 # # JWT mode (with riley_auth or any JWKS-compatible issuer):

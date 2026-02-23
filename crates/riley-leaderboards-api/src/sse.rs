@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use std::convert::Infallible;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, RwLock};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use axum::extract::{Path, State};
 use axum::response::sse::{Event, KeepAlive, Sse};
@@ -51,16 +51,18 @@ pub struct EventBus {
     channels: RwLock<HashMap<String, broadcast::Sender<SseEvent>>>,
     active_connections: Arc<AtomicUsize>,
     max_connections: usize,
+    broadcast_buffer: usize,
     debounce_ms: u64,
     last_score_event: RwLock<HashMap<String, Instant>>,
 }
 
 impl EventBus {
-    pub fn new(max_connections: usize, debounce_ms: u64) -> Self {
+    pub fn new(max_connections: usize, debounce_ms: u64, broadcast_buffer: usize) -> Self {
         Self {
             channels: RwLock::new(HashMap::new()),
             active_connections: Arc::new(AtomicUsize::new(0)),
             max_connections,
+            broadcast_buffer,
             debounce_ms,
             last_score_event: RwLock::new(HashMap::new()),
         }
@@ -81,12 +83,13 @@ impl EventBus {
             ));
         }
 
+        let buffer = self.broadcast_buffer;
         let rx = {
             let mut channels = self.channels.write().unwrap();
             let tx = channels
                 .entry(board_slug.to_string())
                 .or_insert_with(|| {
-                    let (tx, _) = broadcast::channel(256);
+                    let (tx, _) = broadcast::channel(buffer);
                     tx
                 });
             tx.subscribe()
@@ -177,6 +180,13 @@ pub async fn stream(
 
     let (rx, guard) = event_bus.subscribe(&board_slug)?;
 
+    let timeout_secs = state
+        .config
+        .server
+        .as_ref()
+        .map(|s| s.sse_timeout_secs)
+        .unwrap_or(1800);
+
     // Build stream that holds the guard (keeping connection count accurate)
     let stream = BroadcastStream::new(rx);
     let mapped = stream.filter_map(|result| match result {
@@ -190,21 +200,33 @@ pub async fn stream(
         Err(_) => None, // Lagged receiver — drop missed events
     });
 
-    // Wrap to keep the guard alive for the stream's duration
+    // Wrap to keep the guard alive for the stream's duration, with optional timeout
+    let deadline = if timeout_secs > 0 {
+        Duration::from_secs(timeout_secs)
+    } else {
+        // Effectively no timeout (~136 years)
+        Duration::from_secs(u32::MAX as u64)
+    };
+
     let guarded = GuardedStream {
         inner: mapped,
         _guard: guard,
+        deadline: tokio::time::sleep(deadline),
+        has_deadline: timeout_secs > 0,
     };
 
     Ok(Sse::new(guarded).keep_alive(KeepAlive::default()))
 }
 
-// Stream wrapper that holds a ConnectionGuard, decrementing the counter on drop.
+// Stream wrapper that holds a ConnectionGuard and optional deadline.
 pin_project_lite::pin_project! {
     struct GuardedStream<S> {
         #[pin]
         inner: S,
         _guard: ConnectionGuard,
+        #[pin]
+        deadline: tokio::time::Sleep,
+        has_deadline: bool,
     }
 }
 
@@ -215,6 +237,10 @@ impl<S: futures_util::stream::Stream> futures_util::stream::Stream for GuardedSt
         self: std::pin::Pin<&mut Self>,
         cx: &mut std::task::Context<'_>,
     ) -> std::task::Poll<Option<Self::Item>> {
-        self.project().inner.poll_next(cx)
+        let this = self.project();
+        if *this.has_deadline && this.deadline.poll(cx).is_ready() {
+            return std::task::Poll::Ready(None);
+        }
+        this.inner.poll_next(cx)
     }
 }

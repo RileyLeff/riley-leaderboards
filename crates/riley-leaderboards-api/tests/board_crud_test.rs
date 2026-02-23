@@ -29,6 +29,7 @@ async fn setup(schema: &str) -> (Arc<AppState>, axum::Router) {
         redis: None,
         auth: None,
         sync: None,
+        limits: None,
         webhooks: vec![],
     };
 
@@ -2458,6 +2459,7 @@ async fn setup_with_sync(schema: &str) -> (Arc<AppState>, axum::Router) {
         redis: None,
         auth: None,
         sync: None,
+        limits: None,
         webhooks: vec![],
     };
 
@@ -2986,6 +2988,7 @@ async fn webhook_missing_signature_returns_400() {
             webhook_secret: Some(ConfigValue::new("test-secret")),
             sync_branch: None,
         }),
+        limits: None,
         webhooks: vec![],
     };
     let pool = db::connect(&config.database).await.expect("connect failed");
@@ -3039,6 +3042,7 @@ async fn webhook_invalid_signature_returns_401() {
             webhook_secret: Some(ConfigValue::new("test-secret")),
             sync_branch: None,
         }),
+        limits: None,
         webhooks: vec![],
     };
     let pool = db::connect(&config.database).await.expect("connect failed");
@@ -3147,6 +3151,7 @@ position = 1
             webhook_secret: Some(ConfigValue::new("test-secret")),
             sync_branch: None,
         }),
+        limits: None,
         webhooks: vec![],
     };
     let pool = db::connect(&config.database).await.expect("connect failed");
@@ -3312,6 +3317,7 @@ async fn auth_api_token_write_requires_token() {
         redis: None,
         auth: None,
         sync: None,
+        limits: None,
         webhooks: vec![],
     };
     let pool = db::connect(&config.database).await.expect("connect failed");
@@ -3436,6 +3442,7 @@ async fn auth_jwt_valid_token_allows_write() {
         redis: None,
         auth: None,
         sync: None,
+        limits: None,
         webhooks: vec![],
     };
     let pool = db::connect(&config.database).await.expect("connect failed");
@@ -3498,6 +3505,7 @@ async fn auth_jwt_expired_token_rejected() {
         redis: None,
         auth: None,
         sync: None,
+        limits: None,
         webhooks: vec![],
     };
     let pool = db::connect(&config.database).await.expect("connect failed");
@@ -3551,6 +3559,7 @@ async fn auth_jwt_wrong_role_rejected() {
         redis: None,
         auth: None,
         sync: None,
+        limits: None,
         webhooks: vec![],
     };
     let pool = db::connect(&config.database).await.expect("connect failed");
@@ -3608,6 +3617,7 @@ async fn auth_jwt_no_required_role_any_jwt_passes() {
         redis: None,
         auth: None,
         sync: None,
+        limits: None,
         webhooks: vec![],
     };
     let pool = db::connect(&config.database).await.expect("connect failed");
@@ -3678,6 +3688,7 @@ async fn auth_jwt_missing_token_returns_401() {
         redis: None,
         auth: None,
         sync: None,
+        limits: None,
         webhooks: vec![],
     };
     let pool = db::connect(&config.database).await.expect("connect failed");
@@ -3726,6 +3737,7 @@ async fn auth_jwks_fetch_from_mock_server() {
         redis: None,
         auth: None,
         sync: None,
+        limits: None,
         webhooks: vec![],
     };
     let pool = db::connect(&config.database).await.expect("connect failed");
@@ -4276,6 +4288,7 @@ async fn auth_read_token_can_read_but_not_write() {
         redis: None,
         auth: None,
         sync: None,
+        limits: None,
         webhooks: vec![],
     };
     let pool = db::connect(&config.database).await.expect("connect failed");
@@ -4390,6 +4403,7 @@ async fn auth_require_read_auth_blocks_unauthenticated_reads() {
         redis: None,
         auth: None,
         sync: None,
+        limits: None,
         webhooks: vec![],
     };
     let pool = db::connect(&config.database).await.expect("connect failed");
@@ -4510,6 +4524,7 @@ async fn auth_jwt_read_token_can_read_but_not_write() {
         redis: None,
         auth: None,
         sync: None,
+        limits: None,
         webhooks: vec![],
     };
     let pool = db::connect(&config.database).await.expect("connect failed");
@@ -4631,6 +4646,7 @@ async fn auth_jwt_require_read_auth() {
         redis: None,
         auth: None,
         sync: None,
+        limits: None,
         webhooks: vec![],
     };
     let pool = db::connect(&config.database).await.expect("connect failed");
@@ -4926,6 +4942,7 @@ async fn outbound_webhook_fires_on_version_created() {
         redis: None,
         auth: None,
         sync: None,
+        limits: None,
         webhooks: vec![riley_leaderboards_core::config::WebhookConfig {
             url: webhook_url,
             events: vec![riley_leaderboards_core::config::WebhookEvent::VersionCreated],
@@ -5015,6 +5032,7 @@ async fn outbound_webhook_hmac_signature() {
         redis: None,
         auth: None,
         sync: None,
+        limits: None,
         webhooks: vec![riley_leaderboards_core::config::WebhookConfig {
             url: webhook_url,
             events: vec![riley_leaderboards_core::config::WebhookEvent::BoardCreated],
@@ -5081,6 +5099,7 @@ async fn outbound_webhook_board_filter() {
         redis: None,
         auth: None,
         sync: None,
+        limits: None,
         webhooks: vec![riley_leaderboards_core::config::WebhookConfig {
             url: webhook_url,
             events: vec![riley_leaderboards_core::config::WebhookEvent::BoardCreated],
@@ -5154,6 +5173,7 @@ async fn outbound_webhook_fires_on_board_delete() {
         redis: None,
         auth: None,
         sync: None,
+        limits: None,
         webhooks: vec![riley_leaderboards_core::config::WebhookConfig {
             url: webhook_url,
             events: vec![riley_leaderboards_core::config::WebhookEvent::BoardDeleted],

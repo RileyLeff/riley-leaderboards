@@ -113,6 +113,7 @@ async fn main() -> Result<()> {
                 Some(riley_leaderboards_api::sse::EventBus::new(
                     server_config.sse_max_connections,
                     server_config.sse_score_debounce_ms,
+                    server_config.sse_broadcast_buffer,
                 ))
             } else {
                 None
@@ -248,7 +249,8 @@ async fn main() -> Result<()> {
                     let mut mgr = redis::aio::ConnectionManager::new(client)
                         .await
                         .context("failed to connect to Redis")?;
-                    let _ = repo::realtime::clear(&mut mgr, &slug).await;
+                    let prefix = config.redis_key_prefix();
+                    let _ = repo::realtime::clear(&mut mgr, &slug, prefix).await;
                 }
             }
 

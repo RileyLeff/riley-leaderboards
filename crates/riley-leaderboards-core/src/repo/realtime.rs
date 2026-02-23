@@ -1,8 +1,8 @@
 //! Redis-backed operations for realtime boards.
 //!
-//! Key layout:
-//! - `board:{slug}:scores`  — sorted set (member = entry_slug, score = score)
-//! - `board:{slug}:entries` — hash (field = entry_slug, value = entry_name)
+//! Key layout (with configurable prefix, default `rl`):
+//! - `{prefix}:board:{slug}:scores`  — sorted set (member = entry_slug, score = score)
+//! - `{prefix}:board:{slug}:entries` — hash (field = entry_slug, value = entry_name)
 
 use redis::AsyncCommands;
 use sqlx::PgPool;
@@ -12,12 +12,12 @@ use uuid::Uuid;
 use crate::error::{Error, Result};
 use crate::models::{Board, PlacementWithEntry, SubmitScore, Version, VersionWithPlacements};
 
-fn scores_key(slug: &str) -> String {
-    format!("board:{slug}:scores")
+fn scores_key(prefix: &str, slug: &str) -> String {
+    format!("{prefix}:board:{slug}:scores")
 }
 
-fn entries_key(slug: &str) -> String {
-    format!("board:{slug}:entries")
+fn entries_key(prefix: &str, slug: &str) -> String {
+    format!("{prefix}:board:{slug}:entries")
 }
 
 /// Submit a score to a realtime board.
@@ -30,6 +30,7 @@ pub async fn submit(
     redis: &mut redis::aio::ConnectionManager,
     board: &Board,
     input: &SubmitScore,
+    prefix: &str,
 ) -> Result<()> {
     if !board.realtime {
         return Err(Error::Validation(
@@ -58,8 +59,8 @@ pub async fn submit(
     .map_err(Error::Database)?;
 
     // Write to Redis
-    let sk = scores_key(&board.slug);
-    let ek = entries_key(&board.slug);
+    let sk = scores_key(prefix, &board.slug);
+    let ek = entries_key(prefix, &board.slug);
 
     redis::pipe()
         .atomic()
@@ -79,9 +80,10 @@ pub async fn submit(
 pub async fn latest(
     redis: &mut redis::aio::ConnectionManager,
     board: &Board,
+    prefix: &str,
 ) -> Result<VersionWithPlacements> {
-    let sk = scores_key(&board.slug);
-    let ek = entries_key(&board.slug);
+    let sk = scores_key(prefix, &board.slug);
+    let ek = entries_key(prefix, &board.slug);
 
     // Read all entries with scores from the sorted set
     let entries_with_scores: Vec<(String, f64)> = if board.sort_direction == "asc" {
@@ -148,9 +150,10 @@ pub async fn snapshot(
     board: &Board,
     note: Option<&str>,
     metadata: Option<&serde_json::Value>,
+    prefix: &str,
 ) -> Result<VersionWithPlacements> {
-    let sk = scores_key(&board.slug);
-    let ek = entries_key(&board.slug);
+    let sk = scores_key(prefix, &board.slug);
+    let ek = entries_key(prefix, &board.slug);
 
     let mut tx = pool.begin().await.map_err(Error::Database)?;
 
@@ -268,9 +271,10 @@ pub async fn snapshot(
 pub async fn clear(
     redis: &mut redis::aio::ConnectionManager,
     board_slug: &str,
+    prefix: &str,
 ) -> Result<()> {
-    let sk = scores_key(board_slug);
-    let ek = entries_key(board_slug);
+    let sk = scores_key(prefix, board_slug);
+    let ek = entries_key(prefix, board_slug);
 
     let _: () = redis::pipe()
         .atomic()

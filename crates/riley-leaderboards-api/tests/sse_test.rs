@@ -41,9 +41,11 @@ async fn setup_with_sse(schema: &str, max_connections: usize, debounce_ms: u64) 
         },
         redis: Some(RedisConfig {
             url: ConfigValue::new(test_redis_url()),
+            key_prefix: "rl".to_string(),
         }),
         auth: None,
         sync: None,
+        limits: None,
         webhooks: vec![],
     };
 
@@ -56,7 +58,7 @@ async fn setup_with_sse(schema: &str, max_connections: usize, debounce_ms: u64) 
         .await
         .expect("redis connect failed");
 
-    let event_bus = EventBus::new(max_connections, debounce_ms);
+    let event_bus = EventBus::new(max_connections, debounce_ms, 256);
 
     let state = Arc::new(AppState {
         pool,
@@ -80,9 +82,11 @@ async fn setup_no_sse(schema: &str) -> (Arc<AppState>, axum::Router) {
         },
         redis: Some(RedisConfig {
             url: ConfigValue::new(test_redis_url()),
+            key_prefix: "rl".to_string(),
         }),
         auth: None,
         sync: None,
+        limits: None,
         webhooks: vec![],
     };
 
@@ -250,7 +254,7 @@ async fn sse_stream_disabled_returns_503() {
 
 #[tokio::test]
 async fn event_bus_version_created() {
-    let bus = EventBus::new(100, 0);
+    let bus = EventBus::new(100, 0, 256);
 
     // Subscribe first
     let (mut rx, _guard) = bus.subscribe("test-board").unwrap();
@@ -269,7 +273,7 @@ async fn event_bus_version_created() {
 
 #[tokio::test]
 async fn event_bus_score_updated() {
-    let bus = EventBus::new(100, 0); // No debounce
+    let bus = EventBus::new(100, 0, 256); // No debounce
 
     let (mut rx, _guard) = bus.subscribe("test-board").unwrap();
 
@@ -293,7 +297,7 @@ async fn event_bus_score_updated() {
 
 #[tokio::test]
 async fn event_bus_debounces_score_events() {
-    let bus = EventBus::new(100, 500); // 500ms debounce
+    let bus = EventBus::new(100, 500, 256); // 500ms debounce
 
     let (mut rx, _guard) = bus.subscribe("debounce-board").unwrap();
 
@@ -339,7 +343,7 @@ async fn event_bus_debounces_score_events() {
 
 #[tokio::test]
 async fn event_bus_connection_limit() {
-    let bus = EventBus::new(2, 0); // Max 2 connections
+    let bus = EventBus::new(2, 0, 256); // Max 2 connections
 
     let (_rx1, _guard1) = bus.subscribe("board").unwrap();
     let (_rx2, _guard2) = bus.subscribe("board").unwrap();
@@ -360,7 +364,7 @@ async fn event_bus_connection_limit() {
 
 #[tokio::test]
 async fn event_bus_board_isolation() {
-    let bus = EventBus::new(100, 0);
+    let bus = EventBus::new(100, 0, 256);
 
     let (mut rx_a, _guard_a) = bus.subscribe("board-a").unwrap();
     let (mut rx_b, _guard_b) = bus.subscribe("board-b").unwrap();

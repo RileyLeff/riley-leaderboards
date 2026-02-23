@@ -29,6 +29,7 @@ async fn health_returns_ok() {
         redis: None,
         auth: None,
         sync: None,
+        limits: None,
         webhooks: vec![],
     };
 
