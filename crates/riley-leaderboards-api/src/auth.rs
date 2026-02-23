@@ -58,7 +58,7 @@ impl AuthMode {
             .read_tokens
             .iter()
             .map(|t| {
-                let resolved = t.resolve().map_err(|e| anyhow::anyhow!("{e}"))?;
+                let resolved = t.resolve().map_err(anyhow::Error::from)?;
                 Ok(hash_token(&resolved))
             })
             .collect::<anyhow::Result<Vec<_>>>()?;
@@ -81,7 +81,7 @@ impl AuthMode {
                 })
             }
             (None, Some(token_val)) => {
-                let token = token_val.resolve().map_err(|e| anyhow::anyhow!("{e}"))?;
+                let token = token_val.resolve().map_err(anyhow::Error::from)?;
                 let admin_token_hash = hash_token(&token);
                 Ok(Self::ApiToken {
                     admin_token_hash,
@@ -91,11 +91,9 @@ impl AuthMode {
             }
             (None, None) => {
                 if !read_token_hashes.is_empty() || require_read_auth {
-                    // read_tokens or require_read_auth without any admin auth is not useful —
-                    // there would be no way to write. Treat as NoAuth and warn.
-                    tracing::warn!(
-                        "read_tokens or require_read_auth set without admin_token or jwks_url; \
-                         all endpoints will be open"
+                    anyhow::bail!(
+                        "auth config: read_tokens or require_read_auth set without admin_token \
+                         or jwks_url — there would be no way to write"
                     );
                 }
                 Ok(Self::NoAuth)

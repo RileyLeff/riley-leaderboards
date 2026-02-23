@@ -15,7 +15,13 @@ max_connections = 10
 # required_role = "admin"
 #
 # # API token mode (standalone, mutually exclusive with jwks_url):
-# api_token = "env:LEADERBOARDS_API_TOKEN"
+# admin_token = "env:LEADERBOARDS_ADMIN_TOKEN"
+# # Legacy alias (mutually exclusive with admin_token):
+# # api_token = "env:LEADERBOARDS_API_TOKEN"
+#
+# # Read-only tokens (work with either JWT or API token mode):
+# read_tokens = ["env:LEADERBOARDS_READ_TOKEN"]
+# require_read_auth = false  # when true, reads also require a valid token
 
 # [sync]
 # repo_path = "/var/lib/leaderboards/boards"   # local checkout of boards repo

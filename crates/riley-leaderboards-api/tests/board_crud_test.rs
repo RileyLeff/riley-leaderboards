@@ -4651,3 +4651,99 @@ async fn auth_jwt_require_read_auth() {
 
     cleanup(&state, schema).await;
 }
+
+// ── Phase 2 (v2): from_config tests ─────────────────────────────────────
+
+#[tokio::test]
+async fn auth_from_config_admin_token_and_api_token_mutual_exclusion() {
+    use riley_leaderboards_core::config::AuthConfig;
+
+    let config = AuthConfig {
+        jwks_url: None,
+        required_role: None,
+        admin_token: Some(ConfigValue::new("secret-admin")),
+        api_token: Some(ConfigValue::new("secret-api")),
+        read_tokens: vec![],
+        require_read_auth: false,
+    };
+
+    let result = riley_leaderboards_api::auth::AuthMode::from_config(Some(&config)).await;
+    let err_msg = result.err().expect("expected error").to_string();
+    assert!(
+        err_msg.contains("mutually exclusive"),
+        "expected mutual exclusion error, got: {err_msg}"
+    );
+}
+
+#[tokio::test]
+async fn auth_from_config_legacy_api_token_works() {
+    use riley_leaderboards_core::config::AuthConfig;
+
+    let config = AuthConfig {
+        jwks_url: None,
+        required_role: None,
+        admin_token: None,
+        api_token: Some(ConfigValue::new("legacy-secret")),
+        read_tokens: vec![],
+        require_read_auth: false,
+    };
+
+    let result = riley_leaderboards_api::auth::AuthMode::from_config(Some(&config)).await;
+    let mode = result.expect("from_config should succeed with api_token");
+    assert!(
+        matches!(mode, riley_leaderboards_api::auth::AuthMode::ApiToken { .. }),
+        "expected ApiToken mode"
+    );
+}
+
+#[tokio::test]
+async fn auth_from_config_read_tokens_without_admin_is_error() {
+    use riley_leaderboards_core::config::AuthConfig;
+
+    let config = AuthConfig {
+        jwks_url: None,
+        required_role: None,
+        admin_token: None,
+        api_token: None,
+        read_tokens: vec![ConfigValue::new("read-only-token")],
+        require_read_auth: false,
+    };
+
+    let result = riley_leaderboards_api::auth::AuthMode::from_config(Some(&config)).await;
+    let err_msg = result.err().expect("read_tokens without admin auth should fail").to_string();
+    assert!(
+        err_msg.contains("no way to write"),
+        "expected misconfig error, got: {err_msg}"
+    );
+}
+
+#[tokio::test]
+async fn auth_from_config_require_read_auth_without_admin_is_error() {
+    use riley_leaderboards_core::config::AuthConfig;
+
+    let config = AuthConfig {
+        jwks_url: None,
+        required_role: None,
+        admin_token: None,
+        api_token: None,
+        read_tokens: vec![],
+        require_read_auth: true,
+    };
+
+    let result = riley_leaderboards_api::auth::AuthMode::from_config(Some(&config)).await;
+    assert!(
+        result.err().is_some(),
+        "require_read_auth without admin auth should fail"
+    );
+}
+
+#[tokio::test]
+async fn auth_from_config_none_is_no_auth() {
+    let mode = riley_leaderboards_api::auth::AuthMode::from_config(None)
+        .await
+        .expect("from_config(None) should succeed");
+    assert!(
+        matches!(mode, riley_leaderboards_api::auth::AuthMode::NoAuth),
+        "expected NoAuth mode"
+    );
+}
