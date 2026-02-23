@@ -19,6 +19,9 @@ pub enum Error {
 
     #[error("validation error: {0}")]
     Validation(String),
+
+    #[error("internal error: {0}")]
+    Internal(String),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;

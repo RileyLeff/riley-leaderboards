@@ -153,36 +153,75 @@ pub async fn github(
     // Serialize webhook processing to prevent concurrent git operations
     let _sync_guard = state.sync_mutex.lock().await;
 
-    // Pull latest changes from the repository (with 60-second timeout)
-    let pull_result = tokio::time::timeout(
-        std::time::Duration::from_secs(60),
+    // Fetch + hard reset to match remote (avoids merge conflicts on a read-only clone)
+    let timeout = std::time::Duration::from_secs(60);
+
+    let fetch_result = tokio::time::timeout(
+        timeout,
         tokio::process::Command::new("git")
-            .args(["-C", &repo_path, "pull", "origin", expected_branch])
+            .args(["-C", &repo_path, "fetch", "origin", expected_branch])
             .output(),
     )
     .await;
 
-    match pull_result {
+    match fetch_result {
         Ok(Ok(output)) if output.status.success() => {
-            tracing::info!("git pull succeeded for {repo_path}");
+            tracing::info!("git fetch succeeded for {repo_path}");
         }
         Ok(Ok(output)) => {
             let stderr = String::from_utf8_lossy(&output.stderr);
-            tracing::error!("git pull failed for {repo_path}: {stderr}");
+            tracing::error!("git fetch failed for {repo_path}: {stderr}");
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(serde_json::json!({ "error": "failed to update repository" })),
             );
         }
         Ok(Err(e)) => {
-            tracing::error!("failed to run git pull: {e}");
+            tracing::error!("failed to run git fetch: {e}");
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(serde_json::json!({ "error": "failed to update repository" })),
             );
         }
         Err(_) => {
-            tracing::error!("git pull timed out for {repo_path}");
+            tracing::error!("git fetch timed out for {repo_path}");
+            return (
+                StatusCode::GATEWAY_TIMEOUT,
+                Json(serde_json::json!({ "error": "repository update timed out" })),
+            );
+        }
+    }
+
+    let reset_target = format!("origin/{expected_branch}");
+    let reset_result = tokio::time::timeout(
+        timeout,
+        tokio::process::Command::new("git")
+            .args(["-C", &repo_path, "reset", "--hard", &reset_target])
+            .output(),
+    )
+    .await;
+
+    match reset_result {
+        Ok(Ok(output)) if output.status.success() => {
+            tracing::info!("git reset --hard succeeded for {repo_path}");
+        }
+        Ok(Ok(output)) => {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            tracing::error!("git reset failed for {repo_path}: {stderr}");
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({ "error": "failed to update repository" })),
+            );
+        }
+        Ok(Err(e)) => {
+            tracing::error!("failed to run git reset: {e}");
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({ "error": "failed to update repository" })),
+            );
+        }
+        Err(_) => {
+            tracing::error!("git reset timed out for {repo_path}");
             return (
                 StatusCode::GATEWAY_TIMEOUT,
                 Json(serde_json::json!({ "error": "repository update timed out" })),

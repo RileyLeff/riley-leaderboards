@@ -3062,7 +3062,7 @@ async fn webhook_invalid_signature_returns_401() {
 async fn webhook_valid_signature_triggers_sync() {
     let schema = "test_webhook_valid";
 
-    // Set up a proper git repo so the webhook's git pull succeeds.
+    // Set up a proper git repo so the webhook's git fetch+reset succeeds.
     // Create a bare repo, clone it, add board files, commit, and push.
     let bare_dir = tempfile::tempdir().unwrap();
     let work_dir = tempfile::tempdir().unwrap();

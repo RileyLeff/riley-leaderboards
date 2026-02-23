@@ -158,6 +158,8 @@ pub async fn import_board(pool: &PgPool, export: &BoardExport) -> Result<()> {
 
     super::validate_slug(&create_board.slug)?;
     super::validate_name(&create_board.name)?;
+    super::boards::validate_board_type(&create_board.board_type)?;
+    super::boards::validate_sort_direction(&create_board.sort_direction)?;
 
     let board = sqlx::query_as::<_, crate::models::Board>(
         r#"INSERT INTO boards (slug, name, board_type, sort_direction, tier_config, metadata, accumulative)

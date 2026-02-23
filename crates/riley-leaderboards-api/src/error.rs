@@ -34,6 +34,13 @@ impl IntoResponse for ApiError {
                     "internal server error".to_string(),
                 )
             }
+            CoreError::Internal(e) => {
+                tracing::error!("internal error: {e}");
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "internal server error".to_string(),
+                )
+            }
         };
 
         (status, Json(json!({ "error": message }))).into_response()

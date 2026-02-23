@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::sync::Arc;
 
 use axum::extract::{Path, Query, State};
@@ -6,11 +5,19 @@ use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use axum::Json;
 
+use serde::Deserialize;
+
 use riley_leaderboards_core::models::{CreateVersion, PaginationParams};
 use riley_leaderboards_core::repo::{boards, versions};
 
 use crate::AppState;
 use crate::error::ApiResult;
+
+#[derive(Deserialize)]
+pub struct DiffParams {
+    pub from: i32,
+    pub to: i32,
+}
 
 pub async fn create(
     State(state): State<Arc<AppState>>,
@@ -53,18 +60,10 @@ pub async fn latest(
 pub async fn diff(
     State(state): State<Arc<AppState>>,
     Path(board_slug): Path<String>,
-    Query(params): Query<HashMap<String, i32>>,
+    Query(params): Query<DiffParams>,
 ) -> ApiResult<impl IntoResponse> {
-    let from = *params
-        .get("from")
-        .ok_or(riley_leaderboards_core::error::Error::Validation(
-            "missing required query parameter 'from'".to_string(),
-        ))?;
-    let to = *params
-        .get("to")
-        .ok_or(riley_leaderboards_core::error::Error::Validation(
-            "missing required query parameter 'to'".to_string(),
-        ))?;
+    let from = params.from;
+    let to = params.to;
 
     if from < 1 || to < 1 {
         return Err(riley_leaderboards_core::error::Error::Validation(

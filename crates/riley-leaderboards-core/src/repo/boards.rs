@@ -130,10 +130,16 @@ pub async fn update(pool: &PgPool, slug: &str, input: &UpdateBoard) -> Result<Bo
 
     let board = get_by_slug(pool, slug).await?;
 
-    // Validate tier_config shape if being set on a tiered board
+    // Validate tier_config on tiered boards: reject null (tiered boards require tier_config)
     if board.board_type == "tiered" {
-        if let Nullable::Value(ref v) = input.tier_config {
-            validate_tier_config(Some(v))?;
+        match &input.tier_config {
+            Nullable::Value(v) => validate_tier_config(Some(v))?,
+            Nullable::Null => {
+                return Err(Error::Validation(
+                    "tier_config cannot be null on tiered boards".to_string(),
+                ));
+            }
+            Nullable::Absent => {}
         }
     }
 
@@ -196,7 +202,7 @@ pub async fn get_by_id(pool: &PgPool, id: Uuid) -> Result<Board> {
         .ok_or_else(|| Error::NotFound(format!("board with id '{id}' not found")))
 }
 
-fn validate_board_type(board_type: &str) -> Result<()> {
+pub(crate) fn validate_board_type(board_type: &str) -> Result<()> {
     match board_type {
         "ordered" | "scored" | "tiered" => Ok(()),
         _ => Err(Error::Validation(format!(
@@ -205,7 +211,7 @@ fn validate_board_type(board_type: &str) -> Result<()> {
     }
 }
 
-fn validate_sort_direction(sort_direction: &str) -> Result<()> {
+pub(crate) fn validate_sort_direction(sort_direction: &str) -> Result<()> {
     match sort_direction {
         "asc" | "desc" => Ok(()),
         _ => Err(Error::Validation(format!(

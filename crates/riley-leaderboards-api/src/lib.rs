@@ -49,16 +49,30 @@ pub fn build_router(state: Arc<AppState>) -> Router {
 
     // Rate limiting (applied before CORS so preflight requests aren't rate-limited)
     if server_config.rate_limit_per_second > 0 {
-        let governor_conf = Arc::new(
-            tower_governor::governor::GovernorConfigBuilder::default()
-                .per_second(server_config.rate_limit_per_second)
-                .burst_size(server_config.rate_limit_burst)
-                .finish()
-                .expect("invalid rate limit config"),
-        );
-        app = app.layer(tower_governor::GovernorLayer {
-            config: governor_conf,
-        });
+        if server_config.behind_proxy {
+            let governor_conf = Arc::new(
+                tower_governor::governor::GovernorConfigBuilder::default()
+                    .per_second(server_config.rate_limit_per_second)
+                    .burst_size(server_config.rate_limit_burst)
+                    .key_extractor(tower_governor::key_extractor::SmartIpKeyExtractor)
+                    .finish()
+                    .expect("invalid rate limit config"),
+            );
+            app = app.layer(tower_governor::GovernorLayer {
+                config: governor_conf,
+            });
+        } else {
+            let governor_conf = Arc::new(
+                tower_governor::governor::GovernorConfigBuilder::default()
+                    .per_second(server_config.rate_limit_per_second)
+                    .burst_size(server_config.rate_limit_burst)
+                    .finish()
+                    .expect("invalid rate limit config"),
+            );
+            app = app.layer(tower_governor::GovernorLayer {
+                config: governor_conf,
+            });
+        }
     }
 
     // Request tracing

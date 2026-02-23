@@ -35,7 +35,10 @@ pub async fn sync_dir(
     dir: &Path,
     note: Option<&str>,
 ) -> Result<Vec<BoardSyncResult>> {
-    let parsed = parse::parse_boards_dir(dir)?;
+    let dir_buf = dir.to_path_buf();
+    let parsed = tokio::task::spawn_blocking(move || parse::parse_boards_dir(&dir_buf))
+        .await
+        .map_err(|e| Error::Internal(format!("spawn_blocking failed: {e}")))??;
 
     if parsed.is_empty() {
         info!("no board directories found in {}", dir.display());
