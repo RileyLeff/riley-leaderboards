@@ -1,0 +1,21 @@
+# Deploy fragment — merge into your main docker-compose.yml
+# Requires: postgres service with healthcheck, "web" and "internal" networks
+services:
+  leaderboards:
+    build:
+      context: /opt/riley-leaderboards
+    environment:
+      - DATABASE_URL=postgres://riley:${DB_PASSWORD}@postgres/riley
+      - RILEY_LEADERBOARDS_DB_SCHEMA=leaderboards
+      - WEBHOOK_SECRET=${LEADERBOARDS_WEBHOOK_SECRET}
+    volumes:
+      - leaderboards_boards:/data/boards
+    networks:
+      - web
+      - internal
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  leaderboards_boards:

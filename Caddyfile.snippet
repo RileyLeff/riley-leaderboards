@@ -1,0 +1,7 @@
+# Add to existing Caddyfile
+# Proxies /api/leaderboards/* to the leaderboards service
+rileyleff.com {
+    handle /api/leaderboards/* {
+        reverse_proxy leaderboards:8082
+    }
+}
