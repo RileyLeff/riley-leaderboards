@@ -126,3 +126,49 @@ The webhook `github` handler only filters by branch when `ref` is present in the
 payload. If `ref` is absent, sync proceeds unconditionally. This is a pre-existing
 behavior from Phase 1, not a Phase 4 issue. It could be tightened to return 400
 for malformed payloads, but in practice GitHub always sends `ref` in push events.
+
+## Phase 5: Realtime Boards (Redis)
+
+### Redis keyspace not namespaced (accepted for single-tenant)
+
+Redis keys use `board:{slug}:scores` and `board:{slug}:entries` without a service
+prefix. For multi-tenant deployments, keys should be prefixed with a schema/service
+name. Current deployment is single-tenant, so this is accepted.
+
+### ServiceUnavailable passes error details to clients (accepted)
+
+Unlike Database errors which return a generic "internal server error",
+`ServiceUnavailable` passes the full message to API clients. The operator-facing
+messages ("Redis is required for realtime boards but not configured") are
+intentionally informative. Redis crate error messages may contain connection
+details, but this is acceptable for a self-hosted service. Can be tightened later.
+
+### Explicit tx.rollback() in snapshot empty check (style preference)
+
+`realtime::snapshot()` explicitly calls `tx.rollback()` when Redis has no scores,
+even though sqlx would auto-rollback on drop. Kept for clarity of intent.
+
+### Redis keys computed before FOR UPDATE re-fetch (safe)
+
+`realtime::snapshot()` builds Redis keys from the caller's `board.slug` before the
+FOR UPDATE re-fetch that shadows `board`. Safe because board slugs are immutable
+(no rename endpoint exists). If a rename feature is ever added, this should be
+revisited.
+
+### PATCH upgrade to realtime deferred
+
+The v2 plan's UpdateBoard endpoint does not support toggling `realtime` or
+`clear_on_snapshot`. Adding this requires careful constraint validation (can't
+downgrade from realtime if Redis has scores). Deferred to post-Phase 6.
+
+### Submit response shape differs for realtime (intentional)
+
+Non-realtime accumulative submit returns an `AccumulatedScore` record. Realtime
+submit returns `{"ok": true}`. Realtime boards have no `accumulated_scores` table
+row to return — scores go directly to Redis. The difference is intentional.
+
+### Docker integration tests don't exercise Redis (deferred)
+
+The `tests/integration/` Docker smoke tests don't start a Redis container or test
+realtime endpoints. Deferred to Phase 6 cleanup. The integration tests are for
+verifying the core API works in a container.
