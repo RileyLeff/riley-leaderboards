@@ -19,6 +19,7 @@ mod routes;
 
 pub struct AppState {
     pub pool: PgPool,
+    pub redis: Option<redis::aio::ConnectionManager>,
     pub config: RileyLeaderboardsConfig,
     pub auth_mode: auth::AuthMode,
     /// Serializes webhook pull+sync operations to prevent concurrent git operations.

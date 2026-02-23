@@ -26,6 +26,7 @@ async fn health_returns_ok() {
             max_connections: 2,
             schema: Some("test_health_endpoint".to_string()),
         },
+        redis: None,
         auth: None,
         sync: None,
         webhooks: vec![],
@@ -36,6 +37,7 @@ async fn health_returns_ok() {
 
     let state = Arc::new(AppState {
         pool: pool.clone(),
+        redis: None,
         config,
         auth_mode: riley_leaderboards_api::auth::AuthMode::NoAuth,
         sync_mutex: tokio::sync::Mutex::new(()),

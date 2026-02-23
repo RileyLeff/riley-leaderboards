@@ -7,11 +7,17 @@ use crate::error::{Error, Result};
 pub struct RileyLeaderboardsConfig {
     pub server: Option<ServerConfig>,
     pub database: DatabaseConfig,
+    pub redis: Option<RedisConfig>,
     pub auth: Option<AuthConfig>,
     pub sync: Option<SyncConfig>,
     /// Outbound webhook destinations, notified on board/version events.
     #[serde(default)]
     pub webhooks: Vec<WebhookConfig>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct RedisConfig {
+    pub url: ConfigValue,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -355,6 +361,7 @@ url = "postgres://localhost/leaderboards"
                 max_connections: 2,
                 schema: None,
             },
+            redis: None,
             auth: None,
             sync: None,
             webhooks: vec![WebhookConfig {
@@ -377,6 +384,7 @@ url = "postgres://localhost/leaderboards"
                 max_connections: 2,
                 schema: None,
             },
+            redis: None,
             auth: None,
             sync: None,
             webhooks: vec![WebhookConfig {
@@ -399,6 +407,7 @@ url = "postgres://localhost/leaderboards"
                 max_connections: 2,
                 schema: None,
             },
+            redis: None,
             auth: None,
             sync: None,
             webhooks: vec![WebhookConfig {

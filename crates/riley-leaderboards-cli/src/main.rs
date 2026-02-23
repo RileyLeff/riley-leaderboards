@@ -90,8 +90,22 @@ async fn main() -> Result<()> {
                     .await
                     .context("failed to initialize auth")?;
 
+            let redis = if let Some(ref redis_config) = config.redis {
+                let url = redis_config.url.resolve().context("failed to resolve Redis URL")?;
+                let client = redis::Client::open(url.as_str())
+                    .context("failed to create Redis client")?;
+                let mgr = redis::aio::ConnectionManager::new(client)
+                    .await
+                    .context("failed to connect to Redis")?;
+                tracing::info!("connected to Redis");
+                Some(mgr)
+            } else {
+                None
+            };
+
             let state = Arc::new(AppState {
                 pool,
+                redis,
                 config,
                 auth_mode,
                 sync_mutex: tokio::sync::Mutex::new(()),

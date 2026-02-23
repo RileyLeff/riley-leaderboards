@@ -26,6 +26,7 @@ async fn setup(schema: &str) -> (Arc<AppState>, axum::Router) {
             max_connections: 2,
             schema: Some(schema.to_string()),
         },
+        redis: None,
         auth: None,
         sync: None,
         webhooks: vec![],
@@ -36,6 +37,7 @@ async fn setup(schema: &str) -> (Arc<AppState>, axum::Router) {
 
     let state = Arc::new(AppState {
         pool,
+        redis: None,
         config,
         auth_mode: riley_leaderboards_api::auth::AuthMode::NoAuth,
         sync_mutex: tokio::sync::Mutex::new(()),
@@ -2452,6 +2454,7 @@ async fn setup_with_sync(schema: &str) -> (Arc<AppState>, axum::Router) {
             max_connections: 2,
             schema: Some(schema.to_string()),
         },
+        redis: None,
         auth: None,
         sync: None,
         webhooks: vec![],
@@ -2462,6 +2465,7 @@ async fn setup_with_sync(schema: &str) -> (Arc<AppState>, axum::Router) {
 
     let state = Arc::new(AppState {
         pool,
+        redis: None,
         config,
         auth_mode: riley_leaderboards_api::auth::AuthMode::NoAuth,
         sync_mutex: tokio::sync::Mutex::new(()),
@@ -2973,6 +2977,7 @@ async fn webhook_missing_signature_returns_400() {
             max_connections: 2,
             schema: Some(schema.to_string()),
         },
+        redis: None,
         auth: None,
         sync: Some(riley_leaderboards_core::config::SyncConfig {
             repo_path: Some("/tmp/nonexistent".to_string()),
@@ -2985,6 +2990,7 @@ async fn webhook_missing_signature_returns_400() {
     db::migrate(&pool).await.expect("migrate failed");
     let state = Arc::new(AppState {
         pool: pool.clone(),
+        redis: None,
         config,
         auth_mode: riley_leaderboards_api::auth::AuthMode::NoAuth,
         sync_mutex: tokio::sync::Mutex::new(()),
@@ -3023,6 +3029,7 @@ async fn webhook_invalid_signature_returns_401() {
             max_connections: 2,
             schema: Some(schema.to_string()),
         },
+        redis: None,
         auth: None,
         sync: Some(riley_leaderboards_core::config::SyncConfig {
             repo_path: Some("/tmp/nonexistent".to_string()),
@@ -3035,6 +3042,7 @@ async fn webhook_invalid_signature_returns_401() {
     db::migrate(&pool).await.expect("migrate failed");
     let state = Arc::new(AppState {
         pool: pool.clone(),
+        redis: None,
         config,
         auth_mode: riley_leaderboards_api::auth::AuthMode::NoAuth,
         sync_mutex: tokio::sync::Mutex::new(()),
@@ -3128,6 +3136,7 @@ position = 1
             max_connections: 2,
             schema: Some(schema.to_string()),
         },
+        redis: None,
         auth: None,
         sync: Some(riley_leaderboards_core::config::SyncConfig {
             repo_path: Some(work_dir.path().to_string_lossy().to_string()),
@@ -3140,6 +3149,7 @@ position = 1
     db::migrate(&pool).await.expect("migrate failed");
     let state = Arc::new(AppState {
         pool: pool.clone(),
+        redis: None,
         config,
         auth_mode: riley_leaderboards_api::auth::AuthMode::NoAuth,
         sync_mutex: tokio::sync::Mutex::new(()),
@@ -3274,6 +3284,7 @@ fn setup_jwt_auth_state(
     };
     let state = Arc::new(AppState {
         pool,
+        redis: None,
         config,
         auth_mode,
         sync_mutex: tokio::sync::Mutex::new(()),
@@ -3292,6 +3303,7 @@ async fn auth_api_token_write_requires_token() {
             max_connections: 2,
             schema: Some(schema.to_string()),
         },
+        redis: None,
         auth: None,
         sync: None,
         webhooks: vec![],
@@ -3315,6 +3327,7 @@ async fn auth_api_token_write_requires_token() {
     };
     let state = Arc::new(AppState {
         pool: pool.clone(),
+        redis: None,
         config,
         auth_mode,
         sync_mutex: tokio::sync::Mutex::new(()),
@@ -3413,6 +3426,7 @@ async fn auth_jwt_valid_token_allows_write() {
             max_connections: 2,
             schema: Some(schema.to_string()),
         },
+        redis: None,
         auth: None,
         sync: None,
         webhooks: vec![],
@@ -3474,6 +3488,7 @@ async fn auth_jwt_expired_token_rejected() {
             max_connections: 2,
             schema: Some(schema.to_string()),
         },
+        redis: None,
         auth: None,
         sync: None,
         webhooks: vec![],
@@ -3526,6 +3541,7 @@ async fn auth_jwt_wrong_role_rejected() {
             max_connections: 2,
             schema: Some(schema.to_string()),
         },
+        redis: None,
         auth: None,
         sync: None,
         webhooks: vec![],
@@ -3582,6 +3598,7 @@ async fn auth_jwt_no_required_role_any_jwt_passes() {
             max_connections: 2,
             schema: Some(schema.to_string()),
         },
+        redis: None,
         auth: None,
         sync: None,
         webhooks: vec![],
@@ -3651,6 +3668,7 @@ async fn auth_jwt_missing_token_returns_401() {
             max_connections: 2,
             schema: Some(schema.to_string()),
         },
+        redis: None,
         auth: None,
         sync: None,
         webhooks: vec![],
@@ -3698,6 +3716,7 @@ async fn auth_jwks_fetch_from_mock_server() {
             max_connections: 2,
             schema: Some(schema.to_string()),
         },
+        redis: None,
         auth: None,
         sync: None,
         webhooks: vec![],
@@ -3748,6 +3767,7 @@ async fn auth_jwks_fetch_from_mock_server() {
     };
     let state = Arc::new(AppState {
         pool: pool.clone(),
+        redis: None,
         config,
         auth_mode,
         sync_mutex: tokio::sync::Mutex::new(()),
@@ -4245,6 +4265,7 @@ async fn auth_read_token_can_read_but_not_write() {
             max_connections: 2,
             schema: Some(schema.to_string()),
         },
+        redis: None,
         auth: None,
         sync: None,
         webhooks: vec![],
@@ -4262,6 +4283,7 @@ async fn auth_read_token_can_read_but_not_write() {
     };
     let state = Arc::new(AppState {
         pool: pool.clone(),
+        redis: None,
         config,
         auth_mode,
         sync_mutex: tokio::sync::Mutex::new(()),
@@ -4356,6 +4378,7 @@ async fn auth_require_read_auth_blocks_unauthenticated_reads() {
             max_connections: 2,
             schema: Some(schema.to_string()),
         },
+        redis: None,
         auth: None,
         sync: None,
         webhooks: vec![],
@@ -4373,6 +4396,7 @@ async fn auth_require_read_auth_blocks_unauthenticated_reads() {
     };
     let state = Arc::new(AppState {
         pool: pool.clone(),
+        redis: None,
         config,
         auth_mode,
         sync_mutex: tokio::sync::Mutex::new(()),
@@ -4473,6 +4497,7 @@ async fn auth_jwt_read_token_can_read_but_not_write() {
             max_connections: 2,
             schema: Some(schema.to_string()),
         },
+        redis: None,
         auth: None,
         sync: None,
         webhooks: vec![],
@@ -4497,6 +4522,7 @@ async fn auth_jwt_read_token_can_read_but_not_write() {
     };
     let state = Arc::new(AppState {
         pool: pool.clone(),
+        redis: None,
         config,
         auth_mode,
         sync_mutex: tokio::sync::Mutex::new(()),
@@ -4591,6 +4617,7 @@ async fn auth_jwt_require_read_auth() {
             max_connections: 2,
             schema: Some(schema.to_string()),
         },
+        redis: None,
         auth: None,
         sync: None,
         webhooks: vec![],
@@ -4615,6 +4642,7 @@ async fn auth_jwt_require_read_auth() {
     };
     let state = Arc::new(AppState {
         pool: pool.clone(),
+        redis: None,
         config,
         auth_mode,
         sync_mutex: tokio::sync::Mutex::new(()),
@@ -4883,6 +4911,7 @@ async fn outbound_webhook_fires_on_version_created() {
             max_connections: 2,
             schema: Some(schema.to_string()),
         },
+        redis: None,
         auth: None,
         sync: None,
         webhooks: vec![riley_leaderboards_core::config::WebhookConfig {
@@ -4898,6 +4927,7 @@ async fn outbound_webhook_fires_on_version_created() {
 
     let state = Arc::new(AppState {
         pool: pool.clone(),
+        redis: None,
         config,
         auth_mode: riley_leaderboards_api::auth::AuthMode::NoAuth,
         sync_mutex: tokio::sync::Mutex::new(()),
@@ -4969,6 +4999,7 @@ async fn outbound_webhook_hmac_signature() {
             max_connections: 2,
             schema: Some(schema.to_string()),
         },
+        redis: None,
         auth: None,
         sync: None,
         webhooks: vec![riley_leaderboards_core::config::WebhookConfig {
@@ -4984,6 +5015,7 @@ async fn outbound_webhook_hmac_signature() {
 
     let state = Arc::new(AppState {
         pool: pool.clone(),
+        redis: None,
         config,
         auth_mode: riley_leaderboards_api::auth::AuthMode::NoAuth,
         sync_mutex: tokio::sync::Mutex::new(()),
@@ -5032,6 +5064,7 @@ async fn outbound_webhook_board_filter() {
             max_connections: 2,
             schema: Some(schema.to_string()),
         },
+        redis: None,
         auth: None,
         sync: None,
         webhooks: vec![riley_leaderboards_core::config::WebhookConfig {
@@ -5047,6 +5080,7 @@ async fn outbound_webhook_board_filter() {
 
     let state = Arc::new(AppState {
         pool: pool.clone(),
+        redis: None,
         config,
         auth_mode: riley_leaderboards_api::auth::AuthMode::NoAuth,
         sync_mutex: tokio::sync::Mutex::new(()),
@@ -5102,6 +5136,7 @@ async fn outbound_webhook_fires_on_board_delete() {
             max_connections: 2,
             schema: Some(schema.to_string()),
         },
+        redis: None,
         auth: None,
         sync: None,
         webhooks: vec![riley_leaderboards_core::config::WebhookConfig {
@@ -5117,6 +5152,7 @@ async fn outbound_webhook_fires_on_board_delete() {
 
     let state = Arc::new(AppState {
         pool: pool.clone(),
+        redis: None,
         config,
         auth_mode: riley_leaderboards_api::auth::AuthMode::NoAuth,
         sync_mutex: tokio::sync::Mutex::new(()),
