@@ -149,8 +149,13 @@ struct JwkEntry {
     kid: Option<String>,
     kty: String,
     alg: Option<String>,
+    // RSA fields
     n: Option<String>,
     e: Option<String>,
+    // EC / EdDSA fields
+    crv: Option<String>,
+    x: Option<String>,
+    y: Option<String>,
 }
 
 impl JwksCache {
@@ -235,23 +240,46 @@ impl JwksCache {
     }
 }
 
-/// Parse a JWK entry into a DecodingKey + Algorithm. Only RSA keys are supported.
+/// Parse a JWK entry into a DecodingKey + Algorithm.
+/// Supports RSA (RS256/RS384/RS512), EC (ES256/ES384), and EdDSA (Ed25519).
 fn parse_jwk(jwk: &JwkEntry) -> Option<(DecodingKey, Algorithm)> {
-    if jwk.kty != "RSA" {
-        return None;
+    match jwk.kty.as_str() {
+        "RSA" => {
+            let n = jwk.n.as_ref()?;
+            let e = jwk.e.as_ref()?;
+            let key = DecodingKey::from_rsa_components(n, e).ok()?;
+            let alg = match jwk.alg.as_deref() {
+                Some("RS256") | None => Algorithm::RS256,
+                Some("RS384") => Algorithm::RS384,
+                Some("RS512") => Algorithm::RS512,
+                _ => return None,
+            };
+            Some((key, alg))
+        }
+        "EC" => {
+            let x = jwk.x.as_ref()?;
+            let y = jwk.y.as_ref()?;
+            let key = DecodingKey::from_ec_components(x, y).ok()?;
+            let alg = match jwk.crv.as_deref() {
+                Some("P-256") => Algorithm::ES256,
+                Some("P-384") => Algorithm::ES384,
+                // Infer from alg field if crv is absent
+                None => match jwk.alg.as_deref() {
+                    Some("ES256") => Algorithm::ES256,
+                    Some("ES384") => Algorithm::ES384,
+                    _ => return None,
+                },
+                _ => return None,
+            };
+            Some((key, alg))
+        }
+        "OKP" => {
+            let x = jwk.x.as_ref()?;
+            let key = DecodingKey::from_ed_components(x).ok()?;
+            Some((key, Algorithm::EdDSA))
+        }
+        _ => None,
     }
-    let n = jwk.n.as_ref()?;
-    let e = jwk.e.as_ref()?;
-
-    let key = DecodingKey::from_rsa_components(n, e).ok()?;
-    let alg = match jwk.alg.as_deref() {
-        Some("RS256") | None => Algorithm::RS256,
-        Some("RS384") => Algorithm::RS384,
-        Some("RS512") => Algorithm::RS512,
-        _ => return None,
-    };
-
-    Some((key, alg))
 }
 
 // -- JWT Claims --
