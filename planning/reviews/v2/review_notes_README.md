@@ -58,3 +58,41 @@ as deferred items:
 - Plan safety limits (max_entries, max_versions, etc.) — operational hardening
 - CASCADE FK on placements.entry_id — defense-in-depth tradeoff, accepted
 - Integration tests don't exercise Caddy deployment path — accepted gap
+
+## Phase 3: Outbound Webhooks
+
+### CLI webhook deliveries may be lost on process exit (accepted tradeoff)
+
+The CLI commands (sync, delete-board, import) use `outbound_webhooks::fire()`
+which internally calls `tokio::spawn()`. When `main()` returns, the tokio
+runtime shuts down and cancels in-flight spawned tasks. For CLI commands this
+means webhook deliveries to slow servers may be lost. This is accepted:
+webhooks are best-effort notifications, and CLI usage is infrequent. If
+reliability from CLI matters, collect JoinHandles and await them.
+
+### Board update webhook fires on no-op PATCH (accepted)
+
+A PATCH request with all null/absent fields produces a no-op UPDATE but still
+fires a `board.updated` webhook. This is cosmetically noisy but consumers
+should be idempotent. Filtering no-op updates would add complexity for minimal
+benefit.
+
+### Sync-created boards don't fire board.created webhooks (intentional)
+
+When `sync_dir()` encounters a new board, it creates it in the DB but does not
+fire a `board.created` outbound webhook. Sync primarily creates versions, and
+the `version.created` webhook fires for those. Firing `board.created` from sync
+would require refactoring the core sync module to return additional metadata
+about what was created vs. updated. Accepted as a reasonable simplification.
+
+### Webhook payload timestamp is wall-clock, not DB timestamp (accepted)
+
+`WebhookPayload.timestamp` uses `chrono::Utc::now()` at fire time, not the
+database `created_at` timestamp. The difference is milliseconds. Using DB
+timestamps would require threading timestamps through the fire() API. Accepted.
+
+### home_dir() only checks $HOME (accepted)
+
+`config.rs home_dir()` only checks the `HOME` environment variable. This
+doesn't work on Windows (which uses USERPROFILE), but the project targets
+Linux containers (Dockerfile). Accepted.
