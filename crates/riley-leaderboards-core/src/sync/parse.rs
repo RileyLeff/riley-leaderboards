@@ -3,6 +3,7 @@
 use std::path::Path;
 
 use serde::Deserialize;
+use tracing;
 
 use crate::error::{Error, Result};
 
@@ -124,7 +125,12 @@ pub fn parse_boards_dir(dir: &Path) -> Result<Vec<ParsedBoard>> {
     for entry in entries {
         let path = entry.path();
         if path.is_dir() && path.join("board.toml").exists() {
-            boards.push(parse_board_dir(&path)?);
+            match parse_board_dir(&path) {
+                Ok(board) => boards.push(board),
+                Err(e) => {
+                    tracing::warn!("skipping board directory {}: {e}", path.display());
+                }
+            }
         }
     }
 

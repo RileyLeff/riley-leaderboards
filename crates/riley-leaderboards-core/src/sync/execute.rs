@@ -106,14 +106,28 @@ async fn sync_board(
 
     let metadata = parsed.board.metadata.as_ref().map(toml_to_json);
 
-    // Create or update the board
+    // Create or update the board, tracking if ranking-critical config changed
+    let mut ranking_config_changed = false;
     let board = match boards::get_by_slug(pool, &parsed.slug).await {
         Ok(existing) => {
+            // Warn if board_type in TOML differs from DB (board_type is immutable)
+            if existing.board_type != parsed.board.board_type {
+                warn!(
+                    "board '{}': TOML board_type '{}' differs from DB '{}' (board_type is immutable, ignoring)",
+                    parsed.slug, parsed.board.board_type, existing.board_type
+                );
+            }
+
             // Update board metadata if changed
             let name_changed = existing.name != parsed.board.name;
             let sd_changed = existing.sort_direction != parsed.board.sort_direction;
             let tc_changed = existing.tier_config != tier_config;
             let meta_changed = existing.metadata != metadata;
+
+            // sort_direction and tier_config affect ranking — force a new version
+            if sd_changed || tc_changed {
+                ranking_config_changed = true;
+            }
 
             if name_changed || sd_changed || tc_changed || meta_changed {
                 let update = UpdateBoard {
@@ -173,47 +187,49 @@ async fn sync_board(
         });
     }
 
-    // Ensure all entries exist
+    // Ensure all entries exist and update metadata if changed
     let existing_entries = entries::list(pool, board.id).await?;
-    let existing_slugs: std::collections::HashSet<&str> = existing_entries
-        .iter()
-        .map(|e| e.slug.as_str())
-        .collect();
+
+    // Build a lookup map for O(1) entry access
+    let existing_entry_map: std::collections::HashMap<&str, &crate::models::Entry> =
+        existing_entries
+            .iter()
+            .map(|e| (e.slug.as_str(), e))
+            .collect();
 
     for entry in &parsed.entries {
-        if !existing_slugs.contains(entry.slug.as_str()) {
-            let create = CreateEntry {
-                slug: entry.slug.clone(),
-                name: entry.name.clone(),
-                metadata: entry.metadata.as_ref().map(toml_to_json),
-            };
-            entries::create(pool, board.id, &create).await?;
-        } else {
-            // Update existing entry if name or metadata changed
-            let existing = existing_entries
-                .iter()
-                .find(|e| e.slug == entry.slug)
-                .unwrap();
-            let new_metadata = entry.metadata.as_ref().map(toml_to_json);
-            let name_changed = existing.name != entry.name;
-            let meta_changed = existing.metadata != new_metadata;
-            if name_changed || meta_changed {
-                let update = UpdateEntry {
-                    name: if name_changed {
-                        Some(entry.name.clone())
-                    } else {
-                        None
-                    },
-                    metadata: if meta_changed {
-                        match new_metadata {
-                            Some(v) => Nullable::Value(v),
-                            None => Nullable::Null,
-                        }
-                    } else {
-                        Nullable::Absent
-                    },
+        match existing_entry_map.get(entry.slug.as_str()) {
+            None => {
+                let create = CreateEntry {
+                    slug: entry.slug.clone(),
+                    name: entry.name.clone(),
+                    metadata: entry.metadata.as_ref().map(toml_to_json),
                 };
-                entries::update(pool, board.id, &entry.slug, &update).await?;
+                entries::create(pool, board.id, &create).await?;
+            }
+            Some(existing) => {
+                // Update existing entry if name or metadata changed
+                let new_metadata = entry.metadata.as_ref().map(toml_to_json);
+                let name_changed = existing.name != entry.name;
+                let meta_changed = existing.metadata != new_metadata;
+                if name_changed || meta_changed {
+                    let update = UpdateEntry {
+                        name: if name_changed {
+                            Some(entry.name.clone())
+                        } else {
+                            None
+                        },
+                        metadata: if meta_changed {
+                            match new_metadata {
+                                Some(v) => Nullable::Value(v),
+                                None => Nullable::Null,
+                            }
+                        } else {
+                            Nullable::Absent
+                        },
+                    };
+                    entries::update(pool, board.id, &entry.slug, &update).await?;
+                }
             }
         }
     }
@@ -231,11 +247,22 @@ async fn sync_board(
         })
         .collect();
 
-    // Check if a new version is needed by diffing against the latest
-    let needs_version = match versions::get_latest(pool, board.id).await {
-        Ok(latest) => placements_changed(&latest.placements, &placements),
-        Err(Error::NotFound(_)) => true, // No versions yet
-        Err(e) => return Err(e),
+    // Check if a new version is needed by diffing against the latest.
+    // Force a new version if ranking-critical config (sort_direction, tier_config) changed.
+    let needs_version = if ranking_config_changed {
+        info!(
+            "board '{}': ranking config changed, forcing new version",
+            parsed.slug
+        );
+        true
+    } else {
+        match versions::get_latest(pool, board.id).await {
+            Ok(latest) => {
+                placements_changed(&board.board_type, &latest.placements, &placements)
+            }
+            Err(Error::NotFound(_)) => true, // No versions yet
+            Err(e) => return Err(e),
+        }
     };
 
     if !needs_version {
@@ -276,6 +303,7 @@ async fn sync_board(
 
 /// Compare current placements against proposed placements to detect changes.
 fn placements_changed(
+    board_type: &str,
     current: &[crate::models::PlacementWithEntry],
     proposed: &[crate::models::CreatePlacement],
 ) -> bool {
@@ -289,17 +317,26 @@ fn placements_changed(
         .map(|p| (p.entry_slug.as_str(), p))
         .collect();
 
-    for p in proposed {
+    for (idx, p) in proposed.iter().enumerate() {
         match current_map.get(p.entry_slug.as_str()) {
             None => return true, // New entry
             Some(current_p) => {
-                // Only compare position when the proposed value explicitly sets it.
-                // Scored boards omit position in TOML (None) but the DB stores
-                // derived positions (Some(N)), so comparing directly would always
-                // detect a false change.
-                if p.position.is_some() && current_p.position != p.position {
-                    return true;
+                if p.position.is_some() {
+                    // Explicit position set — compare directly
+                    if current_p.position != p.position {
+                        return true;
+                    }
+                } else if board_type == "ordered" {
+                    // Ordered board with implicit positions: derive from array
+                    // index (1-based) and compare against the DB's stored position
+                    let derived_position = Some((idx + 1) as i32);
+                    if current_p.position != derived_position {
+                        return true;
+                    }
                 }
+                // For scored/tiered boards with no explicit position, skip
+                // position comparison (positions are derived from scores/tiers)
+
                 if current_p.score != p.score {
                     return true;
                 }

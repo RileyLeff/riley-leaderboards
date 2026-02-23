@@ -85,26 +85,51 @@ pub async fn github(
         );
     }
 
-    // Check event type — only process push events
-    if let Some(event) = headers.get("x-github-event") {
-        if let Ok(event_str) = event.to_str() {
-            match event_str {
-                "push" => {} // proceed
-                "ping" => {
-                    return (
-                        StatusCode::OK,
-                        Json(serde_json::json!({ "pong": true })),
-                    );
-                }
-                _ => {
-                    return (
-                        StatusCode::OK,
-                        Json(serde_json::json!({ "ignored": true, "reason": "event type not handled" })),
-                    );
-                }
+    // Check event type — only process push events, require the header
+    let event_type = match headers.get("x-github-event") {
+        Some(event) => match event.to_str() {
+            Ok(s) => s.to_string(),
+            Err(_) => {
+                return (
+                    StatusCode::BAD_REQUEST,
+                    Json(serde_json::json!({ "error": "invalid X-GitHub-Event header" })),
+                );
             }
+        },
+        None => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({ "error": "missing X-GitHub-Event header" })),
+            );
+        }
+    };
+
+    match event_type.as_str() {
+        "push" => {} // proceed
+        "ping" => {
+            return (
+                StatusCode::OK,
+                Json(serde_json::json!({ "pong": true })),
+            );
+        }
+        _ => {
+            return (
+                StatusCode::OK,
+                Json(serde_json::json!({ "ignored": true, "reason": "event type not handled" })),
+            );
         }
     }
+
+    // Parse the JSON body once for ref and commit message extraction
+    let payload: serde_json::Value = match serde_json::from_slice(&body) {
+        Ok(v) => v,
+        Err(_) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({ "error": "invalid JSON payload" })),
+            );
+        }
+    };
 
     // Check branch — only sync pushes to the configured branch
     let expected_branch = state
@@ -114,7 +139,7 @@ pub async fn github(
         .and_then(|s| s.sync_branch.as_deref())
         .unwrap_or("main");
 
-    if let Some(push_ref) = extract_ref(&body) {
+    if let Some(push_ref) = payload.get("ref").and_then(|r| r.as_str()) {
         let expected_ref = format!("refs/heads/{expected_branch}");
         if push_ref != expected_ref {
             tracing::info!("ignoring push to {push_ref} (expected {expected_ref})");
@@ -152,8 +177,12 @@ pub async fn github(
         }
     }
 
-    // Parse the push event to extract the commit message for the version note
-    let note = extract_commit_message(&body);
+    // Extract the commit message for the version note
+    let note = payload
+        .get("head_commit")
+        .and_then(|hc| hc.get("message"))
+        .and_then(|m| m.as_str())
+        .map(|s| s.to_string());
 
     // Run sync
     match riley_leaderboards_core::sync::execute::sync_dir(
@@ -207,21 +236,3 @@ fn verify_signature(secret: &str, body: &[u8], signature: &str) -> bool {
     mac.verify_slice(&expected_bytes).is_ok()
 }
 
-/// Extract the `ref` field from a GitHub push event payload.
-fn extract_ref(body: &[u8]) -> Option<String> {
-    let payload: serde_json::Value = serde_json::from_slice(body).ok()?;
-    payload
-        .get("ref")
-        .and_then(|r| r.as_str())
-        .map(|s| s.to_string())
-}
-
-/// Extract the head commit message from a GitHub push event payload.
-fn extract_commit_message(body: &[u8]) -> Option<String> {
-    let payload: serde_json::Value = serde_json::from_slice(body).ok()?;
-    payload
-        .get("head_commit")
-        .and_then(|hc| hc.get("message"))
-        .and_then(|m| m.as_str())
-        .map(|s| s.to_string())
-}
