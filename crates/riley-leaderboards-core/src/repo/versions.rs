@@ -12,6 +12,12 @@ pub async fn create(
     board: &Board,
     input: &CreateVersion,
 ) -> Result<VersionWithPlacements> {
+    if board.accumulative {
+        return Err(Error::Validation(
+            "cannot create versions directly on accumulative boards; use POST /boards/:slug/snapshot instead".to_string(),
+        ));
+    }
+
     // Pre-validate with the snapshot we have (fast-fail before opening a tx).
     validate_placements(board, &input.placements)?;
 

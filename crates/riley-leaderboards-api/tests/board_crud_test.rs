@@ -1953,3 +1953,430 @@ async fn reference_label_too_long_returns_400() {
 
     cleanup(&state, schema).await;
 }
+
+// ── Phase 5: Accumulative Boards ──────────────────────────────────────
+
+#[tokio::test]
+async fn accumulative_score_submit_and_snapshot() {
+    let schema = "test_accum_basic";
+    let (state, app) = setup(schema).await;
+
+    // Create accumulative scored board
+    app.clone().oneshot(json_request(
+        "POST",
+        "/boards",
+        Some(serde_json::json!({
+            "slug": "forest-royale",
+            "name": "Forest Royale High Scores",
+            "board_type": "scored",
+            "accumulative": true,
+            "sort_direction": "desc"
+        })),
+    )).await.unwrap();
+
+    // Submit scores (creates entries automatically)
+    let resp = app.clone().oneshot(json_request(
+        "POST",
+        "/boards/forest-royale/scores",
+        Some(serde_json::json!({
+            "entry_slug": "rileyleff",
+            "entry_name": "rileyleff",
+            "score": 847.0
+        })),
+    )).await.unwrap();
+    assert_eq!(resp.status(), 200);
+    let score = json_body(resp).await;
+    assert_eq!(score["score"], 847.0);
+
+    app.clone().oneshot(json_request(
+        "POST",
+        "/boards/forest-royale/scores",
+        Some(serde_json::json!({
+            "entry_slug": "alice",
+            "entry_name": "Alice",
+            "score": 1200.0
+        })),
+    )).await.unwrap();
+
+    app.clone().oneshot(json_request(
+        "POST",
+        "/boards/forest-royale/scores",
+        Some(serde_json::json!({
+            "entry_slug": "bob",
+            "entry_name": "Bob",
+            "score": 500.0
+        })),
+    )).await.unwrap();
+
+    // Snapshot
+    let resp = app.clone().oneshot(json_request(
+        "POST",
+        "/boards/forest-royale/snapshot",
+        Some(serde_json::json!({
+            "note": "Daily standings"
+        })),
+    )).await.unwrap();
+    assert_eq!(resp.status(), 201);
+    let version = json_body(resp).await;
+    assert_eq!(version["version_number"], 1);
+    assert_eq!(version["note"], "Daily standings");
+    let placements = version["placements"].as_array().unwrap();
+    assert_eq!(placements.len(), 3);
+
+    // desc: Alice (1200) #1, rileyleff (847) #2, Bob (500) #3
+    assert_eq!(placements[0]["entry_slug"], "alice");
+    assert_eq!(placements[0]["position"], 1);
+    assert_eq!(placements[0]["score"], 1200.0);
+    assert_eq!(placements[1]["entry_slug"], "rileyleff");
+    assert_eq!(placements[1]["position"], 2);
+    assert_eq!(placements[2]["entry_slug"], "bob");
+    assert_eq!(placements[2]["position"], 3);
+
+    // Entries were auto-created — list should show them
+    let resp = app.clone().oneshot(json_request(
+        "GET",
+        "/boards/forest-royale/entries",
+        None,
+    )).await.unwrap();
+    let entries = json_body(resp).await;
+    assert_eq!(entries.as_array().unwrap().len(), 3);
+
+    cleanup(&state, schema).await;
+}
+
+#[tokio::test]
+async fn accumulative_score_upsert_behavior() {
+    let schema = "test_accum_upsert";
+    let (state, app) = setup(schema).await;
+
+    app.clone().oneshot(json_request(
+        "POST",
+        "/boards",
+        Some(serde_json::json!({
+            "slug": "board",
+            "name": "Board",
+            "board_type": "scored",
+            "accumulative": true
+        })),
+    )).await.unwrap();
+
+    // Submit initial score
+    app.clone().oneshot(json_request(
+        "POST",
+        "/boards/board/scores",
+        Some(serde_json::json!({
+            "entry_slug": "player",
+            "entry_name": "Player",
+            "score": 100.0
+        })),
+    )).await.unwrap();
+
+    // Submit higher score — should overwrite
+    let resp = app.clone().oneshot(json_request(
+        "POST",
+        "/boards/board/scores",
+        Some(serde_json::json!({
+            "entry_slug": "player",
+            "entry_name": "Player",
+            "score": 999.0
+        })),
+    )).await.unwrap();
+    assert_eq!(resp.status(), 200);
+    let score = json_body(resp).await;
+    assert_eq!(score["score"], 999.0);
+
+    // Snapshot should use latest score
+    let resp = app.clone().oneshot(json_request(
+        "POST",
+        "/boards/board/snapshot",
+        Some(serde_json::json!({})),
+    )).await.unwrap();
+    assert_eq!(resp.status(), 201);
+    let version = json_body(resp).await;
+    assert_eq!(version["placements"][0]["score"], 999.0);
+
+    cleanup(&state, schema).await;
+}
+
+#[tokio::test]
+async fn accumulative_asc_sort_direction() {
+    let schema = "test_accum_asc";
+    let (state, app) = setup(schema).await;
+
+    app.clone().oneshot(json_request(
+        "POST",
+        "/boards",
+        Some(serde_json::json!({
+            "slug": "golf",
+            "name": "Golf",
+            "board_type": "scored",
+            "accumulative": true,
+            "sort_direction": "asc"
+        })),
+    )).await.unwrap();
+
+    for (slug, name, score) in [("alice", "Alice", 72.0), ("bob", "Bob", 68.0)] {
+        app.clone().oneshot(json_request(
+            "POST",
+            "/boards/golf/scores",
+            Some(serde_json::json!({
+                "entry_slug": slug,
+                "entry_name": name,
+                "score": score
+            })),
+        )).await.unwrap();
+    }
+
+    let resp = app.clone().oneshot(json_request(
+        "POST",
+        "/boards/golf/snapshot",
+        Some(serde_json::json!({})),
+    )).await.unwrap();
+    let version = json_body(resp).await;
+    let placements = version["placements"].as_array().unwrap();
+
+    // asc: Bob (68) #1, Alice (72) #2
+    let bob = placements.iter().find(|p| p["entry_slug"] == "bob").unwrap();
+    let alice = placements.iter().find(|p| p["entry_slug"] == "alice").unwrap();
+    assert_eq!(bob["position"], 1);
+    assert_eq!(alice["position"], 2);
+
+    cleanup(&state, schema).await;
+}
+
+#[tokio::test]
+async fn accumulative_score_on_non_accumulative_returns_400() {
+    let schema = "test_accum_reject_curated";
+    let (state, app) = setup(schema).await;
+
+    app.clone().oneshot(json_request(
+        "POST",
+        "/boards",
+        Some(serde_json::json!({
+            "slug": "board",
+            "name": "Board",
+            "board_type": "ordered"
+        })),
+    )).await.unwrap();
+
+    // Score submission on non-accumulative board should fail
+    let resp = app.clone().oneshot(json_request(
+        "POST",
+        "/boards/board/scores",
+        Some(serde_json::json!({
+            "entry_slug": "x",
+            "entry_name": "X",
+            "score": 100.0
+        })),
+    )).await.unwrap();
+    assert_eq!(resp.status(), 400);
+    let body = json_body(resp).await;
+    assert!(body["error"].as_str().unwrap().contains("accumulative"));
+
+    // Snapshot on non-accumulative board should fail
+    let resp = app.clone().oneshot(json_request(
+        "POST",
+        "/boards/board/snapshot",
+        Some(serde_json::json!({})),
+    )).await.unwrap();
+    assert_eq!(resp.status(), 400);
+
+    cleanup(&state, schema).await;
+}
+
+#[tokio::test]
+async fn accumulative_version_create_rejected() {
+    let schema = "test_accum_no_version";
+    let (state, app) = setup(schema).await;
+
+    app.clone().oneshot(json_request(
+        "POST",
+        "/boards",
+        Some(serde_json::json!({
+            "slug": "board",
+            "name": "Board",
+            "board_type": "scored",
+            "accumulative": true
+        })),
+    )).await.unwrap();
+
+    // Submit a score to create an entry
+    app.clone().oneshot(json_request(
+        "POST",
+        "/boards/board/scores",
+        Some(serde_json::json!({
+            "entry_slug": "player",
+            "entry_name": "Player",
+            "score": 100.0
+        })),
+    )).await.unwrap();
+
+    // Direct version creation should be rejected on accumulative boards
+    let resp = app.clone().oneshot(json_request(
+        "POST",
+        "/boards/board/versions",
+        Some(serde_json::json!({
+            "placements": [
+                { "entry_slug": "player", "score": 100.0 }
+            ]
+        })),
+    )).await.unwrap();
+    assert_eq!(resp.status(), 400);
+    let body = json_body(resp).await;
+    assert!(body["error"].as_str().unwrap().contains("accumulative"));
+
+    cleanup(&state, schema).await;
+}
+
+#[tokio::test]
+async fn accumulative_snapshot_no_scores_returns_400() {
+    let schema = "test_accum_empty_snap";
+    let (state, app) = setup(schema).await;
+
+    app.clone().oneshot(json_request(
+        "POST",
+        "/boards",
+        Some(serde_json::json!({
+            "slug": "board",
+            "name": "Board",
+            "board_type": "scored",
+            "accumulative": true
+        })),
+    )).await.unwrap();
+
+    // Snapshot with no scores should fail
+    let resp = app.clone().oneshot(json_request(
+        "POST",
+        "/boards/board/snapshot",
+        Some(serde_json::json!({})),
+    )).await.unwrap();
+    assert_eq!(resp.status(), 400);
+    let body = json_body(resp).await;
+    assert!(body["error"].as_str().unwrap().contains("no accumulated scores"));
+
+    cleanup(&state, schema).await;
+}
+
+#[tokio::test]
+async fn accumulative_multiple_snapshots() {
+    let schema = "test_accum_multi_snap";
+    let (state, app) = setup(schema).await;
+
+    app.clone().oneshot(json_request(
+        "POST",
+        "/boards",
+        Some(serde_json::json!({
+            "slug": "board",
+            "name": "Board",
+            "board_type": "scored",
+            "accumulative": true
+        })),
+    )).await.unwrap();
+
+    // Submit scores
+    app.clone().oneshot(json_request(
+        "POST",
+        "/boards/board/scores",
+        Some(serde_json::json!({
+            "entry_slug": "a",
+            "entry_name": "A",
+            "score": 100.0
+        })),
+    )).await.unwrap();
+
+    // First snapshot
+    let resp = app.clone().oneshot(json_request(
+        "POST",
+        "/boards/board/snapshot",
+        Some(serde_json::json!({ "note": "snap 1" })),
+    )).await.unwrap();
+    assert_eq!(resp.status(), 201);
+    let v1 = json_body(resp).await;
+    assert_eq!(v1["version_number"], 1);
+
+    // Update score and add new player
+    app.clone().oneshot(json_request(
+        "POST",
+        "/boards/board/scores",
+        Some(serde_json::json!({
+            "entry_slug": "a",
+            "entry_name": "A",
+            "score": 200.0
+        })),
+    )).await.unwrap();
+
+    app.clone().oneshot(json_request(
+        "POST",
+        "/boards/board/scores",
+        Some(serde_json::json!({
+            "entry_slug": "b",
+            "entry_name": "B",
+            "score": 150.0
+        })),
+    )).await.unwrap();
+
+    // Second snapshot — scores persist (not cleared)
+    let resp = app.clone().oneshot(json_request(
+        "POST",
+        "/boards/board/snapshot",
+        Some(serde_json::json!({ "note": "snap 2" })),
+    )).await.unwrap();
+    assert_eq!(resp.status(), 201);
+    let v2 = json_body(resp).await;
+    assert_eq!(v2["version_number"], 2);
+    let placements = v2["placements"].as_array().unwrap();
+    assert_eq!(placements.len(), 2);
+    // A has updated score of 200
+    assert_eq!(placements[0]["entry_slug"], "a");
+    assert_eq!(placements[0]["score"], 200.0);
+    assert_eq!(placements[0]["position"], 1);
+    assert_eq!(placements[1]["entry_slug"], "b");
+    assert_eq!(placements[1]["score"], 150.0);
+
+    // Version listing should show both
+    let resp = app.clone().oneshot(json_request(
+        "GET",
+        "/boards/board/versions",
+        None,
+    )).await.unwrap();
+    let versions = json_body(resp).await;
+    assert_eq!(versions.as_array().unwrap().len(), 2);
+
+    cleanup(&state, schema).await;
+}
+
+#[tokio::test]
+async fn accumulative_board_delete_cascades() {
+    let schema = "test_accum_cascade";
+    let (state, app) = setup(schema).await;
+
+    app.clone().oneshot(json_request(
+        "POST",
+        "/boards",
+        Some(serde_json::json!({
+            "slug": "board",
+            "name": "Board",
+            "board_type": "scored",
+            "accumulative": true
+        })),
+    )).await.unwrap();
+
+    app.clone().oneshot(json_request(
+        "POST",
+        "/boards/board/scores",
+        Some(serde_json::json!({
+            "entry_slug": "player",
+            "entry_name": "Player",
+            "score": 100.0
+        })),
+    )).await.unwrap();
+
+    // Delete board — accumulated_scores should cascade
+    let resp = app.clone().oneshot(json_request("DELETE", "/boards/board", None)).await.unwrap();
+    assert_eq!(resp.status(), 204);
+
+    let resp = app.clone().oneshot(json_request("GET", "/boards/board", None)).await.unwrap();
+    assert_eq!(resp.status(), 404);
+
+    cleanup(&state, schema).await;
+}

@@ -256,3 +256,26 @@ pub struct CreateReference {
     pub ref_type: String,
     pub label: Option<String>,
 }
+
+// ── Accumulated Scores ───────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+pub struct AccumulatedScore {
+    pub id: Uuid,
+    pub board_id: Uuid,
+    pub entry_id: Uuid,
+    pub score: f64,
+    pub submitted_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct SubmitScore {
+    pub entry_slug: String,
+    pub entry_name: String,
+    pub score: f64,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct SnapshotInput {
+    pub note: Option<String>,
+}

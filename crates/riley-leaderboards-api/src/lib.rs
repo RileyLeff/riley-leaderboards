@@ -63,6 +63,11 @@ fn board_routes() -> Router<Arc<AppState>> {
             "/{slug}/references/{reference_id}",
             axum::routing::delete(routes::references::delete),
         )
+        .route("/{slug}/scores", axum::routing::post(routes::scores::submit))
+        .route(
+            "/{slug}/snapshot",
+            axum::routing::post(routes::scores::snapshot),
+        )
 }
 
 async fn health(State(state): State<Arc<AppState>>) -> impl IntoResponse {
