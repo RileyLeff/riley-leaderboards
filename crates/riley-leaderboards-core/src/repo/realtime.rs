@@ -169,7 +169,6 @@ pub async fn snapshot(
         .map_err(|e| Error::ServiceUnavailable(format!("Redis error: {e}")))?;
 
     if entries_with_scores.is_empty() {
-        tx.rollback().await.map_err(Error::Database)?;
         return Err(Error::Validation(
             "no scores in Redis to snapshot".to_string(),
         ));

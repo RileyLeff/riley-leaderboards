@@ -349,7 +349,7 @@ fn placements_changed(
                 // For scored/tiered boards with no explicit position, skip
                 // position comparison (positions are derived from scores/tiers)
 
-                if !scores_equal(current_p.score, p.score) {
+                if !crate::repo::scores_equal(current_p.score, p.score) {
                     return true;
                 }
                 if current_p.tier != p.tier {
@@ -367,12 +367,3 @@ fn placements_changed(
     false
 }
 
-/// Compare two `Option<f64>` values using bitwise equality (total_cmp),
-/// which handles NaN consistently and avoids floating-point epsilon issues.
-fn scores_equal(a: Option<f64>, b: Option<f64>) -> bool {
-    match (a, b) {
-        (None, None) => true,
-        (Some(x), Some(y)) => x.to_bits() == y.to_bits(),
-        _ => false,
-    }
-}

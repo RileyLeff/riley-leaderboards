@@ -33,6 +33,16 @@ pub fn validate_slug(slug: &str) -> Result<()> {
     Ok(())
 }
 
+/// Compare two `Option<f64>` values using bitwise equality,
+/// which handles NaN consistently and avoids floating-point epsilon issues.
+pub(crate) fn scores_equal(a: Option<f64>, b: Option<f64>) -> bool {
+    match (a, b) {
+        (None, None) => true,
+        (Some(x), Some(y)) => x.to_bits() == y.to_bits(),
+        _ => false,
+    }
+}
+
 /// Validate that a name is non-empty and within a reasonable length.
 pub fn validate_name(name: &str) -> Result<()> {
     if name.is_empty() {

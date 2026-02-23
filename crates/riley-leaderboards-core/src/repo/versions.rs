@@ -336,7 +336,7 @@ pub async fn diff(
             }
             Some(from_p) => {
                 let pos_changed = from_p.position != p.position;
-                let score_changed = !scores_equal(from_p.score, p.score);
+                let score_changed = !super::scores_equal(from_p.score, p.score);
                 let tier_changed = from_p.tier != p.tier;
 
                 if pos_changed || score_changed || tier_changed {
@@ -495,12 +495,3 @@ fn validate_placements(board: &Board, placements: &[CreatePlacement]) -> Result<
     Ok(())
 }
 
-/// Compare two `Option<f64>` values using bitwise equality,
-/// which handles NaN consistently and avoids floating-point epsilon issues.
-fn scores_equal(a: Option<f64>, b: Option<f64>) -> bool {
-    match (a, b) {
-        (None, None) => true,
-        (Some(x), Some(y)) => x.to_bits() == y.to_bits(),
-        _ => false,
-    }
-}
