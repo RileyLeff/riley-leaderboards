@@ -6,8 +6,8 @@ CREATE TABLE boards (
     id uuid PRIMARY KEY DEFAULT uuidv7(),
     slug text UNIQUE NOT NULL,
     name text NOT NULL,
-    board_type text NOT NULL,
-    sort_direction text NOT NULL DEFAULT 'desc',
+    board_type text NOT NULL CHECK (board_type IN ('ordered', 'scored', 'tiered')),
+    sort_direction text NOT NULL DEFAULT 'desc' CHECK (sort_direction IN ('asc', 'desc')),
     tier_config jsonb,
     metadata jsonb,
     accumulative boolean NOT NULL DEFAULT false,
@@ -27,19 +27,15 @@ CREATE TABLE entries (
     UNIQUE (board_id, slug)
 );
 
-CREATE INDEX idx_entries_board_id ON entries(board_id);
-
 -- Versions (immutable snapshots of a board's rankings)
 CREATE TABLE versions (
     id uuid PRIMARY KEY DEFAULT uuidv7(),
     board_id uuid NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
-    version_number integer NOT NULL,
+    version_number integer NOT NULL CHECK (version_number > 0),
     note text,
     created_at timestamptz NOT NULL DEFAULT now(),
     UNIQUE (board_id, version_number)
 );
-
-CREATE INDEX idx_versions_board_id_number ON versions(board_id, version_number);
 
 -- Placements (join between entry and version)
 CREATE TABLE placements (
@@ -53,7 +49,6 @@ CREATE TABLE placements (
     UNIQUE (version_id, entry_id)
 );
 
-CREATE INDEX idx_placements_version_id ON placements(version_id);
 CREATE INDEX idx_placements_entry_id ON placements(entry_id);
 
 -- Board references (links between board versions and external contexts)
@@ -63,7 +58,7 @@ CREATE TABLE board_references (
     board_id uuid NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
     pinned_version_id uuid REFERENCES versions(id) ON DELETE SET NULL,
     uri text NOT NULL,
-    ref_type text NOT NULL,
+    ref_type text NOT NULL CHECK (ref_type IN ('embed', 'citation', 'context')),
     label text,
     created_at timestamptz NOT NULL DEFAULT now()
 );
@@ -79,5 +74,3 @@ CREATE TABLE accumulated_scores (
     submitted_at timestamptz NOT NULL DEFAULT now(),
     UNIQUE (board_id, entry_id)
 );
-
-CREATE INDEX idx_accumulated_scores_board_id ON accumulated_scores(board_id);
