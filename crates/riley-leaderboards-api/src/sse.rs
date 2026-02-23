@@ -72,8 +72,10 @@ impl EventBus {
         &self,
         board_slug: &str,
     ) -> Result<(broadcast::Receiver<SseEvent>, ConnectionGuard), CoreError> {
-        let current = self.active_connections.load(Ordering::Relaxed);
-        if current >= self.max_connections {
+        // Atomically reserve a connection slot (fetch_add first, undo if over limit)
+        let prev = self.active_connections.fetch_add(1, Ordering::AcqRel);
+        if prev >= self.max_connections {
+            self.active_connections.fetch_sub(1, Ordering::AcqRel);
             return Err(CoreError::ServiceUnavailable(
                 "SSE connection limit reached".to_string(),
             ));
@@ -90,7 +92,6 @@ impl EventBus {
             tx.subscribe()
         };
 
-        self.active_connections.fetch_add(1, Ordering::Relaxed);
         let guard = ConnectionGuard {
             counter: Arc::clone(&self.active_connections),
         };
@@ -118,7 +119,12 @@ impl EventBus {
         entry_name: String,
         score: f64,
     ) -> bool {
-        // Check debounce
+        let channels = self.channels.read().unwrap();
+        let Some(tx) = channels.get(board_slug) else {
+            return true; // No subscribers — nothing to debounce or send
+        };
+
+        // Check debounce (only when there are subscribers)
         if self.debounce_ms > 0 {
             let now = Instant::now();
             let mut last_events = self.last_score_event.write().unwrap();
@@ -130,19 +136,16 @@ impl EventBus {
             last_events.insert(board_slug.to_string(), now);
         }
 
-        let channels = self.channels.read().unwrap();
-        if let Some(tx) = channels.get(board_slug) {
-            let _ = tx.send(SseEvent::ScoreUpdated {
-                entry_slug,
-                entry_name,
-                score,
-            });
-        }
+        let _ = tx.send(SseEvent::ScoreUpdated {
+            entry_slug,
+            entry_name,
+            score,
+        });
         true
     }
 
     pub fn active_connections(&self) -> usize {
-        self.active_connections.load(Ordering::Relaxed)
+        self.active_connections.load(Ordering::Acquire)
     }
 }
 
@@ -153,7 +156,7 @@ pub struct ConnectionGuard {
 
 impl Drop for ConnectionGuard {
     fn drop(&mut self) {
-        self.counter.fetch_sub(1, Ordering::Relaxed);
+        self.counter.fetch_sub(1, Ordering::AcqRel);
     }
 }
 

@@ -265,6 +265,10 @@ pub async fn github(
                             note: note.clone(),
                         }),
                     );
+                    // Publish SSE event for live subscribers
+                    if let Some(ref event_bus) = state.event_bus {
+                        event_bus.publish_version(&r.slug, vnum, note.clone());
+                    }
                 }
             }
 
