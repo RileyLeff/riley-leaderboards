@@ -4826,3 +4826,331 @@ async fn auth_from_config_jwks_and_admin_token_mutual_exclusion() {
         "expected mutual exclusion error, got: {err_msg}"
     );
 }
+
+// ── Outbound Webhook Tests ────────────────────────────────────────────────
+
+/// Helper: start a TCP listener on a random port and return (url, receiver).
+/// The receiver yields each request body as a String.
+async fn start_webhook_receiver() -> (String, tokio::sync::mpsc::Receiver<(String, std::collections::HashMap<String, String>)>) {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let url = format!("http://{addr}/webhook");
+    let (tx, rx) = tokio::sync::mpsc::channel(16);
+
+    tokio::spawn(async move {
+        loop {
+            let Ok((mut stream, _)) = listener.accept().await else { break };
+            let tx = tx.clone();
+            tokio::spawn(async move {
+                use tokio::io::{AsyncReadExt, AsyncWriteExt};
+                let mut buf = vec![0u8; 16384];
+                let n = stream.read(&mut buf).await.unwrap_or(0);
+                let raw = String::from_utf8_lossy(&buf[..n]).to_string();
+
+                // Parse headers and body from raw HTTP
+                let mut headers = std::collections::HashMap::new();
+                let parts: Vec<&str> = raw.splitn(2, "\r\n\r\n").collect();
+                if let Some(header_section) = parts.first() {
+                    for line in header_section.lines().skip(1) {
+                        if let Some((k, v)) = line.split_once(": ") {
+                            headers.insert(k.to_lowercase(), v.to_string());
+                        }
+                    }
+                }
+                let body = parts.get(1).unwrap_or(&"").to_string();
+
+                let _ = tx.send((body, headers)).await;
+
+                // Send HTTP 200 response
+                let response = "HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n";
+                let _ = stream.write_all(response.as_bytes()).await;
+            });
+        }
+    });
+
+    (url, rx)
+}
+
+#[tokio::test]
+async fn outbound_webhook_fires_on_version_created() {
+    let schema = "test_outbound_webhook_version";
+    let (webhook_url, mut rx) = start_webhook_receiver().await;
+
+    let config = RileyLeaderboardsConfig {
+        server: None,
+        database: DatabaseConfig {
+            url: ConfigValue::new(test_db_url()),
+            max_connections: 2,
+            schema: Some(schema.to_string()),
+        },
+        auth: None,
+        sync: None,
+        webhooks: vec![riley_leaderboards_core::config::WebhookConfig {
+            url: webhook_url,
+            events: vec![riley_leaderboards_core::config::WebhookEvent::VersionCreated],
+            boards: vec![],
+            secret: None,
+        }],
+    };
+
+    let pool = db::connect(&config.database).await.expect("connect failed");
+    db::migrate(&pool).await.expect("migrate failed");
+
+    let state = Arc::new(AppState {
+        pool: pool.clone(),
+        config,
+        auth_mode: riley_leaderboards_api::auth::AuthMode::NoAuth,
+        sync_mutex: tokio::sync::Mutex::new(()),
+    });
+    let app = build_router(state);
+
+    // Create board
+    let resp = app.clone().oneshot(
+        Request::post("/boards")
+            .header("content-type", "application/json")
+            .body(Body::from(r#"{"slug":"wh-test","name":"Webhook Test","board_type":"ordered","sort_direction":"asc"}"#))
+            .unwrap(),
+    ).await.unwrap();
+    assert_eq!(resp.status(), 201);
+
+    // Create entry
+    let resp = app.clone().oneshot(
+        Request::post("/boards/wh-test/entries")
+            .header("content-type", "application/json")
+            .body(Body::from(r#"{"slug":"e1","name":"Entry 1"}"#))
+            .unwrap(),
+    ).await.unwrap();
+    assert_eq!(resp.status(), 201);
+
+    // Create version — should fire webhook
+    let resp = app.clone().oneshot(
+        Request::post("/boards/wh-test/versions")
+            .header("content-type", "application/json")
+            .body(Body::from(r#"{"placements":[{"entry_slug":"e1"}],"note":"test note"}"#))
+            .unwrap(),
+    ).await.unwrap();
+    assert_eq!(resp.status(), 201);
+
+    // Wait for webhook delivery
+    let (body, headers) = tokio::time::timeout(
+        std::time::Duration::from_secs(5),
+        rx.recv(),
+    ).await.expect("webhook timeout").expect("no webhook received");
+
+    let json: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(json["event"], "version.created");
+    assert_eq!(json["board"]["slug"], "wh-test");
+    assert_eq!(json["board"]["name"], "Webhook Test");
+    assert_eq!(json["version"]["version_number"], 1);
+    assert_eq!(json["version"]["note"], "test note");
+    assert_eq!(headers.get("content-type").unwrap(), "application/json");
+
+    cleanup_schema(&pool, schema).await;
+}
+
+/// Cleanup helper for webhook tests — drop schema and close pool.
+async fn cleanup_schema(pool: &sqlx::PgPool, schema: &str) {
+    sqlx::query(&format!("DROP SCHEMA IF EXISTS \"{}\" CASCADE", schema))
+        .execute(pool)
+        .await
+        .expect("test cleanup: failed to drop schema");
+    pool.close().await;
+}
+
+#[tokio::test]
+async fn outbound_webhook_hmac_signature() {
+    let schema = "test_outbound_webhook_hmac";
+    let (webhook_url, mut rx) = start_webhook_receiver().await;
+
+    let config = RileyLeaderboardsConfig {
+        server: None,
+        database: DatabaseConfig {
+            url: ConfigValue::new(test_db_url()),
+            max_connections: 2,
+            schema: Some(schema.to_string()),
+        },
+        auth: None,
+        sync: None,
+        webhooks: vec![riley_leaderboards_core::config::WebhookConfig {
+            url: webhook_url,
+            events: vec![riley_leaderboards_core::config::WebhookEvent::BoardCreated],
+            boards: vec![],
+            secret: Some(ConfigValue::new("test-webhook-secret")),
+        }],
+    };
+
+    let pool = db::connect(&config.database).await.expect("connect failed");
+    db::migrate(&pool).await.expect("migrate failed");
+
+    let state = Arc::new(AppState {
+        pool: pool.clone(),
+        config,
+        auth_mode: riley_leaderboards_api::auth::AuthMode::NoAuth,
+        sync_mutex: tokio::sync::Mutex::new(()),
+    });
+    let app = build_router(state);
+
+    // Create board — should fire webhook with HMAC signature
+    let resp = app.clone().oneshot(
+        Request::post("/boards")
+            .header("content-type", "application/json")
+            .body(Body::from(r#"{"slug":"hmac-test","name":"HMAC Test","board_type":"ordered","sort_direction":"asc"}"#))
+            .unwrap(),
+    ).await.unwrap();
+    assert_eq!(resp.status(), 201);
+
+    // Wait for webhook delivery
+    let (body, headers) = tokio::time::timeout(
+        std::time::Duration::from_secs(5),
+        rx.recv(),
+    ).await.expect("webhook timeout").expect("no webhook received");
+
+    // Verify signature header exists and is correct
+    let sig_header = headers.get("x-webhook-signature-256").expect("missing signature header");
+    let hex_sig = sig_header.strip_prefix("sha256=").expect("signature should start with sha256=");
+
+    // Verify HMAC
+    use hmac::{Hmac, Mac};
+    use sha2::Sha256;
+    let mut mac = Hmac::<Sha256>::new_from_slice(b"test-webhook-secret").unwrap();
+    mac.update(body.as_bytes());
+    let expected = hex::encode(mac.finalize().into_bytes());
+    assert_eq!(hex_sig, expected, "HMAC signature mismatch");
+
+    cleanup_schema(&pool, schema).await;
+}
+
+#[tokio::test]
+async fn outbound_webhook_board_filter() {
+    let schema = "test_outbound_webhook_filter";
+    let (webhook_url, mut rx) = start_webhook_receiver().await;
+
+    let config = RileyLeaderboardsConfig {
+        server: None,
+        database: DatabaseConfig {
+            url: ConfigValue::new(test_db_url()),
+            max_connections: 2,
+            schema: Some(schema.to_string()),
+        },
+        auth: None,
+        sync: None,
+        webhooks: vec![riley_leaderboards_core::config::WebhookConfig {
+            url: webhook_url,
+            events: vec![riley_leaderboards_core::config::WebhookEvent::BoardCreated],
+            boards: vec!["dc-*".to_string()],
+            secret: None,
+        }],
+    };
+
+    let pool = db::connect(&config.database).await.expect("connect failed");
+    db::migrate(&pool).await.expect("migrate failed");
+
+    let state = Arc::new(AppState {
+        pool: pool.clone(),
+        config,
+        auth_mode: riley_leaderboards_api::auth::AuthMode::NoAuth,
+        sync_mutex: tokio::sync::Mutex::new(()),
+    });
+    let app = build_router(state);
+
+    // Create board that DOES NOT match filter — should NOT fire webhook
+    let resp = app.clone().oneshot(
+        Request::post("/boards")
+            .header("content-type", "application/json")
+            .body(Body::from(r#"{"slug":"nfl-rankings","name":"NFL Rankings","board_type":"ordered","sort_direction":"asc"}"#))
+            .unwrap(),
+    ).await.unwrap();
+    assert_eq!(resp.status(), 201);
+
+    // Create board that DOES match filter — should fire webhook
+    let resp = app.clone().oneshot(
+        Request::post("/boards")
+            .header("content-type", "application/json")
+            .body(Body::from(r#"{"slug":"dc-sandwiches","name":"DC Sandwiches","board_type":"ordered","sort_direction":"asc"}"#))
+            .unwrap(),
+    ).await.unwrap();
+    assert_eq!(resp.status(), 201);
+
+    // Should receive exactly one webhook (for dc-sandwiches, not nfl-rankings)
+    let (body, _) = tokio::time::timeout(
+        std::time::Duration::from_secs(5),
+        rx.recv(),
+    ).await.expect("webhook timeout").expect("no webhook received");
+
+    let json: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(json["board"]["slug"], "dc-sandwiches");
+
+    // Verify no second webhook arrived (for nfl-rankings)
+    let result = tokio::time::timeout(
+        std::time::Duration::from_millis(500),
+        rx.recv(),
+    ).await;
+    assert!(result.is_err(), "should not have received a webhook for nfl-rankings");
+
+    cleanup_schema(&pool, schema).await;
+}
+
+#[tokio::test]
+async fn outbound_webhook_fires_on_board_delete() {
+    let schema = "test_outbound_webhook_delete";
+    let (webhook_url, mut rx) = start_webhook_receiver().await;
+
+    let config = RileyLeaderboardsConfig {
+        server: None,
+        database: DatabaseConfig {
+            url: ConfigValue::new(test_db_url()),
+            max_connections: 2,
+            schema: Some(schema.to_string()),
+        },
+        auth: None,
+        sync: None,
+        webhooks: vec![riley_leaderboards_core::config::WebhookConfig {
+            url: webhook_url,
+            events: vec![riley_leaderboards_core::config::WebhookEvent::BoardDeleted],
+            boards: vec![],
+            secret: None,
+        }],
+    };
+
+    let pool = db::connect(&config.database).await.expect("connect failed");
+    db::migrate(&pool).await.expect("migrate failed");
+
+    let state = Arc::new(AppState {
+        pool: pool.clone(),
+        config,
+        auth_mode: riley_leaderboards_api::auth::AuthMode::NoAuth,
+        sync_mutex: tokio::sync::Mutex::new(()),
+    });
+    let app = build_router(state);
+
+    // Create board (no webhook for create since we're only listening for delete)
+    let resp = app.clone().oneshot(
+        Request::post("/boards")
+            .header("content-type", "application/json")
+            .body(Body::from(r#"{"slug":"del-test","name":"Delete Test","board_type":"ordered","sort_direction":"asc"}"#))
+            .unwrap(),
+    ).await.unwrap();
+    assert_eq!(resp.status(), 201);
+
+    // Delete board — should fire webhook
+    let resp = app.clone().oneshot(
+        Request::delete("/boards/del-test")
+            .body(Body::empty())
+            .unwrap(),
+    ).await.unwrap();
+    assert_eq!(resp.status(), 204);
+
+    // Wait for webhook delivery
+    let (body, _) = tokio::time::timeout(
+        std::time::Duration::from_secs(5),
+        rx.recv(),
+    ).await.expect("webhook timeout").expect("no webhook received");
+
+    let json: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(json["event"], "board.deleted");
+    assert_eq!(json["board"]["slug"], "del-test");
+    assert_eq!(json["board"]["name"], "Delete Test");
+    assert!(json.get("version").is_none());
+
+    cleanup_schema(&pool, schema).await;
+}

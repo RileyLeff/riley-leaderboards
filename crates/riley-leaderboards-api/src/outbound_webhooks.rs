@@ -146,3 +146,117 @@ fn compute_signature(secret: &str, body: &[u8]) -> Option<String> {
     mac.update(body);
     Some(hex::encode(mac.finalize().into_bytes()))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn glob_match_exact() {
+        assert!(glob_match("dc-sandwiches", "dc-sandwiches"));
+        assert!(!glob_match("dc-sandwiches", "dc-pizza"));
+    }
+
+    #[test]
+    fn glob_match_wildcard_suffix() {
+        assert!(glob_match("dc-*", "dc-sandwiches"));
+        assert!(glob_match("dc-*", "dc-pizza"));
+        assert!(!glob_match("dc-*", "nfl-rankings"));
+    }
+
+    #[test]
+    fn glob_match_standalone_wildcard() {
+        assert!(glob_match("*", "anything"));
+        assert!(glob_match("*", ""));
+    }
+
+    #[test]
+    fn matches_board_filter_empty_matches_all() {
+        assert!(matches_board_filter(&[], "any-board"));
+    }
+
+    #[test]
+    fn matches_board_filter_with_patterns() {
+        let patterns = vec!["dc-*".to_string(), "nfl-*".to_string()];
+        assert!(matches_board_filter(&patterns, "dc-sandwiches"));
+        assert!(matches_board_filter(&patterns, "nfl-rankings"));
+        assert!(!matches_board_filter(&patterns, "mlb-standings"));
+    }
+
+    #[test]
+    fn matches_board_filter_exact_match() {
+        let patterns = vec!["dc-sandwiches".to_string()];
+        assert!(matches_board_filter(&patterns, "dc-sandwiches"));
+        assert!(!matches_board_filter(&patterns, "dc-pizza"));
+    }
+
+    #[test]
+    fn compute_signature_produces_hex() {
+        let sig = compute_signature("test-secret", b"hello world").unwrap();
+        // Verify it's valid hex of the right length (64 chars = 32 bytes = SHA256)
+        assert_eq!(sig.len(), 64);
+        assert!(sig.chars().all(|c| c.is_ascii_hexdigit()));
+    }
+
+    #[test]
+    fn compute_signature_is_deterministic() {
+        let sig1 = compute_signature("secret", b"payload").unwrap();
+        let sig2 = compute_signature("secret", b"payload").unwrap();
+        assert_eq!(sig1, sig2);
+    }
+
+    #[test]
+    fn compute_signature_differs_with_different_secrets() {
+        let sig1 = compute_signature("secret-1", b"payload").unwrap();
+        let sig2 = compute_signature("secret-2", b"payload").unwrap();
+        assert_ne!(sig1, sig2);
+    }
+
+    #[test]
+    fn payload_serialization_version_created() {
+        let payload = WebhookPayload {
+            event: "version.created",
+            timestamp: "2026-02-23T12:00:00Z".to_string(),
+            board: BoardInfo {
+                slug: "dc-sandwiches".to_string(),
+                name: "Best Sandwiches in DC".to_string(),
+            },
+            version: Some(VersionInfo {
+                version_number: 3,
+                note: Some("Added Mangialardo's".to_string()),
+            }),
+        };
+
+        let json: serde_json::Value = serde_json::to_value(&payload).unwrap();
+        assert_eq!(json["event"], "version.created");
+        assert_eq!(json["board"]["slug"], "dc-sandwiches");
+        assert_eq!(json["board"]["name"], "Best Sandwiches in DC");
+        assert_eq!(json["version"]["version_number"], 3);
+        assert_eq!(json["version"]["note"], "Added Mangialardo's");
+    }
+
+    #[test]
+    fn payload_serialization_board_event_no_version() {
+        let payload = WebhookPayload {
+            event: "board.created",
+            timestamp: "2026-02-23T12:00:00Z".to_string(),
+            board: BoardInfo {
+                slug: "dc-pizza".to_string(),
+                name: "Best Pizza in DC".to_string(),
+            },
+            version: None,
+        };
+
+        let json: serde_json::Value = serde_json::to_value(&payload).unwrap();
+        assert_eq!(json["event"], "board.created");
+        assert!(json.get("version").is_none()); // skip_serializing_if
+    }
+
+    #[test]
+    fn webhook_event_as_str() {
+        assert_eq!(WebhookEvent::VersionCreated.as_str(), "version.created");
+        assert_eq!(WebhookEvent::BoardCreated.as_str(), "board.created");
+        assert_eq!(WebhookEvent::BoardUpdated.as_str(), "board.updated");
+        assert_eq!(WebhookEvent::BoardDeleted.as_str(), "board.deleted");
+    }
+}
