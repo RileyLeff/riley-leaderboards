@@ -41,23 +41,26 @@ pub struct DatabaseConfig {
     pub schema: Option<String>,
 }
 
-/// A config value that supports `"env:VAR_NAME"` syntax for reading secrets
-/// from environment variables.
+/// A config value that may contain an `"env:VAR_NAME"` reference.
+///
+/// Stored as the raw string from the TOML file. Call `resolve()` to
+/// dereference env vars.
 #[derive(Debug, Clone, Deserialize)]
-#[serde(untagged)]
-pub enum ConfigValue {
-    Literal(String),
-}
+#[serde(transparent)]
+pub struct ConfigValue(String);
 
 impl ConfigValue {
+    pub fn new(s: impl Into<String>) -> Self {
+        Self(s.into())
+    }
+
     pub fn resolve(&self) -> Result<String> {
-        let ConfigValue::Literal(s) = self;
-        if let Some(var_name) = s.strip_prefix("env:") {
+        if let Some(var_name) = self.0.strip_prefix("env:") {
             std::env::var(var_name).map_err(|_| {
                 Error::Config(format!("environment variable {var_name} not set"))
             })
         } else {
-            Ok(s.clone())
+            Ok(self.0.clone())
         }
     }
 }
@@ -147,7 +150,7 @@ mod tests {
 
     #[test]
     fn config_value_resolves_literal() {
-        let val = ConfigValue::Literal("postgres://localhost/test".to_string());
+        let val = ConfigValue::new("postgres://localhost/test");
         assert_eq!(val.resolve().unwrap(), "postgres://localhost/test");
     }
 
@@ -155,14 +158,14 @@ mod tests {
     fn config_value_resolves_env() {
         // SAFETY: test runs single-threaded, no concurrent env access
         unsafe { std::env::set_var("TEST_RILEY_LB_URL", "postgres://from-env/db") };
-        let val = ConfigValue::Literal("env:TEST_RILEY_LB_URL".to_string());
+        let val = ConfigValue::new("env:TEST_RILEY_LB_URL");
         assert_eq!(val.resolve().unwrap(), "postgres://from-env/db");
         unsafe { std::env::remove_var("TEST_RILEY_LB_URL") };
     }
 
     #[test]
     fn config_value_env_missing_errors() {
-        let val = ConfigValue::Literal("env:NONEXISTENT_VAR_12345".to_string());
+        let val = ConfigValue::new("env:NONEXISTENT_VAR_12345");
         assert!(val.resolve().is_err());
     }
 

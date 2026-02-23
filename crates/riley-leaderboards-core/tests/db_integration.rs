@@ -15,7 +15,7 @@ fn test_db_url() -> String {
 
 fn make_config(schema: Option<&str>) -> DatabaseConfig {
     DatabaseConfig {
-        url: ConfigValue::Literal(test_db_url()),
+        url: ConfigValue::new(test_db_url()),
         max_connections: 2,
         schema: schema.map(String::from),
     }
@@ -64,7 +64,7 @@ async fn connect_custom_schema() {
     sqlx::query(&format!("DROP SCHEMA IF EXISTS \"{}\" CASCADE", schema_name))
         .execute(&pool)
         .await
-        .ok();
+        .expect("test cleanup: failed to drop schema");
     pool.close().await;
 }
 
@@ -108,7 +108,7 @@ async fn migrate_default_schema() {
     sqlx::query(&format!("DROP SCHEMA IF EXISTS \"{}\" CASCADE", schema_name))
         .execute(&pool)
         .await
-        .ok();
+        .expect("test cleanup: failed to drop schema");
     pool.close().await;
 }
 
@@ -163,11 +163,11 @@ async fn two_schemas_coexist() {
     sqlx::query(&format!("DROP SCHEMA IF EXISTS \"{}\" CASCADE", schema_a))
         .execute(&pool_a)
         .await
-        .ok();
+        .expect("test cleanup: failed to drop schema a");
     sqlx::query(&format!("DROP SCHEMA IF EXISTS \"{}\" CASCADE", schema_b))
         .execute(&pool_b)
         .await
-        .ok();
+        .expect("test cleanup: failed to drop schema b");
     pool_a.close().await;
     pool_b.close().await;
 }
