@@ -66,7 +66,19 @@ pub fn fire(
 
         let url = config.url.clone();
         let body = body.clone();
-        let secret = config.secret.as_ref().and_then(|cv| cv.resolve().ok());
+        let secret = match &config.secret {
+            Some(cv) => match cv.resolve() {
+                Ok(s) => Some(s),
+                Err(e) => {
+                    tracing::error!(
+                        "webhook to {}: secret resolution failed ({e}), skipping delivery",
+                        config.url
+                    );
+                    continue;
+                }
+            },
+            None => None,
+        };
 
         tokio::spawn(async move {
             deliver(&url, &body, secret.as_deref()).await;
@@ -98,17 +110,19 @@ fn glob_match(pattern: &str, value: &str) -> bool {
 }
 
 /// Deliver a webhook payload with retries.
-/// 3 attempts with exponential backoff: 1s, 5s, 25s.
+/// 3 attempts with backoff: 1s, 5s.
 /// 10 second timeout per attempt.
 async fn deliver(url: &str, body: &[u8], secret: Option<&str>) {
-    let client = reqwest::Client::new();
-    let delays = [1, 5, 25];
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(10))
+        .build()
+        .unwrap_or_default();
+    let delays = [1, 5, 0]; // 0 = final attempt, no sleep after
 
     for (attempt, delay_secs) in delays.iter().enumerate() {
         let mut request = client
             .post(url)
             .header("Content-Type", "application/json")
-            .timeout(std::time::Duration::from_secs(10))
             .body(body.to_vec());
 
         if let Some(secret) = secret {
@@ -120,6 +134,13 @@ async fn deliver(url: &str, body: &[u8], secret: Option<&str>) {
         match request.send().await {
             Ok(resp) if resp.status().is_success() => {
                 tracing::debug!("webhook delivered to {url} (attempt {})", attempt + 1);
+                return;
+            }
+            Ok(resp) if resp.status().is_client_error() => {
+                tracing::warn!(
+                    "webhook to {url} returned {} (not retrying)",
+                    resp.status()
+                );
                 return;
             }
             Ok(resp) => {
@@ -134,7 +155,9 @@ async fn deliver(url: &str, body: &[u8], secret: Option<&str>) {
             }
         }
 
-        tokio::time::sleep(std::time::Duration::from_secs(*delay_secs)).await;
+        if *delay_secs > 0 {
+            tokio::time::sleep(std::time::Duration::from_secs(*delay_secs)).await;
+        }
     }
 
     tracing::error!("webhook to {url} exhausted all retries");

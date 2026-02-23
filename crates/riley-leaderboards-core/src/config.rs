@@ -211,7 +211,34 @@ fn load_from_path(path: &Path) -> Result<RileyLeaderboardsConfig> {
     let config: RileyLeaderboardsConfig = toml::from_str(&contents).map_err(|e| {
         Error::Config(format!("failed to parse config from {}: {e}", path.display()))
     })?;
+    validate_webhook_board_patterns(&config)?;
     Ok(config)
+}
+
+/// Reject board filter patterns with `*` in unsupported positions.
+/// Only `*` as standalone or as a trailing suffix (e.g., `dc-*`) is supported.
+fn validate_webhook_board_patterns(config: &RileyLeaderboardsConfig) -> Result<()> {
+    for (i, wh) in config.webhooks.iter().enumerate() {
+        for pattern in &wh.boards {
+            if pattern == "*" {
+                continue;
+            }
+            if let Some(prefix) = pattern.strip_suffix('*') {
+                if prefix.contains('*') {
+                    return Err(Error::Config(format!(
+                        "webhooks[{i}]: board pattern \"{pattern}\" has unsupported '*' placement \
+                         (only trailing '*' is supported, e.g., \"dc-*\")"
+                    )));
+                }
+            } else if pattern.contains('*') {
+                return Err(Error::Config(format!(
+                    "webhooks[{i}]: board pattern \"{pattern}\" has unsupported '*' placement \
+                     (only trailing '*' is supported, e.g., \"dc-*\")"
+                )));
+            }
+        }
+    }
+    Ok(())
 }
 
 fn home_dir() -> Option<PathBuf> {
@@ -317,5 +344,70 @@ url = "postgres://localhost/leaderboards"
 "#;
         let config: RileyLeaderboardsConfig = toml::from_str(toml_str).unwrap();
         assert!(config.webhooks.is_empty());
+    }
+
+    #[test]
+    fn validate_webhook_board_patterns_rejects_leading_star() {
+        let config = RileyLeaderboardsConfig {
+            server: None,
+            database: DatabaseConfig {
+                url: ConfigValue::new("postgres://localhost/test"),
+                max_connections: 2,
+                schema: None,
+            },
+            auth: None,
+            sync: None,
+            webhooks: vec![WebhookConfig {
+                url: "https://example.com".to_string(),
+                events: vec![WebhookEvent::VersionCreated],
+                boards: vec!["*-rankings".to_string()],
+                secret: None,
+            }],
+        };
+        let err = validate_webhook_board_patterns(&config).unwrap_err();
+        assert!(err.to_string().contains("unsupported '*' placement"));
+    }
+
+    #[test]
+    fn validate_webhook_board_patterns_rejects_middle_star() {
+        let config = RileyLeaderboardsConfig {
+            server: None,
+            database: DatabaseConfig {
+                url: ConfigValue::new("postgres://localhost/test"),
+                max_connections: 2,
+                schema: None,
+            },
+            auth: None,
+            sync: None,
+            webhooks: vec![WebhookConfig {
+                url: "https://example.com".to_string(),
+                events: vec![WebhookEvent::VersionCreated],
+                boards: vec!["dc-*-rankings".to_string()],
+                secret: None,
+            }],
+        };
+        let err = validate_webhook_board_patterns(&config).unwrap_err();
+        assert!(err.to_string().contains("unsupported '*' placement"));
+    }
+
+    #[test]
+    fn validate_webhook_board_patterns_accepts_valid() {
+        let config = RileyLeaderboardsConfig {
+            server: None,
+            database: DatabaseConfig {
+                url: ConfigValue::new("postgres://localhost/test"),
+                max_connections: 2,
+                schema: None,
+            },
+            auth: None,
+            sync: None,
+            webhooks: vec![WebhookConfig {
+                url: "https://example.com".to_string(),
+                events: vec![WebhookEvent::VersionCreated],
+                boards: vec!["dc-*".to_string(), "*".to_string(), "exact-match".to_string()],
+                secret: None,
+            }],
+        };
+        validate_webhook_board_patterns(&config).unwrap();
     }
 }

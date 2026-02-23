@@ -137,6 +137,16 @@ async fn main() -> Result<()> {
                             "board '{}': created (version {version_number})",
                             result.slug
                         );
+                        riley_leaderboards_api::outbound_webhooks::fire(
+                            &config.webhooks,
+                            riley_leaderboards_core::config::WebhookEvent::VersionCreated,
+                            &result.slug,
+                            &result.name,
+                            Some(riley_leaderboards_api::outbound_webhooks::VersionInfo {
+                                version_number: *version_number,
+                                note: note.clone(),
+                            }),
+                        );
                     }
                     riley_leaderboards_core::sync::execute::SyncAction::Updated {
                         version_number,
@@ -144,6 +154,16 @@ async fn main() -> Result<()> {
                         tracing::info!(
                             "board '{}': updated (version {version_number})",
                             result.slug
+                        );
+                        riley_leaderboards_api::outbound_webhooks::fire(
+                            &config.webhooks,
+                            riley_leaderboards_core::config::WebhookEvent::VersionCreated,
+                            &result.slug,
+                            &result.name,
+                            Some(riley_leaderboards_api::outbound_webhooks::VersionInfo {
+                                version_number: *version_number,
+                                note: note.clone(),
+                            }),
                         );
                     }
                     riley_leaderboards_core::sync::execute::SyncAction::NoChange => {
@@ -178,7 +198,17 @@ async fn main() -> Result<()> {
         }
         Command::DeleteBoard { slug } => {
             let pool = db::connect(&config.database).await?;
+            let board = repo::boards::get_by_slug(&pool, &slug).await
+                .context("board not found")?;
+            let board_name = board.name.clone();
             repo::boards::delete(&pool, &slug).await?;
+            riley_leaderboards_api::outbound_webhooks::fire(
+                &config.webhooks,
+                riley_leaderboards_core::config::WebhookEvent::BoardDeleted,
+                &slug,
+                &board_name,
+                None,
+            );
             println!("Board '{slug}' deleted.");
         }
         Command::ListVersions { slug } => {
@@ -215,6 +245,13 @@ async fn main() -> Result<()> {
             let pool = db::connect(&config.database).await?;
             db::migrate(&pool).await?;
             repo::export::import_board(&pool, &export).await?;
+            riley_leaderboards_api::outbound_webhooks::fire(
+                &config.webhooks,
+                riley_leaderboards_core::config::WebhookEvent::BoardCreated,
+                &export.board.slug,
+                &export.board.name,
+                None,
+            );
             println!("Board '{}' imported successfully.", export.board.slug);
         }
     }
