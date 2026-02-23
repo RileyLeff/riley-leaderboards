@@ -6,8 +6,12 @@ use crate::models::{Board, BoardSummary, CreateBoard, Nullable, UpdateBoard};
 
 pub async fn create(pool: &PgPool, input: &CreateBoard) -> Result<Board> {
     super::validate_slug(&input.slug)?;
+    super::validate_name(&input.name)?;
     validate_board_type(&input.board_type)?;
     validate_sort_direction(&input.sort_direction)?;
+    if input.board_type == "tiered" {
+        validate_tier_config(input.tier_config.as_ref())?;
+    }
 
     let board = sqlx::query_as::<_, Board>(
         r#"INSERT INTO boards (slug, name, board_type, sort_direction, tier_config, metadata, accumulative)
@@ -71,11 +75,21 @@ pub async fn get_summary(pool: &PgPool, slug: &str) -> Result<BoardSummary> {
 }
 
 pub async fn update(pool: &PgPool, slug: &str, input: &UpdateBoard) -> Result<Board> {
+    if let Some(ref name) = input.name {
+        super::validate_name(name)?;
+    }
     if let Some(ref sd) = input.sort_direction {
         validate_sort_direction(sd)?;
     }
 
     let board = get_by_slug(pool, slug).await?;
+
+    // Validate tier_config shape if being set on a tiered board
+    if board.board_type == "tiered" {
+        if let Nullable::Value(ref v) = input.tier_config {
+            validate_tier_config(Some(v))?;
+        }
+    }
 
     // Build UPDATE dynamically so Nullable fields can distinguish
     // absent (keep old) from null (clear to NULL) from value (set new).
@@ -152,4 +166,42 @@ fn validate_sort_direction(sort_direction: &str) -> Result<()> {
             "invalid sort_direction '{sort_direction}': must be 'asc' or 'desc'"
         ))),
     }
+}
+
+/// Validate that tier_config has the expected shape:
+/// `{ "tiers": [{ "key": "...", "position": N }, ...] }`
+/// Each tier must have a string "key" and an integer "position".
+fn validate_tier_config(tier_config: Option<&serde_json::Value>) -> Result<()> {
+    let tc = match tier_config {
+        Some(v) => v,
+        None => return Ok(()),
+    };
+
+    let tiers = tc
+        .get("tiers")
+        .and_then(|t| t.as_array())
+        .ok_or_else(|| {
+            Error::Validation(
+                "tier_config must have a 'tiers' array".to_string(),
+            )
+        })?;
+
+    for (i, tier) in tiers.iter().enumerate() {
+        if tier.get("key").and_then(|k| k.as_str()).is_none() {
+            return Err(Error::Validation(format!(
+                "tier_config.tiers[{i}] must have a string 'key'"
+            )));
+        }
+        if tier
+            .get("position")
+            .and_then(|p| p.as_i64())
+            .is_none()
+        {
+            return Err(Error::Validation(format!(
+                "tier_config.tiers[{i}] must have an integer 'position'"
+            )));
+        }
+    }
+
+    Ok(())
 }

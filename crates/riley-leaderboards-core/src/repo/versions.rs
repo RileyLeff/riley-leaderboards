@@ -202,7 +202,7 @@ async fn derive_scored_positions(
         r#"UPDATE placements
            SET position = ranked.pos
            FROM (
-               SELECT id, ROW_NUMBER() OVER (ORDER BY score {order} NULLS LAST) AS pos
+               SELECT id, ROW_NUMBER() OVER (ORDER BY score {order} NULLS LAST, id ASC) AS pos
                FROM placements
                WHERE version_id = $1
            ) ranked
@@ -237,22 +237,22 @@ fn validate_placements(board: &Board, placements: &[CreatePlacement]) -> Result<
 
     match board.board_type.as_str() {
         "ordered" => {
-            // Ordered boards: positions are optional (derived from array order)
-            // but if provided, must be positive and unique.
+            // Ordered boards: resolve all positions (explicit or implicit from
+            // array order) then validate positivity and uniqueness across the
+            // full set. This prevents collisions between explicit and implicit.
             let mut seen_positions = std::collections::HashSet::new();
-            for p in placements {
-                if let Some(pos) = p.position {
-                    if pos < 1 {
-                        return Err(Error::Validation(format!(
-                            "position must be >= 1, got {pos} for entry '{}'",
-                            p.entry_slug
-                        )));
-                    }
-                    if !seen_positions.insert(pos) {
-                        return Err(Error::Validation(format!(
-                            "duplicate position {pos} in ordered board placements"
-                        )));
-                    }
+            for (i, p) in placements.iter().enumerate() {
+                let resolved = p.position.unwrap_or((i as i32) + 1);
+                if resolved < 1 {
+                    return Err(Error::Validation(format!(
+                        "position must be >= 1, got {resolved} for entry '{}'",
+                        p.entry_slug
+                    )));
+                }
+                if !seen_positions.insert(resolved) {
+                    return Err(Error::Validation(format!(
+                        "duplicate position {resolved} in ordered board placements"
+                    )));
                 }
             }
         }

@@ -27,3 +27,16 @@ pub fn validate_slug(slug: &str) -> Result<()> {
     }
     Ok(())
 }
+
+/// Validate that a name is non-empty and within a reasonable length.
+pub fn validate_name(name: &str) -> Result<()> {
+    if name.is_empty() {
+        return Err(Error::Validation("name must not be empty".to_string()));
+    }
+    if name.len() > 256 {
+        return Err(Error::Validation(
+            "name must be 256 characters or fewer".to_string(),
+        ));
+    }
+    Ok(())
+}

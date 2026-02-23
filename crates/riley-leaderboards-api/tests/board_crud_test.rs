@@ -1096,3 +1096,124 @@ async fn ordered_board_duplicate_positions_returns_400() {
 
     cleanup(&state, schema).await;
 }
+
+// ── Review Round 2 fix tests ─────────────────────────────────────────────
+
+#[tokio::test]
+async fn ordered_board_mixed_explicit_implicit_position_collision() {
+    let schema = "test_mixed_pos_collision";
+    let (state, app) = setup(schema).await;
+
+    // Create board and entries
+    app.clone().oneshot(json_request(
+        "POST",
+        "/boards",
+        Some(serde_json::json!({
+            "slug": "board",
+            "name": "Board",
+            "board_type": "ordered"
+        })),
+    )).await.unwrap();
+    for slug in ["a", "b"] {
+        app.clone().oneshot(json_request(
+            "POST",
+            "/boards/board/entries",
+            Some(serde_json::json!({ "slug": slug, "name": slug })),
+        )).await.unwrap();
+    }
+
+    // Entry "a" implicit position = 1, entry "b" explicit position = 1 → collision
+    let resp = app.clone().oneshot(json_request(
+        "POST",
+        "/boards/board/versions",
+        Some(serde_json::json!({
+            "placements": [
+                { "entry_slug": "a" },
+                { "entry_slug": "b", "position": 1 }
+            ]
+        })),
+    )).await.unwrap();
+    assert_eq!(resp.status(), 400);
+    let body = json_body(resp).await;
+    assert!(body["error"].as_str().unwrap().contains("duplicate position"));
+
+    cleanup(&state, schema).await;
+}
+
+#[tokio::test]
+async fn tiered_board_invalid_tier_config_shape_returns_400() {
+    let schema = "test_invalid_tier_config";
+    let (state, app) = setup(schema).await;
+
+    // Missing 'position' field in tier
+    let resp = app.clone().oneshot(json_request(
+        "POST",
+        "/boards",
+        Some(serde_json::json!({
+            "slug": "board",
+            "name": "Board",
+            "board_type": "tiered",
+            "tier_config": { "tiers": [{ "key": "s" }] }
+        })),
+    )).await.unwrap();
+    assert_eq!(resp.status(), 400);
+    let body = json_body(resp).await;
+    assert!(body["error"].as_str().unwrap().contains("integer 'position'"));
+
+    // tiers is not an array
+    let resp = app.clone().oneshot(json_request(
+        "POST",
+        "/boards",
+        Some(serde_json::json!({
+            "slug": "board2",
+            "name": "Board2",
+            "board_type": "tiered",
+            "tier_config": { "tiers": "not-an-array" }
+        })),
+    )).await.unwrap();
+    assert_eq!(resp.status(), 400);
+
+    cleanup(&state, schema).await;
+}
+
+#[tokio::test]
+async fn empty_name_returns_400() {
+    let schema = "test_empty_name";
+    let (state, app) = setup(schema).await;
+
+    // Empty board name
+    let resp = app.clone().oneshot(json_request(
+        "POST",
+        "/boards",
+        Some(serde_json::json!({
+            "slug": "board",
+            "name": "",
+            "board_type": "ordered"
+        })),
+    )).await.unwrap();
+    assert_eq!(resp.status(), 400);
+    let body = json_body(resp).await;
+    assert!(body["error"].as_str().unwrap().contains("name must not be empty"));
+
+    // Create valid board, then test empty entry name
+    app.clone().oneshot(json_request(
+        "POST",
+        "/boards",
+        Some(serde_json::json!({
+            "slug": "board",
+            "name": "Board",
+            "board_type": "ordered"
+        })),
+    )).await.unwrap();
+
+    let resp = app.clone().oneshot(json_request(
+        "POST",
+        "/boards/board/entries",
+        Some(serde_json::json!({ "slug": "entry", "name": "" })),
+    )).await.unwrap();
+    assert_eq!(resp.status(), 400);
+    let body = json_body(resp).await;
+    assert!(body["error"].as_str().unwrap().contains("name must not be empty"));
+
+    cleanup(&state, schema).await;
+}
