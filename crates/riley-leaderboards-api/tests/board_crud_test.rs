@@ -3756,3 +3756,177 @@ async fn auth_jwks_fetch_from_mock_server() {
         .unwrap();
     pool.close().await;
 }
+
+// ── Phase 8: Pagination + Export/Import ─────────────────────────────────
+
+#[tokio::test]
+async fn pagination_boards_list() {
+    let schema = "test_pagination_boards";
+    let (state, app) = setup(schema).await;
+
+    // Create 3 boards
+    for i in 0..3 {
+        let resp = app.clone().oneshot(json_request(
+            "POST", "/boards",
+            Some(serde_json::json!({
+                "slug": format!("page-b{i}"),
+                "name": format!("Page Board {i}"),
+                "board_type": "ordered"
+            })),
+        )).await.unwrap();
+        assert_eq!(resp.status(), 201, "create board {i}");
+    }
+
+    // Fetch with limit=2
+    let resp = app.clone().oneshot(json_request("GET", "/boards?limit=2", None)).await.unwrap();
+    assert_eq!(resp.status(), 200);
+    let body = json_body(resp).await;
+    let items = body["items"].as_array().unwrap();
+    assert_eq!(items.len(), 2, "first page should have 2 items");
+    assert!(body["next_cursor"].as_str().is_some(), "should have a next_cursor");
+
+    // Fetch second page using cursor
+    let cursor = body["next_cursor"].as_str().unwrap();
+    let encoded_cursor = urlencoding::encode(cursor);
+    let uri = format!("/boards?limit=2&cursor={encoded_cursor}");
+    let resp = app.clone().oneshot(json_request("GET", &uri, None)).await.unwrap();
+    assert_eq!(resp.status(), 200);
+    let body2 = json_body(resp).await;
+    let items2 = body2["items"].as_array().unwrap();
+    assert_eq!(items2.len(), 1, "second page should have 1 item");
+    assert!(body2["next_cursor"].is_null(), "no more pages");
+
+    cleanup(&state, schema).await;
+}
+
+#[tokio::test]
+async fn pagination_entries_list() {
+    let schema = "test_pagination_entries";
+    let (state, app) = setup(schema).await;
+
+    // Create board
+    let resp = app.clone().oneshot(json_request(
+        "POST", "/boards",
+        Some(serde_json::json!({
+            "slug": "paged",
+            "name": "Paged Board",
+            "board_type": "ordered"
+        })),
+    )).await.unwrap();
+    assert_eq!(resp.status(), 201);
+
+    // Create 3 entries
+    for i in 0..3 {
+        let resp = app.clone().oneshot(json_request(
+            "POST", "/boards/paged/entries",
+            Some(serde_json::json!({
+                "slug": format!("e{i}"),
+                "name": format!("Entry {i}")
+            })),
+        )).await.unwrap();
+        assert_eq!(resp.status(), 201);
+    }
+
+    // Fetch with limit=1
+    let resp = app.clone().oneshot(json_request("GET", "/boards/paged/entries?limit=1", None)).await.unwrap();
+    assert_eq!(resp.status(), 200);
+    let body = json_body(resp).await;
+    let items = body["items"].as_array().unwrap();
+    assert_eq!(items.len(), 1);
+    assert!(body["next_cursor"].as_str().is_some());
+
+    // Fetch second page
+    let cursor = body["next_cursor"].as_str().unwrap();
+    let encoded_cursor = urlencoding::encode(cursor);
+    let uri = format!("/boards/paged/entries?limit=1&cursor={encoded_cursor}");
+    let resp = app.clone().oneshot(json_request("GET", &uri, None)).await.unwrap();
+    assert_eq!(resp.status(), 200);
+    let body2 = json_body(resp).await;
+    let items2 = body2["items"].as_array().unwrap();
+    assert_eq!(items2.len(), 1);
+    assert!(body2["next_cursor"].as_str().is_some());
+
+    cleanup(&state, schema).await;
+}
+
+#[tokio::test]
+async fn export_import_round_trip() {
+    let schema = "test_export_import";
+    let (state, app) = setup(schema).await;
+
+    // Create board with entries and a version
+    let resp = app.clone().oneshot(json_request(
+        "POST", "/boards",
+        Some(serde_json::json!({
+            "slug": "export-test",
+            "name": "Export Test",
+            "board_type": "scored",
+            "sort_direction": "desc"
+        })),
+    )).await.unwrap();
+    assert_eq!(resp.status(), 201);
+
+    for i in 0..2 {
+        let resp = app.clone().oneshot(json_request(
+            "POST", "/boards/export-test/entries",
+            Some(serde_json::json!({
+                "slug": format!("exp-e{i}"),
+                "name": format!("Export Entry {i}")
+            })),
+        )).await.unwrap();
+        assert_eq!(resp.status(), 201);
+    }
+
+    // Create a version with placements
+    let resp = app.clone().oneshot(json_request(
+        "POST", "/boards/export-test/versions",
+        Some(serde_json::json!({
+            "placements": [
+                { "entry_slug": "exp-e0", "score": 100.0, "position": 1 },
+                { "entry_slug": "exp-e1", "score": 200.0, "position": 2 }
+            ]
+        })),
+    )).await.unwrap();
+    assert_eq!(resp.status(), 201);
+
+    // Export
+    let export = riley_leaderboards_core::repo::export::export_board(
+        &state.pool, "export-test",
+    ).await.expect("export failed");
+    assert_eq!(export.board.slug, "export-test");
+    assert_eq!(export.versions.len(), 1);
+    assert_eq!(export.versions[0].placements.len(), 2);
+
+    // Roundtrip: serialize → deserialize
+    let json_str = serde_json::to_string_pretty(&export).unwrap();
+    let reimported: riley_leaderboards_core::repo::export::BoardExport =
+        serde_json::from_str(&json_str).unwrap();
+    assert_eq!(reimported.board.slug, "export-test");
+
+    // Delete the original board
+    let resp = app.clone().oneshot(json_request(
+        "DELETE", "/boards/export-test", None,
+    )).await.unwrap();
+    assert_eq!(resp.status(), 204);
+
+    // Import from the deserialized export
+    riley_leaderboards_core::repo::export::import_board(&state.pool, &reimported)
+        .await.expect("import failed");
+
+    // Verify the board exists again
+    let resp = app.clone().oneshot(json_request(
+        "GET", "/boards/export-test", None,
+    )).await.unwrap();
+    assert_eq!(resp.status(), 200);
+    let body = json_body(resp).await;
+    assert_eq!(body["slug"], "export-test");
+    assert_eq!(body["board_type"], "scored");
+
+    // Verify version was imported
+    let resp = app.clone().oneshot(json_request(
+        "GET", "/boards/export-test/versions/1", None,
+    )).await.unwrap();
+    assert_eq!(resp.status(), 200);
+
+    cleanup(&state, schema).await;
+}
