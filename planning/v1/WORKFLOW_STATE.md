@@ -1,8 +1,8 @@
 # v1 Workflow State
 
-**Current Phase:** 2 — Boards + Entries + Versions (COMPLETE)
-**Current Step:** Phase 2 exhaustive review converged
-**Status:** Phase 2 complete. 39 tests passing. Exhaustive review converged (4 rounds, 0 major in R3+R4). Ready for Phase 3.
+**Current Phase:** 3 — History + Diffing (COMPLETE)
+**Current Step:** Phase 3 exhaustive review converged
+**Status:** Phase 3 complete. 46 tests passing. Exhaustive review converged (2 rounds, 0 major in R1+R2). Ready for Phase 4.
 
 ## Progress
 
@@ -24,7 +24,12 @@
 | 2 | 2.6 | Tiered board support | Done |
 | 2 | 2.7 | Tests (27 integration tests) | Done |
 | 2 | review | Exhaustive review (4 rounds, converged) | Done |
-| 3 | 3.1 | Entry history endpoint | Pending |
+| 3 | 3.1 | Entry history endpoint | Done |
+| 3 | 3.2 | Version diff endpoint | Done |
+| 3 | 3.3 | Staleness check endpoint | Done |
+| 3 | 3.4 | Tests (8 new, 46 total) | Done |
+| 3 | review | Exhaustive review (2 rounds, converged) | Done |
+| 4 | 4.1 | Reference CRUD | Pending |
 
 ## Blockers
 
@@ -32,9 +37,6 @@ None.
 
 ## Recent Activity
 
-- Phase 2 implementation: models, repo layer, API routes, error handling (08be8c5)
-- 24 integration tests covering all board types and validation (e34960e)
-- Review R1 fixes: version number race, Nullable PATCH, slug validation, tiered ordering, entry deletion check, duplicate positions (1846d97)
-- Review R2 fixes: entry deletion race (transactional), position collision detection, tier_config validation, scored tiebreaker, name validation (4a9fb51)
-- Review R3 fixes: board re-fetch in tx, i32 range check, universal position check, finite scores (f3cec4f)
-- Review R4: converged — 0 major in 2 consecutive rounds (6465578)
+- Phase 3 implementation: entry history, version diff, staleness check (1587b90)
+- Review R1 fix: diff param validation (075c312)
+- Review R2: converged — 0 major in 2 consecutive rounds
