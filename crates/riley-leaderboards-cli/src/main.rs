@@ -4,7 +4,7 @@ use std::sync::Arc;
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use riley_leaderboards_api::AppState;
-use riley_leaderboards_core::{config, db};
+use riley_leaderboards_core::{config, db, repo};
 
 #[derive(Parser)]
 #[command(name = "riley-leaderboards")]
@@ -33,6 +33,28 @@ enum Command {
         /// Version note for any boards updated during sync
         #[arg(long)]
         note: Option<String>,
+    },
+    /// List all boards
+    ListBoards,
+    /// Delete a board and all its data
+    DeleteBoard {
+        /// Board slug to delete
+        slug: String,
+    },
+    /// List versions for a board
+    ListVersions {
+        /// Board slug
+        slug: String,
+    },
+    /// Export a board as JSON (all versions with placements)
+    Export {
+        /// Board slug to export
+        slug: String,
+    },
+    /// Import a board from a JSON export file
+    Import {
+        /// Path to JSON export file
+        file: PathBuf,
     },
 }
 
@@ -134,6 +156,65 @@ async fn main() -> Result<()> {
                     }
                 }
             }
+        }
+        Command::ListBoards => {
+            let pool = db::connect_readonly(&config.database).await?;
+            let boards = repo::boards::list(&pool).await?;
+            if boards.is_empty() {
+                println!("No boards found.");
+            } else {
+                println!("{:<20} {:<10} {:<6} {:<6} {}", "SLUG", "TYPE", "SORT", "ACCUM", "NAME");
+                for b in &boards {
+                    println!(
+                        "{:<20} {:<10} {:<6} {:<6} {}",
+                        b.slug, b.board_type, b.sort_direction,
+                        if b.accumulative { "yes" } else { "no" },
+                        b.name
+                    );
+                }
+                println!("\n{} board(s)", boards.len());
+            }
+        }
+        Command::DeleteBoard { slug } => {
+            let pool = db::connect(&config.database).await?;
+            repo::boards::delete(&pool, &slug).await?;
+            println!("Board '{slug}' deleted.");
+        }
+        Command::ListVersions { slug } => {
+            let pool = db::connect_readonly(&config.database).await?;
+            let board = repo::boards::get_by_slug(&pool, &slug).await?;
+            let versions = repo::versions::list(&pool, board.id).await?;
+            if versions.is_empty() {
+                println!("No versions for board '{slug}'.");
+            } else {
+                println!("{:<8} {:<28} {}", "VERSION", "CREATED", "NOTE");
+                for v in &versions {
+                    println!(
+                        "{:<8} {:<28} {}",
+                        v.version_number,
+                        v.created_at.format("%Y-%m-%d %H:%M:%S UTC"),
+                        v.note.as_deref().unwrap_or("-")
+                    );
+                }
+                println!("\n{} version(s)", versions.len());
+            }
+        }
+        Command::Export { slug } => {
+            let pool = db::connect_readonly(&config.database).await?;
+            let export = repo::export::export_board(&pool, &slug).await?;
+            let json = serde_json::to_string_pretty(&export)
+                .context("failed to serialize export")?;
+            println!("{json}");
+        }
+        Command::Import { file } => {
+            let contents = std::fs::read_to_string(&file)
+                .with_context(|| format!("failed to read {}", file.display()))?;
+            let export: repo::export::BoardExport = serde_json::from_str(&contents)
+                .with_context(|| format!("failed to parse {}", file.display()))?;
+            let pool = db::connect(&config.database).await?;
+            db::migrate(&pool).await?;
+            repo::export::import_board(&pool, &export).await?;
+            println!("Board '{}' imported successfully.", export.board.slug);
         }
     }
 
