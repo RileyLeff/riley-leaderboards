@@ -65,6 +65,17 @@ pub async fn diff(
             "missing required query parameter 'to'".to_string(),
         ))?;
 
+    if from < 1 || to < 1 {
+        return Err(riley_leaderboards_core::error::Error::Validation(
+            "version numbers must be >= 1".to_string(),
+        ).into());
+    }
+    if from >= to {
+        return Err(riley_leaderboards_core::error::Error::Validation(
+            "'from' must be less than 'to'".to_string(),
+        ).into());
+    }
+
     let board = boards::get_by_slug(&state.pool, &board_slug).await?;
     let version_diff = versions::diff(&state.pool, board.id, from, to).await?;
     Ok(Json(version_diff))
