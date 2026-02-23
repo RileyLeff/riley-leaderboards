@@ -1,8 +1,8 @@
 # v1 Workflow State
 
-**Current Phase:** 8 — CLI + Polish (COMPLETE)
+**Current Phase:** 9 — Docker + Integration Tests (COMPLETE)
 **Current Step:** Done
-**Status:** Phase 8 complete. All implementation done, 84 tests passing, exhaustive review converged (3 rounds, 0 majors in final 2).
+**Status:** All 9 phases complete. 84 Rust integration tests + 14 Docker smoke tests passing. Exhaustive review converged (2 rounds, 0 majors in R2). Ready for deployment.
 
 ## Progress
 
@@ -55,6 +55,11 @@
 | 8 | 8.6 | Request tracing | Done |
 | 8 | 8.7 | Tests (pagination, export/import) | Done |
 | 8 | review | Exhaustive review (3 rounds, converged) | Done |
+| 9 | 9.1 | Multi-stage Dockerfile | Done |
+| 9 | 9.2 | Deploy docker-compose fragment | Done |
+| 9 | 9.3 | Integration tests (14 smoke tests) | Done |
+| 9 | 9.4 | Caddy config snippet | Done |
+| 9 | review | Exhaustive review (2 rounds, converged) | Done |
 
 ## Blockers
 
@@ -62,9 +67,8 @@ None.
 
 ## Recent Activity
 
-- Phase 8 CLI + export/import (d8c110a)
-- Phase 8 cursor-based pagination (b556791)
-- Phase 8 rate limiting, CORS, tracing (c822701)
-- Phase 8 tests: pagination + export/import round-trip (c4e6e7f)
-- Phase 8 R1 fixes: transactional import, validation, layer ordering (bbd426a)
-- Phase 8 exhaustive review converged: 3 rounds, 0 majors in final 2
+- Phase 9: Multi-stage Dockerfile (acd7c47)
+- Phase 9: Deploy docker-compose + Caddy config (616f7d9)
+- Phase 9: Integration tests + Docker config fix (a719851)
+- Phase 9 R1 major fixes: Caddy handle_path, webhook sync_mutex (392346c)
+- Phase 9 exhaustive review converged: 2 rounds, 0 majors in R2
