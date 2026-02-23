@@ -6,10 +6,14 @@ use crate::error::Result;
 
 /// Connect to Postgres with optional schema isolation.
 ///
-/// When `schema` is set to something other than "public", the pool:
-/// 1. Sets `search_path` to `{schema}, public` on every connection (so
-///    extensions like uuidv7() installed in `public` remain accessible)
-/// 2. Creates the schema if it doesn't exist
+/// When `schema` is set to something other than "public", this:
+/// 1. Creates the schema if it doesn't exist (via a one-off connection)
+/// 2. Builds the real pool with `search_path` set to `{schema}, public`
+///    on every connection (so extensions like uuidv7() installed in `public`
+///    remain accessible)
+///
+/// The schema is created *before* the pool so that `after_connect` hooks
+/// never reference a non-existent schema.
 pub async fn connect(config: &DatabaseConfig) -> Result<PgPool> {
     let url = config.url.resolve()?;
     let schema = config
@@ -17,10 +21,46 @@ pub async fn connect(config: &DatabaseConfig) -> Result<PgPool> {
         .clone()
         .unwrap_or_else(|| "public".to_string());
 
-    let mut pool_opts = PgPoolOptions::new().max_connections(config.max_connections);
+    // Ensure the schema exists before building the pool. A one-off connection
+    // guarantees the schema is there before any pooled connection's
+    // after_connect hook fires.
+    if schema != "public" {
+        let bootstrap = PgPoolOptions::new()
+            .max_connections(1)
+            .connect(&url)
+            .await?;
+        sqlx::query(&format!(
+            "CREATE SCHEMA IF NOT EXISTS {}",
+            quote_identifier(&schema)
+        ))
+        .execute(&bootstrap)
+        .await?;
+        bootstrap.close().await;
+    }
+
+    let pool = build_pool(&url, &schema, config.max_connections).await?;
+    Ok(pool)
+}
+
+/// Connect to Postgres in read-only mode (no schema creation side effects).
+///
+/// Used by commands like `validate` that should not mutate database state.
+pub async fn connect_readonly(config: &DatabaseConfig) -> Result<PgPool> {
+    let url = config.url.resolve()?;
+    let schema = config
+        .schema
+        .clone()
+        .unwrap_or_else(|| "public".to_string());
+
+    let pool = build_pool(&url, &schema, config.max_connections).await?;
+    Ok(pool)
+}
+
+async fn build_pool(url: &str, schema: &str, max_connections: u32) -> Result<PgPool> {
+    let mut pool_opts = PgPoolOptions::new().max_connections(max_connections);
 
     if schema != "public" {
-        let schema_clone = schema.clone();
+        let schema_clone = schema.to_owned();
         pool_opts = pool_opts.after_connect(move |conn, _meta| {
             let schema = schema_clone.clone();
             Box::pin(async move {
@@ -37,17 +77,7 @@ pub async fn connect(config: &DatabaseConfig) -> Result<PgPool> {
         });
     }
 
-    let pool = pool_opts.connect(&url).await?;
-
-    if schema != "public" {
-        sqlx::query(&format!(
-            "CREATE SCHEMA IF NOT EXISTS {}",
-            quote_identifier(&schema)
-        ))
-        .execute(&pool)
-        .await?;
-    }
-
+    let pool = pool_opts.connect(url).await?;
     Ok(pool)
 }
 

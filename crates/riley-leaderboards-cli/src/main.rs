@@ -40,7 +40,7 @@ async fn main() -> Result<()> {
     let cli = Cli::parse();
 
     let config = config::load_config(cli.config.as_deref())
-        .map_err(|e| anyhow::anyhow!("{e}"))?;
+        .map_err(|e| anyhow::anyhow!(e))?;
 
     match cli.command {
         Command::Serve => {
@@ -58,7 +58,7 @@ async fn main() -> Result<()> {
         }
         Command::Validate => {
             tracing::info!("config loaded successfully");
-            let pool = db::connect(&config.database).await?;
+            let pool = db::connect_readonly(&config.database).await?;
             sqlx::query("SELECT 1")
                 .execute(&pool)
                 .await
