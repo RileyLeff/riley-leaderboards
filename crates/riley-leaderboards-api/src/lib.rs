@@ -22,7 +22,8 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/health", get(health))
         .route(
             "/webhooks/github",
-            axum::routing::post(routes::webhooks::github),
+            axum::routing::post(routes::webhooks::github)
+                .layer(axum::extract::DefaultBodyLimit::max(5 * 1024 * 1024)),
         )
         .nest("/boards", board_routes())
         .with_state(state)

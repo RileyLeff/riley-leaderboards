@@ -2946,6 +2946,7 @@ async fn webhook_missing_signature_returns_400() {
         sync: Some(riley_leaderboards_core::config::SyncConfig {
             repo_path: Some("/tmp/nonexistent".to_string()),
             webhook_secret: Some(ConfigValue::new("test-secret")),
+            sync_branch: None,
         }),
     };
     let pool = db::connect(&config.database).await.expect("connect failed");
@@ -2988,6 +2989,7 @@ async fn webhook_invalid_signature_returns_401() {
         sync: Some(riley_leaderboards_core::config::SyncConfig {
             repo_path: Some("/tmp/nonexistent".to_string()),
             webhook_secret: Some(ConfigValue::new("test-secret")),
+            sync_branch: None,
         }),
     };
     let pool = db::connect(&config.database).await.expect("connect failed");
@@ -3019,10 +3021,32 @@ async fn webhook_invalid_signature_returns_401() {
 #[tokio::test]
 async fn webhook_valid_signature_triggers_sync() {
     let schema = "test_webhook_valid";
-    let tmp = create_temp_boards_dir();
 
+    // Set up a proper git repo so the webhook's git pull succeeds.
+    // Create a bare repo, clone it, add board files, commit, and push.
+    let bare_dir = tempfile::tempdir().unwrap();
+    let work_dir = tempfile::tempdir().unwrap();
+
+    // Init bare repo
+    std::process::Command::new("git")
+        .args(["init", "--bare"])
+        .current_dir(bare_dir.path())
+        .output()
+        .unwrap();
+
+    // Clone it to work_dir
+    std::process::Command::new("git")
+        .args([
+            "clone",
+            &bare_dir.path().to_string_lossy(),
+            &work_dir.path().to_string_lossy(),
+        ])
+        .output()
+        .unwrap();
+
+    // Add board files
     write_board_files(
-        tmp.path(),
+        work_dir.path(),
         "webhook-board",
         r#"
 name = "Webhook Board"
@@ -3036,6 +3060,23 @@ position = 1
 "#),
     );
 
+    // Commit and push
+    std::process::Command::new("git")
+        .args(["add", "."])
+        .current_dir(work_dir.path())
+        .output()
+        .unwrap();
+    std::process::Command::new("git")
+        .args(["commit", "-m", "init"])
+        .current_dir(work_dir.path())
+        .output()
+        .unwrap();
+    std::process::Command::new("git")
+        .args(["push"])
+        .current_dir(work_dir.path())
+        .output()
+        .unwrap();
+
     let config = RileyLeaderboardsConfig {
         server: None,
         database: DatabaseConfig {
@@ -3044,8 +3085,9 @@ position = 1
             schema: Some(schema.to_string()),
         },
         sync: Some(riley_leaderboards_core::config::SyncConfig {
-            repo_path: Some(tmp.path().to_string_lossy().to_string()),
+            repo_path: Some(work_dir.path().to_string_lossy().to_string()),
             webhook_secret: Some(ConfigValue::new("test-secret")),
+            sync_branch: None,
         }),
     };
     let pool = db::connect(&config.database).await.expect("connect failed");
@@ -3075,6 +3117,7 @@ position = 1
                 .uri("/webhooks/github")
                 .header("content-type", "application/json")
                 .header("x-hub-signature-256", &signature)
+                .header("x-github-event", "push")
                 .body(Body::from(body_bytes))
                 .unwrap(),
         )

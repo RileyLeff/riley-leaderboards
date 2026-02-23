@@ -3,10 +3,12 @@
 use std::path::Path;
 
 use sqlx::PgPool;
-use tracing::info;
+use tracing::{info, warn};
 
 use crate::error::{Error, Result};
-use crate::models::{CreateBoard, CreateEntry, CreatePlacement, CreateVersion, UpdateBoard};
+use crate::models::{
+    CreateBoard, CreateEntry, CreatePlacement, CreateVersion, Nullable, UpdateBoard, UpdateEntry,
+};
 use crate::repo::{boards, entries, versions};
 
 use super::parse::{self, ParsedBoard, toml_to_json};
@@ -24,6 +26,7 @@ pub enum SyncAction {
     Updated { version_number: i32 },
     NoChange,
     Skipped { reason: String },
+    Failed { error: String },
 }
 
 /// Sync all boards from a directory against the database.
@@ -41,8 +44,19 @@ pub async fn sync_dir(
 
     let mut results = Vec::new();
     for board in parsed {
-        let result = sync_board(pool, board, note).await?;
-        results.push(result);
+        let slug = board.slug.clone();
+        match sync_board(pool, board, note).await {
+            Ok(result) => results.push(result),
+            Err(e) => {
+                warn!("failed to sync board '{slug}': {e}");
+                results.push(BoardSyncResult {
+                    slug,
+                    action: SyncAction::Failed {
+                        error: e.to_string(),
+                    },
+                });
+            }
+        }
     }
 
     Ok(results)
@@ -75,7 +89,7 @@ async fn sync_board(
             .map(|(i, t)| {
                 let mut obj = serde_json::Map::new();
                 obj.insert("key".to_string(), serde_json::Value::String(t.key.clone()));
-                obj.insert("position".to_string(), serde_json::json!(i as i32));
+                obj.insert("position".to_string(), serde_json::json!((i + 1) as i32));
                 if let Some(ref label) = t.label {
                     obj.insert(
                         "label".to_string(),
@@ -174,6 +188,33 @@ async fn sync_board(
                 metadata: entry.metadata.as_ref().map(toml_to_json),
             };
             entries::create(pool, board.id, &create).await?;
+        } else {
+            // Update existing entry if name or metadata changed
+            let existing = existing_entries
+                .iter()
+                .find(|e| e.slug == entry.slug)
+                .unwrap();
+            let new_metadata = entry.metadata.as_ref().map(toml_to_json);
+            let name_changed = existing.name != entry.name;
+            let meta_changed = existing.metadata != new_metadata;
+            if name_changed || meta_changed {
+                let update = UpdateEntry {
+                    name: if name_changed {
+                        Some(entry.name.clone())
+                    } else {
+                        None
+                    },
+                    metadata: if meta_changed {
+                        match new_metadata {
+                            Some(v) => Nullable::Value(v),
+                            None => Nullable::Null,
+                        }
+                    } else {
+                        Nullable::Absent
+                    },
+                };
+                entries::update(pool, board.id, &entry.slug, &update).await?;
+            }
         }
     }
 
@@ -252,8 +293,11 @@ fn placements_changed(
         match current_map.get(p.entry_slug.as_str()) {
             None => return true, // New entry
             Some(current_p) => {
-                // Check if position, score, or tier changed
-                if current_p.position != p.position {
+                // Only compare position when the proposed value explicitly sets it.
+                // Scored boards omit position in TOML (None) but the DB stores
+                // derived positions (Some(N)), so comparing directly would always
+                // detect a false change.
+                if p.position.is_some() && current_p.position != p.position {
                     return true;
                 }
                 if current_p.score != p.score {

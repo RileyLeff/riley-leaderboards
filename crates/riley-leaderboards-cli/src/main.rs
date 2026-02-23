@@ -120,6 +120,9 @@ async fn main() -> Result<()> {
                     riley_leaderboards_core::sync::execute::SyncAction::Skipped { reason } => {
                         tracing::warn!("board '{}': skipped — {reason}", result.slug);
                     }
+                    riley_leaderboards_core::sync::execute::SyncAction::Failed { error } => {
+                        tracing::error!("board '{}': FAILED — {error}", result.slug);
+                    }
                 }
             }
         }

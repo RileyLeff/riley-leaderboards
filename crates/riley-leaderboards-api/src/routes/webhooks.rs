@@ -74,7 +74,7 @@ pub async fn github(
             return (
                 StatusCode::BAD_REQUEST,
                 Json(serde_json::json!({ "error": "missing X-Hub-Signature-256 header" })),
-                );
+            );
         }
     };
 
@@ -83,6 +83,73 @@ pub async fn github(
             StatusCode::UNAUTHORIZED,
             Json(serde_json::json!({ "error": "invalid signature" })),
         );
+    }
+
+    // Check event type — only process push events
+    if let Some(event) = headers.get("x-github-event") {
+        if let Ok(event_str) = event.to_str() {
+            match event_str {
+                "push" => {} // proceed
+                "ping" => {
+                    return (
+                        StatusCode::OK,
+                        Json(serde_json::json!({ "pong": true })),
+                    );
+                }
+                _ => {
+                    return (
+                        StatusCode::OK,
+                        Json(serde_json::json!({ "ignored": true, "reason": "event type not handled" })),
+                    );
+                }
+            }
+        }
+    }
+
+    // Check branch — only sync pushes to the configured branch
+    let expected_branch = state
+        .config
+        .sync
+        .as_ref()
+        .and_then(|s| s.sync_branch.as_deref())
+        .unwrap_or("main");
+
+    if let Some(push_ref) = extract_ref(&body) {
+        let expected_ref = format!("refs/heads/{expected_branch}");
+        if push_ref != expected_ref {
+            tracing::info!("ignoring push to {push_ref} (expected {expected_ref})");
+            return (
+                StatusCode::OK,
+                Json(serde_json::json!({ "ignored": true, "reason": "branch mismatch" })),
+            );
+        }
+    }
+
+    // Pull latest changes from the repository
+    let pull_result = tokio::process::Command::new("git")
+        .args(["-C", &repo_path, "pull"])
+        .output()
+        .await;
+
+    match pull_result {
+        Ok(output) if output.status.success() => {
+            tracing::info!("git pull succeeded for {repo_path}");
+        }
+        Ok(output) => {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            tracing::error!("git pull failed for {repo_path}: {stderr}");
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({ "error": "failed to update repository" })),
+            );
+        }
+        Err(e) => {
+            tracing::error!("failed to run git pull: {e}");
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({ "error": "failed to update repository" })),
+            );
+        }
     }
 
     // Parse the push event to extract the commit message for the version note
@@ -112,17 +179,23 @@ pub async fn github(
             tracing::error!("webhook sync failed: {e}");
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(serde_json::json!({ "error": format!("sync failed: {e}") })),
+                Json(serde_json::json!({ "error": "sync failed" })),
             )
         }
     }
 }
 
-/// Verify the X-Hub-Signature-256 header against the body.
+/// Verify the X-Hub-Signature-256 header against the body using the hmac
+/// crate's built-in constant-time comparison.
 fn verify_signature(secret: &str, body: &[u8], signature: &str) -> bool {
     let expected_hex = match signature.strip_prefix("sha256=") {
         Some(hex) => hex,
         None => return false,
+    };
+
+    let expected_bytes = match hex::decode(expected_hex) {
+        Ok(bytes) => bytes,
+        Err(_) => return false,
     };
 
     let mut mac = match HmacSha256::new_from_slice(secret.as_bytes()) {
@@ -131,22 +204,16 @@ fn verify_signature(secret: &str, body: &[u8], signature: &str) -> bool {
     };
     mac.update(body);
 
-    let computed = hex::encode(mac.finalize().into_bytes());
-    // Constant-time comparison via hmac's verify is better, but we've already
-    // computed the hex. Use a timing-safe comparison.
-    constant_time_eq(computed.as_bytes(), expected_hex.as_bytes())
+    mac.verify_slice(&expected_bytes).is_ok()
 }
 
-/// Constant-time byte comparison to prevent timing attacks.
-fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
-    if a.len() != b.len() {
-        return false;
-    }
-    let mut diff = 0u8;
-    for (x, y) in a.iter().zip(b.iter()) {
-        diff |= x ^ y;
-    }
-    diff == 0
+/// Extract the `ref` field from a GitHub push event payload.
+fn extract_ref(body: &[u8]) -> Option<String> {
+    let payload: serde_json::Value = serde_json::from_slice(body).ok()?;
+    payload
+        .get("ref")
+        .and_then(|r| r.as_str())
+        .map(|s| s.to_string())
 }
 
 /// Extract the head commit message from a GitHub push event payload.

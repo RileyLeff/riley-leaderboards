@@ -14,6 +14,7 @@ pub struct RileyLeaderboardsConfig {
 pub struct SyncConfig {
     pub repo_path: Option<String>,
     pub webhook_secret: Option<ConfigValue>,
+    pub sync_branch: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]

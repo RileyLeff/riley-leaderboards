@@ -8,3 +8,8 @@ behind_proxy = false
 url = "env:DATABASE_URL"               # postgres://user:pass@host/db
 max_connections = 10
 # schema = "leaderboards"              # optional, defaults to "public"
+
+# [sync]
+# repo_path = "/var/lib/leaderboards/boards"   # local checkout of boards repo
+# webhook_secret = "env:WEBHOOK_SECRET"        # GitHub webhook HMAC secret
+# sync_branch = "main"                         # only sync pushes to this branch (default: "main")

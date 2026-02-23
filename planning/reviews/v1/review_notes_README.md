@@ -148,3 +148,29 @@ is appropriate for this context.
 If an entry has accumulated_scores but no snapshots, deleting the entry
 cascade-deletes the score via FK. Consistent behavior — the entry has no
 historical data in any version.
+
+## Phase 6
+
+### Sync bypasses API layer (intentional for v1)
+The plan says sync should be an "API translator" but the implementation calls
+repo functions directly. This is a pragmatic choice for v1: no auth exists yet
+(Phase 7), no need for an HTTP client, no circular dependency issues, and no
+requirement for the API server to be running during CLI sync. When auth and rate
+limiting are added in Phases 7-8, sync operations will need to either go through
+the API or have equivalent middleware applied.
+
+### TOML parsing is permissive about unknown fields (forward-compatible)
+`BoardToml` and `EntryToml` don't use `#[serde(deny_unknown_fields)]`. Typos
+in field names are silently ignored. Trade-off: strict mode would break forward
+compatibility. The permissive behavior is intentional.
+
+### Sync is not atomic across boards (acceptable)
+If syncing the second of three boards fails, the first board's changes are
+already committed. The function logs failures and continues. This is a
+reasonable tradeoff for simplicity — the plan does not specify transactional-
+across-boards behavior.
+
+### placements_changed only compares explicitly-set positions
+For scored boards, TOML files omit position (None) but the DB stores derived
+positions (Some(N)). The diff function only compares positions when the proposed
+value explicitly sets one, preventing false change detection on every sync.
