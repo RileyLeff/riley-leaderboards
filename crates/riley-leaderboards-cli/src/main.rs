@@ -263,19 +263,15 @@ async fn main() -> Result<()> {
         }
         Command::ListCollections => {
             let pool = db::connect_readonly(&config.database).await?;
-            let params = riley_leaderboards_core::models::PaginationParams {
-                limit: Some(200),
-                cursor: None,
-            };
-            let page = repo::collections::list_paginated(&pool, &params).await?;
-            if page.items.is_empty() {
+            let collections = repo::collections::list(&pool).await?;
+            if collections.is_empty() {
                 println!("No collections found.");
             } else {
                 println!("{:<30} {}", "SLUG", "NAME");
-                for c in &page.items {
+                for c in &collections {
                     println!("{:<30} {}", c.slug, c.name);
                 }
-                println!("\n{} collection(s)", page.items.len());
+                println!("\n{} collection(s)", collections.len());
             }
         }
         Command::DeleteCollection { slug } => {

@@ -31,6 +31,14 @@ pub async fn create(pool: &PgPool, input: &CreateCollection) -> Result<Collectio
     Ok(collection)
 }
 
+pub async fn list(pool: &PgPool) -> Result<Vec<Collection>> {
+    let collections =
+        sqlx::query_as::<_, Collection>("SELECT * FROM collections ORDER BY created_at DESC")
+            .fetch_all(pool)
+            .await?;
+    Ok(collections)
+}
+
 pub async fn list_paginated(
     pool: &PgPool,
     params: &PaginationParams,
@@ -105,6 +113,11 @@ pub async fn update(pool: &PgPool, slug: &str, input: &UpdateCollection) -> Resu
 
     let collection = get_by_slug(pool, slug).await?;
 
+    // No-op guard: skip the UPDATE when nothing changed.
+    if input.name.is_none() && matches!(input.metadata, Nullable::Absent) {
+        return Ok(collection);
+    }
+
     let name = input.name.as_deref().unwrap_or(&collection.name);
     let metadata = match &input.metadata {
         Nullable::Absent => collection.metadata.as_ref(),
@@ -165,6 +178,12 @@ pub async fn add_board(
             "board '{}' is already in collection '{}'",
             input.board_slug, collection_slug
         )),
+        sqlx::Error::Database(db_err) if db_err.is_foreign_key_violation() => {
+            Error::NotFound(format!(
+                "collection '{}' or board '{}' not found",
+                collection_slug, input.board_slug
+            ))
+        }
         _ => Error::Database(e),
     })?;
 

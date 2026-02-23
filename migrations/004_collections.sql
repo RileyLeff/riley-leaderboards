@@ -15,3 +15,6 @@ CREATE TABLE collection_boards (
     display_order integer NOT NULL DEFAULT 0,
     PRIMARY KEY (collection_id, board_id)
 );
+
+-- Index for board-side lookups (e.g. ON DELETE CASCADE from boards).
+CREATE INDEX idx_collection_boards_board_id ON collection_boards(board_id);
