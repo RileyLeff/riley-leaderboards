@@ -20,7 +20,6 @@ RUN cargo build --release --bin riley-leaderboards 2>/dev/null || true
 
 # Copy actual source and build for real
 COPY crates/ crates/
-COPY migrations/ migrations/
 RUN cargo build --release --bin riley-leaderboards
 
 FROM debian:bookworm-slim
@@ -28,7 +27,7 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates git curl \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=builder /app/target/release/riley-leaderboards /usr/local/bin/
-COPY --from=builder /app/migrations/ /app/migrations/
+COPY --from=builder /app/crates/riley-leaderboards-core/migrations/ /app/migrations/
 RUN mkdir -p /etc/riley_leaderboards && \
     printf '[database]\nurl = "env:DATABASE_URL"\n' > /etc/riley_leaderboards/config.toml
 EXPOSE 8082

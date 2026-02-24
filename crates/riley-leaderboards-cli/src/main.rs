@@ -29,7 +29,7 @@ enum Command {
     Validate,
     /// Sync boards from a directory of TOML files
     Sync {
-        /// Path to boards directory (defaults to [sync] repo_path from config)
+        /// Path to boards directory (defaults to `[sync]` repo_path from config)
         path: Option<PathBuf>,
         /// Version note for any boards updated during sync
         #[arg(long)]

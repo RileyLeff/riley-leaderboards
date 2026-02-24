@@ -7,7 +7,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 rust-version = "1.88"
 license = "MIT OR Apache-2.0"
@@ -94,5 +94,5 @@ tower-http = { version = "0.6", features = ["cors", "trace"] }
 tempfile = "3"
 
 # Internal crates
-riley-leaderboards-core = { path = "crates/riley-leaderboards-core", version = "0.1.0" }
-riley-leaderboards-api = { path = "crates/riley-leaderboards-api", version = "0.1.0" }
+riley-leaderboards-core = { path = "crates/riley-leaderboards-core", version = "0.1.1" }
+riley-leaderboards-api = { path = "crates/riley-leaderboards-api", version = "0.1.1" }

@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.1.1] - 2026-02-23
+
+### Fixed
+
+- Docker build: updated migrations path after moving into core crate
+- CI: webhook test now uses explicit `--initial-branch=main` for git portability
+- CI: webhook test uses TaskTracker instead of sleep for reliable background task waiting
+- crates.io: all sub-crates now include the workspace README
+- README: added CI, crates.io, docs.rs, and license badges
+
 ## [0.1.0] - 2025-02-23
 
 ### Added

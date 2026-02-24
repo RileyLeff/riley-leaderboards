@@ -1,5 +1,10 @@
 # riley-leaderboards
 
+[![CI](https://github.com/RileyLeff/riley-leaderboards/actions/workflows/ci.yml/badge.svg)](https://github.com/RileyLeff/riley-leaderboards/actions/workflows/ci.yml)
+[![crates.io](https://img.shields.io/crates/v/riley-leaderboards-core.svg)](https://crates.io/crates/riley-leaderboards-core)
+[![docs.rs](https://docs.rs/riley-leaderboards-core/badge.svg)](https://docs.rs/riley-leaderboards-core)
+[![License: MIT OR Apache-2.0](https://img.shields.io/crates/l/riley-leaderboards-core.svg)](LICENSE-MIT)
+
 A general-purpose versioned ranking service.
 
 Most systems store a leaderboard as a flat table -- here's the current state, that's all you get. riley-leaderboards treats rankings as living documents. Every edit creates a new immutable version. You can diff between two moments, pin to a specific version, or trace a single entry's journey across all of them.
