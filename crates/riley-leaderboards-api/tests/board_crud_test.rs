@@ -3726,9 +3726,9 @@ async fn webhook_valid_signature_triggers_sync() {
     let bare_dir = tempfile::tempdir().unwrap();
     let work_dir = tempfile::tempdir().unwrap();
 
-    // Init bare repo
+    // Init bare repo with "main" as default branch (CI may default to "master")
     std::process::Command::new("git")
-        .args(["init", "--bare"])
+        .args(["init", "--bare", "--initial-branch=main"])
         .current_dir(bare_dir.path())
         .output()
         .unwrap();
@@ -3740,6 +3740,18 @@ async fn webhook_valid_signature_triggers_sync() {
             &bare_dir.path().to_string_lossy(),
             &work_dir.path().to_string_lossy(),
         ])
+        .output()
+        .unwrap();
+
+    // Configure git user for CI (no global config may exist)
+    std::process::Command::new("git")
+        .args(["config", "user.email", "test@test.com"])
+        .current_dir(work_dir.path())
+        .output()
+        .unwrap();
+    std::process::Command::new("git")
+        .args(["config", "user.name", "Test"])
+        .current_dir(work_dir.path())
         .output()
         .unwrap();
 
