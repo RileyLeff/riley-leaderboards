@@ -68,6 +68,7 @@ pub async fn create(
             note: version.version.note.clone(),
         }),
         Some(version.version.created_at),
+        Some(&state.task_tracker),
     );
 
     // Publish SSE version.created event

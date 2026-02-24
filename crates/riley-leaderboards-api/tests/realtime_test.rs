@@ -54,6 +54,7 @@ async fn setup_with_redis(schema: &str) -> (Arc<AppState>, axum::Router) {
         auth_mode: riley_leaderboards_api::auth::AuthMode::NoAuth,
         sync_mutex: tokio::sync::Mutex::new(()),
         event_bus: None,
+        task_tracker: tokio_util::task::TaskTracker::new(),
     });
     let router = build_router(state.clone());
     (state, router)
@@ -84,6 +85,7 @@ async fn setup_no_redis(schema: &str) -> (Arc<AppState>, axum::Router) {
         auth_mode: riley_leaderboards_api::auth::AuthMode::NoAuth,
         sync_mutex: tokio::sync::Mutex::new(()),
         event_bus: None,
+        task_tracker: tokio_util::task::TaskTracker::new(),
     });
     let router = build_router(state.clone());
     (state, router)

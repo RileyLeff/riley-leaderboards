@@ -127,6 +127,7 @@ async fn main() -> Result<()> {
                 auth_mode,
                 sync_mutex: tokio::sync::Mutex::new(()),
                 event_bus,
+                task_tracker: tokio_util::task::TaskTracker::new(),
             });
             riley_leaderboards_api::serve(state).await?;
         }
@@ -185,6 +186,7 @@ async fn main() -> Result<()> {
                             &result.name,
                             None,
                             None,
+                            None,
                         ));
                         webhook_handles.extend(riley_leaderboards_api::outbound_webhooks::fire(
                             &config.webhooks,
@@ -196,6 +198,7 @@ async fn main() -> Result<()> {
                                 note: note.clone(),
                             }),
                             None,
+                            None, // CLI uses join_all, no tracker needed
                         ));
                     }
                     riley_leaderboards_core::sync::execute::SyncAction::Updated {
@@ -214,6 +217,7 @@ async fn main() -> Result<()> {
                                 version_number: *version_number,
                                 note: note.clone(),
                             }),
+                            None,
                             None,
                         ));
                     }
@@ -277,6 +281,7 @@ async fn main() -> Result<()> {
                 &board_name,
                 None,
                 None,
+                None,
             );
             futures_util::future::join_all(handles).await;
             println!("Board '{slug}' deleted.");
@@ -321,6 +326,7 @@ async fn main() -> Result<()> {
                 riley_leaderboards_core::config::WebhookEvent::BoardCreated,
                 &export.board.slug,
                 &export.board.name,
+                None,
                 None,
                 None,
             );

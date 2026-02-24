@@ -267,6 +267,7 @@ pub async fn github(
                             &r.name,
                             None,
                             None,
+                            Some(&state.task_tracker),
                         );
                         // Fire version.created
                         let _ = crate::outbound_webhooks::fire(
@@ -279,6 +280,7 @@ pub async fn github(
                                 note: note.clone(),
                             }),
                             None,
+                            Some(&state.task_tracker),
                         );
                         if let Some(ref event_bus) = state.event_bus {
                             event_bus.publish_version(&r.slug, *version_number, note.clone());
@@ -295,6 +297,7 @@ pub async fn github(
                                 note: note.clone(),
                             }),
                             None,
+                            Some(&state.task_tracker),
                         );
                         if let Some(ref event_bus) = state.event_bus {
                             event_bus.publish_version(&r.slug, *version_number, note.clone());

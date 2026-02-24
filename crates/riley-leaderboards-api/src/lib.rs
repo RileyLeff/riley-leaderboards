@@ -27,6 +27,8 @@ pub struct AppState {
     pub sync_mutex: tokio::sync::Mutex<()>,
     /// SSE event bus for live board updates. None when SSE is disabled.
     pub event_bus: Option<sse::EventBus>,
+    /// Tracks in-flight background tasks (webhook delivery, etc.) for graceful shutdown.
+    pub task_tracker: tokio_util::task::TaskTracker,
 }
 
 pub fn build_router(state: Arc<AppState>) -> Router {
@@ -245,7 +247,7 @@ pub async fn serve(state: Arc<AppState>) -> anyhow::Result<()> {
         .cloned()
         .unwrap_or_default();
 
-    let app = build_router(state);
+    let app = build_router(state.clone());
 
     let addr: SocketAddr = format!("{}:{}", server_config.host, server_config.port).parse()?;
     let listener = tokio::net::TcpListener::bind(addr).await?;
@@ -254,6 +256,27 @@ pub async fn serve(state: Arc<AppState>) -> anyhow::Result<()> {
     axum::serve(listener, app)
         .with_graceful_shutdown(shutdown_signal())
         .await?;
+
+    // Drain in-flight background tasks (webhook deliveries, etc.)
+    tracing::info!("draining in-flight tasks...");
+    state.task_tracker.close();
+
+    let timeout_secs = server_config.shutdown_timeout_secs;
+    if timeout_secs == 0 {
+        state.task_tracker.wait().await;
+    } else {
+        let deadline = std::time::Duration::from_secs(timeout_secs);
+        if tokio::time::timeout(deadline, state.task_tracker.wait())
+            .await
+            .is_err()
+        {
+            tracing::warn!(
+                "shutdown timeout ({timeout_secs}s) — {} tasks still in-flight",
+                state.task_tracker.len()
+            );
+        }
+    }
+    tracing::info!("shutdown complete");
 
     Ok(())
 }

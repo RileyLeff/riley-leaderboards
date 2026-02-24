@@ -5,6 +5,7 @@ use hmac::{Hmac, Mac};
 use serde::Serialize;
 use sha2::Sha256;
 use tokio::task::JoinHandle;
+use tokio_util::task::TaskTracker;
 
 use riley_leaderboards_core::config::{WebhookConfig, WebhookEvent};
 
@@ -53,6 +54,7 @@ pub fn fire(
     board_name: &str,
     version_info: Option<VersionInfo>,
     timestamp: Option<DateTime<Utc>>,
+    tracker: Option<&TaskTracker>,
 ) -> Vec<JoinHandle<()>> {
     let ts = timestamp.unwrap_or_else(Utc::now).to_rfc3339();
     let payload = WebhookPayload {
@@ -99,9 +101,16 @@ pub fn fire(
             None => None,
         };
 
-        handles.push(tokio::spawn(async move {
-            deliver(&url, &body, secret.as_deref()).await;
-        }));
+        let handle = if let Some(tracker) = tracker {
+            tracker.spawn(async move {
+                deliver(&url, &body, secret.as_deref()).await;
+            })
+        } else {
+            tokio::spawn(async move {
+                deliver(&url, &body, secret.as_deref()).await;
+            })
+        };
+        handles.push(handle);
     }
 
     handles

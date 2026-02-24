@@ -30,6 +30,7 @@ pub async fn create(
         &board.name,
         None,
         Some(board.created_at),
+        Some(&state.task_tracker),
     );
     Ok((StatusCode::CREATED, Json(board)))
 }
@@ -80,6 +81,7 @@ pub async fn update(
         &board.name,
         None,
         Some(board.updated_at),
+        Some(&state.task_tracker),
     );
     Ok(Json(board))
 }
@@ -107,6 +109,7 @@ pub async fn delete(
         &board.name,
         None,
         None, // board is deleted, no DB timestamp to use
+        Some(&state.task_tracker),
     );
     Ok(StatusCode::NO_CONTENT)
 }

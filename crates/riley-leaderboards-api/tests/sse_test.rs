@@ -67,6 +67,7 @@ async fn setup_with_sse(schema: &str, max_connections: usize, debounce_ms: u64) 
         auth_mode: riley_leaderboards_api::auth::AuthMode::NoAuth,
         sync_mutex: tokio::sync::Mutex::new(()),
         event_bus: Some(event_bus),
+        task_tracker: tokio_util::task::TaskTracker::new(),
     });
     let router = build_router(state.clone());
     (state, router)
@@ -106,6 +107,7 @@ async fn setup_no_sse(schema: &str) -> (Arc<AppState>, axum::Router) {
         auth_mode: riley_leaderboards_api::auth::AuthMode::NoAuth,
         sync_mutex: tokio::sync::Mutex::new(()),
         event_bus: None,
+        task_tracker: tokio_util::task::TaskTracker::new(),
     });
     let router = build_router(state.clone());
     (state, router)

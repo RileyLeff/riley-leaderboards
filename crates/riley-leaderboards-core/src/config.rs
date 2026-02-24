@@ -154,6 +154,9 @@ pub struct ServerConfig {
     /// Broadcast channel buffer size per board. Default: 256.
     #[serde(default = "default_sse_broadcast_buffer")]
     pub sse_broadcast_buffer: usize,
+    /// Graceful shutdown timeout in seconds. 0 = wait indefinitely. Default: 30.
+    #[serde(default = "default_shutdown_timeout_secs")]
+    pub shutdown_timeout_secs: u64,
 }
 
 impl Default for ServerConfig {
@@ -170,6 +173,7 @@ impl Default for ServerConfig {
             sse_score_debounce_ms: default_sse_score_debounce_ms(),
             sse_timeout_secs: default_sse_timeout_secs(),
             sse_broadcast_buffer: default_sse_broadcast_buffer(),
+            shutdown_timeout_secs: default_shutdown_timeout_secs(),
         }
     }
 }
@@ -192,6 +196,10 @@ fn default_sse_timeout_secs() -> u64 {
 
 fn default_sse_broadcast_buffer() -> usize {
     256
+}
+
+fn default_shutdown_timeout_secs() -> u64 {
+    30
 }
 
 fn default_redis_key_prefix() -> String {

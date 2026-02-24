@@ -58,6 +58,7 @@ async fn setup(schema: &str) -> (Arc<AppState>, axum::Router) {
         auth_mode: riley_leaderboards_api::auth::AuthMode::NoAuth,
         sync_mutex: tokio::sync::Mutex::new(()),
         event_bus: None,
+        task_tracker: tokio_util::task::TaskTracker::new(),
     });
     let router = build_router(state.clone());
     (state, router)
@@ -2488,6 +2489,7 @@ async fn setup_with_sync(schema: &str) -> (Arc<AppState>, axum::Router) {
         auth_mode: riley_leaderboards_api::auth::AuthMode::NoAuth,
         sync_mutex: tokio::sync::Mutex::new(()),
         event_bus: None,
+        task_tracker: tokio_util::task::TaskTracker::new(),
     });
     let router = build_router(state.clone());
     (state, router)
@@ -3015,6 +3017,7 @@ async fn webhook_missing_signature_returns_400() {
         auth_mode: riley_leaderboards_api::auth::AuthMode::NoAuth,
         sync_mutex: tokio::sync::Mutex::new(()),
         event_bus: None,
+        task_tracker: tokio_util::task::TaskTracker::new(),
     });
     let app = build_router(state);
 
@@ -3069,6 +3072,7 @@ async fn webhook_invalid_signature_returns_401() {
         auth_mode: riley_leaderboards_api::auth::AuthMode::NoAuth,
         sync_mutex: tokio::sync::Mutex::new(()),
         event_bus: None,
+        task_tracker: tokio_util::task::TaskTracker::new(),
     });
     let app = build_router(state);
 
@@ -3178,6 +3182,7 @@ position = 1
         auth_mode: riley_leaderboards_api::auth::AuthMode::NoAuth,
         sync_mutex: tokio::sync::Mutex::new(()),
         event_bus: None,
+        task_tracker: tokio_util::task::TaskTracker::new(),
     });
     let app = build_router(state);
 
@@ -3314,6 +3319,7 @@ fn setup_jwt_auth_state(
         auth_mode,
         sync_mutex: tokio::sync::Mutex::new(()),
         event_bus: None,
+        task_tracker: tokio_util::task::TaskTracker::new(),
     });
     let router = build_router(state.clone());
     (state, router)
@@ -3359,6 +3365,7 @@ async fn auth_api_token_write_requires_token() {
         auth_mode,
         sync_mutex: tokio::sync::Mutex::new(()),
         event_bus: None,
+        task_tracker: tokio_util::task::TaskTracker::new(),
     });
     let app = build_router(state);
 
@@ -3806,6 +3813,7 @@ async fn auth_jwks_fetch_from_mock_server() {
         auth_mode,
         sync_mutex: tokio::sync::Mutex::new(()),
         event_bus: None,
+        task_tracker: tokio_util::task::TaskTracker::new(),
     });
     let app = build_router(state);
 
@@ -4324,6 +4332,7 @@ async fn auth_read_token_can_read_but_not_write() {
         auth_mode,
         sync_mutex: tokio::sync::Mutex::new(()),
         event_bus: None,
+        task_tracker: tokio_util::task::TaskTracker::new(),
     });
     let app = build_router(state.clone());
 
@@ -4439,6 +4448,7 @@ async fn auth_require_read_auth_blocks_unauthenticated_reads() {
         auth_mode,
         sync_mutex: tokio::sync::Mutex::new(()),
         event_bus: None,
+        task_tracker: tokio_util::task::TaskTracker::new(),
     });
     let app = build_router(state.clone());
 
@@ -4567,6 +4577,7 @@ async fn auth_jwt_read_token_can_read_but_not_write() {
         auth_mode,
         sync_mutex: tokio::sync::Mutex::new(()),
         event_bus: None,
+        task_tracker: tokio_util::task::TaskTracker::new(),
     });
     let app = build_router(state.clone());
 
@@ -4689,6 +4700,7 @@ async fn auth_jwt_require_read_auth() {
         auth_mode,
         sync_mutex: tokio::sync::Mutex::new(()),
         event_bus: None,
+        task_tracker: tokio_util::task::TaskTracker::new(),
     });
     let app = build_router(state.clone());
 
@@ -4976,6 +4988,7 @@ async fn outbound_webhook_fires_on_version_created() {
         auth_mode: riley_leaderboards_api::auth::AuthMode::NoAuth,
         sync_mutex: tokio::sync::Mutex::new(()),
         event_bus: None,
+        task_tracker: tokio_util::task::TaskTracker::new(),
     });
     let app = build_router(state);
 
@@ -5066,6 +5079,7 @@ async fn outbound_webhook_hmac_signature() {
         auth_mode: riley_leaderboards_api::auth::AuthMode::NoAuth,
         sync_mutex: tokio::sync::Mutex::new(()),
         event_bus: None,
+        task_tracker: tokio_util::task::TaskTracker::new(),
     });
     let app = build_router(state);
 
@@ -5133,6 +5147,7 @@ async fn outbound_webhook_board_filter() {
         auth_mode: riley_leaderboards_api::auth::AuthMode::NoAuth,
         sync_mutex: tokio::sync::Mutex::new(()),
         event_bus: None,
+        task_tracker: tokio_util::task::TaskTracker::new(),
     });
     let app = build_router(state);
 
@@ -5207,6 +5222,7 @@ async fn outbound_webhook_fires_on_board_delete() {
         auth_mode: riley_leaderboards_api::auth::AuthMode::NoAuth,
         sync_mutex: tokio::sync::Mutex::new(()),
         event_bus: None,
+        task_tracker: tokio_util::task::TaskTracker::new(),
     });
     let app = build_router(state);
 

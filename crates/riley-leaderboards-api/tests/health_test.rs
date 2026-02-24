@@ -43,6 +43,7 @@ async fn health_returns_ok() {
         auth_mode: riley_leaderboards_api::auth::AuthMode::NoAuth,
         sync_mutex: tokio::sync::Mutex::new(()),
         event_bus: None,
+        task_tracker: tokio_util::task::TaskTracker::new(),
     });
     let app = build_router(state);
 

@@ -10,6 +10,7 @@ behind_proxy = false
 # sse_score_debounce_ms = 1000          # min interval between score.updated events per board
 # sse_timeout_secs = 1800               # SSE connection timeout (0 = no timeout, default 30 min)
 # sse_broadcast_buffer = 256            # broadcast channel buffer size per board
+# shutdown_timeout_secs = 30            # graceful shutdown timeout for in-flight tasks (0 = wait forever)
 
 [database]
 url = "env:DATABASE_URL"               # postgres://user:pass@host/db
