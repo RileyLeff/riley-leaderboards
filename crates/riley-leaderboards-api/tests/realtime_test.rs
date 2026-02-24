@@ -10,6 +10,7 @@ use http_body_util::BodyExt;
 use riley_leaderboards_api::{AppState, build_router};
 use riley_leaderboards_core::config::{ConfigValue, DatabaseConfig, RileyLeaderboardsConfig};
 use riley_leaderboards_core::db;
+use sqlx::postgres::PgPoolOptions;
 use tower::ServiceExt;
 
 fn test_db_url() -> String {
@@ -23,7 +24,21 @@ fn test_redis_url() -> String {
         .unwrap_or_else(|_| "redis://localhost:16380".to_string())
 }
 
+/// Defensive cleanup: drop a test schema if it exists from a previous panicked run.
+async fn drop_schema_if_exists(schema: &str) {
+    let pool = PgPoolOptions::new()
+        .max_connections(1)
+        .connect(&test_db_url())
+        .await
+        .expect("bootstrap connect for cleanup failed");
+    let _ = sqlx::query(&format!("DROP SCHEMA IF EXISTS \"{}\" CASCADE", schema))
+        .execute(&pool)
+        .await;
+    pool.close().await;
+}
+
 async fn setup_with_redis(schema: &str) -> (Arc<AppState>, axum::Router) {
+    drop_schema_if_exists(schema).await;
     let config = RileyLeaderboardsConfig {
         server: None,
         database: DatabaseConfig {
@@ -61,6 +76,7 @@ async fn setup_with_redis(schema: &str) -> (Arc<AppState>, axum::Router) {
 }
 
 async fn setup_no_redis(schema: &str) -> (Arc<AppState>, axum::Router) {
+    drop_schema_if_exists(schema).await;
     let config = RileyLeaderboardsConfig {
         server: None,
         database: DatabaseConfig {
