@@ -158,6 +158,12 @@ pub struct ServerConfig {
     /// Broadcast channel buffer size per board. Default: 256.
     #[serde(default = "default_sse_broadcast_buffer")]
     pub sse_broadcast_buffer: usize,
+    /// Enable WebSocket streaming endpoint for live board updates.
+    #[serde(default)]
+    pub ws_enabled: bool,
+    /// WebSocket connection timeout in seconds. 0 = no timeout. Default: 1800 (30 min).
+    #[serde(default = "default_ws_timeout_secs")]
+    pub ws_timeout_secs: u64,
     /// Graceful shutdown timeout in seconds. 0 = wait indefinitely. Default: 30.
     #[serde(default = "default_shutdown_timeout_secs")]
     pub shutdown_timeout_secs: u64,
@@ -187,6 +193,8 @@ impl Default for ServerConfig {
             sse_score_debounce_ms: default_sse_score_debounce_ms(),
             sse_timeout_secs: default_sse_timeout_secs(),
             sse_broadcast_buffer: default_sse_broadcast_buffer(),
+            ws_enabled: false,
+            ws_timeout_secs: default_ws_timeout_secs(),
             shutdown_timeout_secs: default_shutdown_timeout_secs(),
             metrics_enabled: false,
             docs_enabled: default_docs_enabled(),
@@ -221,6 +229,10 @@ fn default_sse_timeout_secs() -> u64 {
 
 fn default_sse_broadcast_buffer() -> usize {
     256
+}
+
+fn default_ws_timeout_secs() -> u64 {
+    1800
 }
 
 fn default_shutdown_timeout_secs() -> u64 {

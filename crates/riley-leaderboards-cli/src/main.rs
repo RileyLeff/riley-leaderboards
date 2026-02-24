@@ -107,9 +107,11 @@ async fn main() -> Result<()> {
             };
 
             let server_config = config.server.as_ref().cloned().unwrap_or_default();
-            let event_bus = if server_config.sse_enabled {
+            let event_bus = if server_config.sse_enabled || server_config.ws_enabled {
                 tracing::info!(
-                    "SSE enabled (max_connections={}, debounce_ms={})",
+                    "Streaming enabled (sse={}, ws={}, max_connections={}, debounce_ms={})",
+                    server_config.sse_enabled,
+                    server_config.ws_enabled,
                     server_config.sse_max_connections,
                     server_config.sse_score_debounce_ms
                 );

@@ -24,7 +24,7 @@ categories = ["web-programming::http-server", "database"]
 tokio = { version = "1", features = ["full"] }
 
 # Web framework
-axum = { version = "0.8" }
+axum = { version = "0.8", features = ["ws"] }
 
 # Database
 sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "postgres", "chrono", "uuid", "json"] }
