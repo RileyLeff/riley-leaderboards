@@ -163,6 +163,10 @@ pub struct ServerConfig {
     /// Enable OpenAPI docs (Swagger UI) at /docs. Default: true.
     #[serde(default = "default_docs_enabled")]
     pub docs_enabled: bool,
+    /// Maximum request body size in bytes. Default: 10MB. Applies to all routes
+    /// (version creation, import, etc). The GitHub webhook route has its own 5MB limit.
+    #[serde(default = "default_max_request_body_bytes")]
+    pub max_request_body_bytes: usize,
 }
 
 impl Default for ServerConfig {
@@ -182,12 +186,17 @@ impl Default for ServerConfig {
             shutdown_timeout_secs: default_shutdown_timeout_secs(),
             metrics_enabled: false,
             docs_enabled: default_docs_enabled(),
+            max_request_body_bytes: default_max_request_body_bytes(),
         }
     }
 }
 
 fn default_docs_enabled() -> bool {
     true
+}
+
+fn default_max_request_body_bytes() -> usize {
+    10 * 1024 * 1024 // 10 MB
 }
 
 fn default_rate_limit_burst() -> u32 {

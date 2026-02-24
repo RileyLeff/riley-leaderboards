@@ -41,10 +41,13 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .cloned()
         .unwrap_or_default();
 
+    let body_limit = server_config.max_request_body_bytes;
+
     let mut app = Router::new()
         .route("/health", get(health))
         .nest("/boards", board_routes(state.clone()))
-        .nest("/collections", collection_routes(state.clone()));
+        .nest("/collections", collection_routes(state.clone()))
+        .layer(axum::extract::DefaultBodyLimit::max(body_limit));
 
     // Only register the webhook route when sync config is present
     if state.config.sync.is_some() {
