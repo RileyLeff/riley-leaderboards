@@ -121,11 +121,6 @@ pub async fn update(pool: &PgPool, slug: &str, input: &UpdateCollection) -> Resu
             .await?
             .ok_or_else(|| Error::NotFound(format!("collection '{slug}' not found")))?;
 
-    // No-op guard: skip the UPDATE when nothing changed.
-    if input.name.is_none() && matches!(input.metadata, Nullable::Absent) {
-        return Ok(collection);
-    }
-
     let name = input.name.as_deref().unwrap_or(&collection.name);
     let metadata = match &input.metadata {
         Nullable::Absent => collection.metadata.as_ref(),

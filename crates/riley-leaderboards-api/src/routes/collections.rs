@@ -92,6 +92,12 @@ pub async fn update(
     Path(slug): Path<String>,
     Json(input): Json<UpdateCollection>,
 ) -> ApiResult<impl IntoResponse> {
+    // No-op PATCH: if all fields are absent, return current collection without touching DB
+    if input.name.is_none() && matches!(input.metadata, Nullable::Absent) {
+        let collection = collections::get_by_slug(&state.pool, &slug).await?;
+        return Ok(Json(collection));
+    }
+
     let limits = state.config.effective_limits();
     if let Nullable::Value(ref meta) = input.metadata {
         check_metadata_size(Some(meta), limits.max_metadata_size_bytes)?;

@@ -249,6 +249,14 @@ Board count is bounded (typically <100) and board creation requires auth. This i
 not an unbounded cardinality risk. If a deployment has thousands of boards, the
 operator should consider removing the board label.
 
+### ConnectionGuard::drop underflow wraps silently in release mode (accepted)
+
+`sse.rs ConnectionGuard::drop` uses `AtomicUsize::fetch_sub(1)` which wraps on
+underflow in release mode. If the counter is somehow 0, it wraps to `usize::MAX`.
+This should be impossible (the counter is incremented on subscribe and decremented
+on drop, always in pairs). A `debug_assert!(prev > 0)` could catch logic errors in
+development, but the current implementation is correct for production.
+
 ### OpenAPI error response annotations are approximate (accepted)
 
 Error responses (400, 404, 409) in OpenAPI path annotations use
