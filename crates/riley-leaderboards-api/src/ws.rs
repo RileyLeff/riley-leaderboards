@@ -1,7 +1,7 @@
 //! WebSocket transport for live board updates.
 //!
-//! Alternative to SSE — same events from the same EventBus,
-//! delivered as JSON text frames over a WebSocket connection.
+//! Bidirectional: server pushes `BoardEvent`s (same as SSE), clients can
+//! submit scores by sending JSON text frames with `SubmitScore` payloads.
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -17,6 +17,7 @@ use crate::error::ApiResult;
 use crate::sse::{BoardEvent, ConnectionGuard};
 use crate::AppState;
 use riley_leaderboards_core::error::Error as CoreError;
+use riley_leaderboards_core::models::SubmitScore;
 
 /// WebSocket stream handler: `GET /boards/:slug/ws`
 pub async fn stream(
@@ -53,7 +54,7 @@ pub async fn stream(
         .map(|s| s.ws_timeout_secs)
         .unwrap_or(1800);
 
-    Ok(ws.on_upgrade(move |socket| handle_socket(socket, rx, guard, timeout_secs)))
+    Ok(ws.on_upgrade(move |socket| handle_socket(socket, rx, guard, timeout_secs, state, board_slug)))
 }
 
 async fn handle_socket(
@@ -61,6 +62,8 @@ async fn handle_socket(
     rx: broadcast::Receiver<BoardEvent>,
     _guard: ConnectionGuard,
     timeout_secs: u64,
+    state: Arc<AppState>,
+    board_slug: String,
 ) {
     let events = BroadcastStream::new(rx);
     let mut events = std::pin::pin!(events);
@@ -81,10 +84,14 @@ async fn handle_socket(
             }
             msg = socket.recv() => {
                 match msg {
-                    // Client sent close or connection dropped
                     Some(Ok(Message::Close(_))) | None | Some(Err(_)) => break,
-                    // Ignore unsolicited text/binary; protocol pings handled by axum
-                    _ => {}
+                    Some(Ok(Message::Text(text))) => {
+                        let resp = process_score(&state, &board_slug, &text).await;
+                        if socket.send(Message::Text(resp.into())).await.is_err() {
+                            break;
+                        }
+                    }
+                    _ => {} // Binary frames ignored; pings handled by axum
                 }
             }
             Some(result) = events.next() => {
@@ -103,4 +110,59 @@ async fn handle_socket(
         }
     }
     // _guard drops here, decrementing connection count
+}
+
+/// Process a client-submitted score over WebSocket.
+///
+/// Returns a JSON response string: `{"type":"ok"}` on success,
+/// `{"type":"error","message":"..."}` on failure.
+async fn process_score(state: &AppState, board_slug: &str, text: &str) -> String {
+    match try_process_score(state, board_slug, text).await {
+        Ok(()) => r#"{"type":"ok"}"#.to_string(),
+        Err(msg) => serde_json::json!({"type": "error", "message": msg}).to_string(),
+    }
+}
+
+async fn try_process_score(state: &AppState, board_slug: &str, text: &str) -> Result<(), String> {
+    let input: SubmitScore =
+        serde_json::from_str(text).map_err(|e| format!("invalid score payload: {e}"))?;
+
+    let board = riley_leaderboards_core::repo::boards::get_by_slug(&state.pool, board_slug)
+        .await
+        .map_err(|e| core_error_message(&e))?;
+
+    if !board.realtime {
+        return Err("score submission over WebSocket requires a realtime board".to_string());
+    }
+
+    let mut redis = state
+        .redis
+        .clone()
+        .ok_or_else(|| "service unavailable".to_string())?;
+    let prefix = state.config.redis_key_prefix();
+
+    riley_leaderboards_core::repo::realtime::submit(&state.pool, &mut redis, &board, &input, prefix)
+        .await
+        .map_err(|e| core_error_message(&e))?;
+
+    metrics::counter!("scores_submitted_total", "board" => board.slug.clone()).increment(1);
+
+    if let Some(ref event_bus) = state.event_bus {
+        event_bus.publish_score(
+            &board.slug,
+            input.entry_slug,
+            input.entry_name,
+            input.score,
+        );
+    }
+
+    Ok(())
+}
+
+fn core_error_message(e: &CoreError) -> String {
+    match e {
+        CoreError::Validation(msg) | CoreError::NotFound(msg) => msg.clone(),
+        CoreError::ServiceUnavailable(_) => "service unavailable".to_string(),
+        _ => "internal error".to_string(),
+    }
 }
