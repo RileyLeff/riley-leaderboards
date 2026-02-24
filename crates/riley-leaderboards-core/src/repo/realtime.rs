@@ -6,7 +6,6 @@
 
 use redis::AsyncCommands;
 use sqlx::PgPool;
-use tracing;
 use uuid::Uuid;
 
 use crate::error::{Error, Result};
@@ -139,11 +138,30 @@ pub async fn latest(
     })
 }
 
+/// Best-effort cleanup of temporary snapshot keys.
+async fn delete_snap_keys(
+    redis: &mut redis::aio::ConnectionManager,
+    keys: &Option<(String, String)>,
+) {
+    if let Some((sk_snap, ek_snap)) = keys {
+        let _ = redis::pipe()
+            .atomic()
+            .del(sk_snap)
+            .del(ek_snap)
+            .query_async::<()>(redis)
+            .await;
+    }
+}
+
 /// Snapshot Redis state into a Postgres version.
 ///
-/// Acquires the Postgres FOR UPDATE lock first, then reads Redis to minimize
-/// the TOCTOU window for concurrent score submissions. Optionally clears
-/// the Redis state if `board.clear_on_snapshot` is true.
+/// For `clear_on_snapshot` boards, uses atomic RENAME to isolate the snapshot
+/// from concurrent writes — preventing data loss from the TOCTOU race between
+/// reading scores and clearing keys. New `submit()` calls during snapshot
+/// processing will safely recreate the working keys.
+///
+/// For non-clearing boards, reads directly from the working keys (no RENAME
+/// needed since keys aren't deleted).
 #[allow(clippy::too_many_arguments)]
 pub async fn snapshot(
     pool: &PgPool,
@@ -158,10 +176,58 @@ pub async fn snapshot(
     let sk = scores_key(prefix, &board.slug);
     let ek = entries_key(prefix, &board.slug);
 
+    // For clear_on_snapshot boards, atomically rename the working keys to
+    // temporary snapshot keys. This isolates the snapshot from concurrent
+    // submit() calls — new scores go into freshly created working keys.
+    let (read_sk, snap_keys) = if board.clear_on_snapshot {
+        let snap_id = Uuid::new_v4();
+        let sk_snap = format!("{sk}:snap:{snap_id}");
+        let ek_snap = format!("{ek}:snap:{snap_id}");
+
+        // RENAME fails if the source key doesn't exist, so check first.
+        let exists: bool = redis
+            .exists(&sk)
+            .await
+            .map_err(|e| Error::ServiceUnavailable(format!("Redis error: {e}")))?;
+
+        if !exists {
+            return Err(Error::Validation(
+                "no scores in Redis to snapshot".to_string(),
+            ));
+        }
+
+        // Atomic rename of both keys. If the entries hash doesn't exist
+        // (shouldn't happen, but defensive), only rename the scores key.
+        let ek_exists: bool = redis
+            .exists(&ek)
+            .await
+            .map_err(|e| Error::ServiceUnavailable(format!("Redis error: {e}")))?;
+
+        if ek_exists {
+            redis::pipe()
+                .atomic()
+                .rename(&sk, &sk_snap)
+                .rename(&ek, &ek_snap)
+                .query_async::<()>(redis)
+                .await
+                .map_err(|e| Error::ServiceUnavailable(format!("Redis RENAME error: {e}")))?;
+        } else {
+            redis::cmd("RENAME")
+                .arg(&sk)
+                .arg(&sk_snap)
+                .query_async::<()>(redis)
+                .await
+                .map_err(|e| Error::ServiceUnavailable(format!("Redis RENAME error: {e}")))?;
+        }
+
+        (sk_snap.clone(), Some((sk_snap, ek_snap)))
+    } else {
+        (sk.clone(), None)
+    };
+
     let mut tx = pool.begin().await.map_err(Error::Database)?;
 
     // Lock the board row to serialize concurrent snapshots.
-    // Acquired BEFORE reading Redis to minimize the TOCTOU window.
     let board = sqlx::query_as::<_, Board>("SELECT * FROM boards WHERE id = $1 FOR UPDATE")
         .bind(board.id)
         .fetch_one(&mut *tx)
@@ -176,6 +242,7 @@ pub async fn snapshot(
                 .await
                 .map_err(Error::Database)?;
         if version_count.0 >= max {
+            delete_snap_keys(redis, &snap_keys).await;
             return Err(Error::Validation(format!(
                 "board has too many versions ({}, max {max})",
                 version_count.0,
@@ -183,14 +250,16 @@ pub async fn snapshot(
         }
     }
 
-    // Read all entries with scores from Redis (fetch order doesn't matter
-    // since derive_scored_positions re-derives positions from sort_direction).
+    // Read all entries with scores from Redis (from snapshot keys if clear_on_snapshot,
+    // otherwise from working keys). Fetch order doesn't matter since
+    // derive_scored_positions re-derives positions from sort_direction.
     let entries_with_scores: Vec<(String, f64)> = redis
-        .zrevrange_withscores(&sk, 0, -1)
+        .zrevrange_withscores(&read_sk, 0, -1)
         .await
         .map_err(|e| Error::ServiceUnavailable(format!("Redis error: {e}")))?;
 
     if entries_with_scores.is_empty() {
+        delete_snap_keys(redis, &snap_keys).await;
         return Err(Error::Validation(
             "no scores in Redis to snapshot".to_string(),
         ));
@@ -199,6 +268,7 @@ pub async fn snapshot(
     // Safety limit: max entries per version
     if let Some(max) = max_entries
         && entries_with_scores.len() > max {
+            delete_snap_keys(redis, &snap_keys).await;
             return Err(Error::Validation(format!(
                 "too many entries to snapshot ({}, max {max})",
                 entries_with_scores.len(),
@@ -276,17 +346,10 @@ pub async fn snapshot(
 
     tx.commit().await.map_err(Error::Database)?;
 
-    // Clear Redis state if configured (best-effort: Postgres commit is authoritative)
-    if board.clear_on_snapshot
-        && let Err(e) = redis::pipe()
-            .atomic()
-            .del(&sk)
-            .del(&ek)
-            .query_async::<()>(redis)
-            .await
-        {
-            tracing::error!("failed to clear Redis after snapshot for board '{}': {e}", board.slug);
-        }
+    // Clean up snapshot keys (for clear_on_snapshot boards, the working keys
+    // were already renamed away, so new submit() calls create fresh keys).
+    // For non-clearing boards, snap_keys is None so this is a no-op.
+    delete_snap_keys(redis, &snap_keys).await;
 
     Ok(VersionWithPlacements {
         version,
