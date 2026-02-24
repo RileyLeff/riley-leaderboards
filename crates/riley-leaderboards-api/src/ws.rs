@@ -10,12 +10,12 @@ use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::extract::{Path, State};
 use axum::response::Response;
 use tokio::sync::broadcast;
-use tokio_stream::wrappers::BroadcastStream;
 use tokio_stream::StreamExt;
+use tokio_stream::wrappers::BroadcastStream;
 
+use crate::AppState;
 use crate::error::ApiResult;
 use crate::sse::{BoardEvent, ConnectionGuard};
-use crate::AppState;
 use riley_leaderboards_core::error::Error as CoreError;
 use riley_leaderboards_core::models::SubmitScore;
 
@@ -27,11 +27,7 @@ pub async fn stream(
     headers: axum::http::HeaderMap,
 ) -> ApiResult<Response> {
     // Check WS is enabled
-    let ws_enabled = state
-        .config
-        .server
-        .as_ref()
-        .is_some_and(|s| s.ws_enabled);
+    let ws_enabled = state.config.server.as_ref().is_some_and(|s| s.ws_enabled);
     if !ws_enabled {
         return Err(CoreError::ServiceUnavailable(
             "WebSocket streaming is not enabled".to_string(),
@@ -42,9 +38,12 @@ pub async fn stream(
     // Verify board exists
     riley_leaderboards_core::repo::boards::get_by_slug(&state.pool, &board_slug).await?;
 
-    let event_bus = state.event_bus.as_ref().ok_or(CoreError::ServiceUnavailable(
-        "WebSocket streaming is not enabled".to_string(),
-    ))?;
+    let event_bus = state
+        .event_bus
+        .as_ref()
+        .ok_or(CoreError::ServiceUnavailable(
+            "WebSocket streaming is not enabled".to_string(),
+        ))?;
 
     let (rx, guard) = event_bus.subscribe(&board_slug)?;
 
@@ -61,7 +60,15 @@ pub async fn stream(
     let write_authorized = crate::auth::has_write_auth(&state, &headers).await;
 
     Ok(ws.on_upgrade(move |socket| {
-        handle_socket(socket, rx, guard, timeout_secs, state, board_slug, write_authorized)
+        handle_socket(
+            socket,
+            rx,
+            guard,
+            timeout_secs,
+            state,
+            board_slug,
+            write_authorized,
+        )
     }))
 }
 
@@ -164,19 +171,20 @@ async fn try_process_score(
         .ok_or_else(|| "service unavailable".to_string())?;
     let prefix = state.config.redis_key_prefix();
 
-    riley_leaderboards_core::repo::realtime::submit(&state.pool, &mut redis, &board, &input, prefix)
-        .await
-        .map_err(|e| core_error_message(&e))?;
+    riley_leaderboards_core::repo::realtime::submit(
+        &state.pool,
+        &mut redis,
+        &board,
+        &input,
+        prefix,
+    )
+    .await
+    .map_err(|e| core_error_message(&e))?;
 
     metrics::counter!("scores_submitted_total", "board" => board.slug.clone()).increment(1);
 
     if let Some(ref event_bus) = state.event_bus {
-        event_bus.publish_score(
-            &board.slug,
-            input.entry_slug,
-            input.entry_name,
-            input.score,
-        );
+        event_bus.publish_score(&board.slug, input.entry_slug, input.entry_name, input.score);
     }
 
     Ok(())

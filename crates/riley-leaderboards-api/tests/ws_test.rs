@@ -28,7 +28,9 @@ fn test_redis_url() -> String {
 /// Drop leftover schema from a previous failed run.
 async fn pre_cleanup(schema: &str) {
     let db_url = test_db_url();
-    let pool = sqlx::PgPool::connect(&db_url).await.expect("pre-cleanup connect");
+    let pool = sqlx::PgPool::connect(&db_url)
+        .await
+        .expect("pre-cleanup connect");
     sqlx::query(&format!("DROP SCHEMA IF EXISTS \"{}\" CASCADE", schema))
         .execute(&pool)
         .await
@@ -414,8 +416,9 @@ async fn ws_connects_for_existing_board() {
     create_board_via_http(addr, "ws-board", "WS Board").await;
 
     let url = format!("ws://{addr}/boards/ws-board/ws");
-    let (ws_stream, resp) =
-        tokio_tungstenite::connect_async(&url).await.expect("WS connect failed");
+    let (ws_stream, resp) = tokio_tungstenite::connect_async(&url)
+        .await
+        .expect("WS connect failed");
     assert_eq!(resp.status(), 101);
     drop(ws_stream);
 
@@ -477,7 +480,9 @@ async fn ws_receives_version_created_event() {
 
     // Connect WebSocket
     let url = format!("ws://{addr}/boards/ws-ver/ws");
-    let (ws_stream, _) = tokio_tungstenite::connect_async(&url).await.expect("WS connect failed");
+    let (ws_stream, _) = tokio_tungstenite::connect_async(&url)
+        .await
+        .expect("WS connect failed");
     let (_, mut read) = ws_stream.split();
 
     // Create a version (triggers version.created event)
@@ -523,7 +528,9 @@ async fn ws_receives_score_updated_event() {
 
     // Connect WebSocket
     let url = format!("ws://{addr}/boards/ws-scores/ws");
-    let (ws_stream, _) = tokio_tungstenite::connect_async(&url).await.expect("WS connect failed");
+    let (ws_stream, _) = tokio_tungstenite::connect_async(&url)
+        .await
+        .expect("WS connect failed");
     let (_, mut read) = ws_stream.split();
 
     // Submit a score
@@ -579,14 +586,18 @@ async fn ws_and_sse_share_connection_count() {
 
     // Open a WS connection (goes through the real server which calls subscribe)
     let url = format!("ws://{addr}/boards/shared-board/ws");
-    let (ws1, _) = tokio_tungstenite::connect_async(&url).await.expect("WS1 connect failed");
+    let (ws1, _) = tokio_tungstenite::connect_async(&url)
+        .await
+        .expect("WS1 connect failed");
 
     // Give the server a moment to process the upgrade
     tokio::time::sleep(Duration::from_millis(100)).await;
     assert_eq!(event_bus.active_connections(), 2);
 
     // Open a second WS connection
-    let (ws2, _) = tokio_tungstenite::connect_async(&url).await.expect("WS2 connect failed");
+    let (ws2, _) = tokio_tungstenite::connect_async(&url)
+        .await
+        .expect("WS2 connect failed");
     tokio::time::sleep(Duration::from_millis(100)).await;
     assert_eq!(event_bus.active_connections(), 3);
 
@@ -600,7 +611,9 @@ async fn ws_and_sse_share_connection_count() {
     assert_eq!(event_bus.active_connections(), 2);
 
     // Now a new connection should succeed
-    let (_ws3, _) = tokio_tungstenite::connect_async(&url).await.expect("WS3 connect failed");
+    let (_ws3, _) = tokio_tungstenite::connect_async(&url)
+        .await
+        .expect("WS3 connect failed");
     tokio::time::sleep(Duration::from_millis(100)).await;
     assert_eq!(event_bus.active_connections(), 3);
 
@@ -622,8 +635,9 @@ async fn ws_works_in_ws_only_mode() {
     create_board_via_http(addr, "ws-only-board", "WS-Only Board").await;
 
     let url = format!("ws://{addr}/boards/ws-only-board/ws");
-    let (ws_stream, resp) =
-        tokio_tungstenite::connect_async(&url).await.expect("WS connect failed in WS-only mode");
+    let (ws_stream, resp) = tokio_tungstenite::connect_async(&url)
+        .await
+        .expect("WS connect failed in WS-only mode");
     assert_eq!(resp.status(), 101);
     drop(ws_stream);
 
@@ -812,10 +826,7 @@ async fn ws_submit_score_on_non_realtime_board_returns_error() {
     let json: serde_json::Value = serde_json::from_str(&text).expect("invalid JSON");
     assert_eq!(json["type"], "error");
     assert!(
-        json["message"]
-            .as_str()
-            .unwrap()
-            .contains("realtime"),
+        json["message"].as_str().unwrap().contains("realtime"),
         "error message should mention realtime requirement, got: {}",
         json["message"]
     );
@@ -858,7 +869,10 @@ async fn ws_submit_invalid_score_returns_error() {
     let json: serde_json::Value = serde_json::from_str(&text).expect("invalid JSON");
     assert_eq!(json["type"], "error");
     assert!(
-        json["message"].as_str().unwrap().contains("invalid score payload"),
+        json["message"]
+            .as_str()
+            .unwrap()
+            .contains("invalid score payload"),
         "error message should mention invalid payload, got: {}",
         json["message"]
     );
@@ -979,7 +993,10 @@ async fn ws_submit_score_with_admin_token_succeeds() {
     let request = tungstenite::http::Request::builder()
         .uri(&url)
         .header("authorization", "Bearer test-admin-secret")
-        .header("sec-websocket-key", tungstenite::handshake::client::generate_key())
+        .header(
+            "sec-websocket-key",
+            tungstenite::handshake::client::generate_key(),
+        )
         .header("sec-websocket-version", "13")
         .header("connection", "Upgrade")
         .header("upgrade", "websocket")
@@ -1088,7 +1105,10 @@ async fn ws_submit_score_without_write_auth_rejected() {
     let request = tungstenite::http::Request::builder()
         .uri(&url)
         .header("authorization", "Bearer test-read-secret")
-        .header("sec-websocket-key", tungstenite::handshake::client::generate_key())
+        .header(
+            "sec-websocket-key",
+            tungstenite::handshake::client::generate_key(),
+        )
         .header("sec-websocket-version", "13")
         .header("connection", "Upgrade")
         .header("upgrade", "websocket")
