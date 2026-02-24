@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ### Added
 
 - **WebSocket streaming**: alternative to SSE for live board updates (`GET /boards/:slug/ws`), configurable via `ws_enabled` and `ws_timeout_secs`
+- **Bidirectional WebSocket**: clients can submit scores over the same WS connection they receive events on (realtime boards only)
 
 ### Changed
 

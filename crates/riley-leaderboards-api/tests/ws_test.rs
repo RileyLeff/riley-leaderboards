@@ -6,7 +6,7 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
 
-use futures_util::StreamExt;
+use futures_util::{SinkExt, StreamExt};
 use riley_leaderboards_api::sse::EventBus;
 use riley_leaderboards_api::{AppState, build_router};
 use riley_leaderboards_core::config::{
@@ -569,6 +569,243 @@ async fn ws_rejected_when_ws_disabled_but_sse_enabled() {
         result.is_err(),
         "WS should be rejected when ws_enabled=false even if EventBus exists"
     );
+
+    cleanup(&state, schema).await;
+}
+
+// ── Test: Submit score over WS on a realtime board ───────────────────────────
+
+#[tokio::test]
+async fn ws_submit_score_on_realtime_board() {
+    let schema = "test_ws_submit_score";
+    let (state, addr) = serve_with_ws(schema, 100, 0).await;
+    flush_redis(&state).await;
+
+    create_realtime_board_via_http(addr, "ws-rt-submit", "WS RT Submit").await;
+
+    let url = format!("ws://{addr}/boards/ws-rt-submit/ws");
+    let (ws_stream, _) = tokio_tungstenite::connect_async(&url)
+        .await
+        .expect("WS connect failed");
+    let (mut write, mut read) = ws_stream.split();
+
+    // Send a score
+    write
+        .send(tungstenite::Message::Text(
+            serde_json::json!({
+                "entry_slug": "player-1",
+                "entry_name": "Player One",
+                "score": 1500.0
+            })
+            .to_string()
+            .into(),
+        ))
+        .await
+        .expect("WS send failed");
+
+    // Should receive {"type":"ok"}
+    let msg = tokio::time::timeout(Duration::from_secs(5), read.next())
+        .await
+        .expect("timed out waiting for ok response")
+        .expect("stream ended")
+        .expect("WS read error");
+
+    let text = match msg {
+        tungstenite::Message::Text(t) => t.to_string(),
+        other => panic!("expected text message, got {other:?}"),
+    };
+    let json: serde_json::Value = serde_json::from_str(&text).expect("invalid JSON");
+    assert_eq!(json["type"], "ok");
+
+    cleanup(&state, schema).await;
+}
+
+// ── Test: WS score submission broadcasts to other subscribers ────────────────
+
+#[tokio::test]
+async fn ws_submit_score_broadcasts_to_other_subscriber() {
+    let schema = "test_ws_submit_broadcast";
+    let (state, addr) = serve_with_ws(schema, 100, 0).await;
+    flush_redis(&state).await;
+
+    create_realtime_board_via_http(addr, "ws-rt-bcast", "WS RT Broadcast").await;
+
+    let url = format!("ws://{addr}/boards/ws-rt-bcast/ws");
+
+    // Connect two clients
+    let (ws1, _) = tokio_tungstenite::connect_async(&url)
+        .await
+        .expect("WS1 connect failed");
+    let (mut write1, mut read1) = ws1.split();
+
+    let (ws2, _) = tokio_tungstenite::connect_async(&url)
+        .await
+        .expect("WS2 connect failed");
+    let (_, mut read2) = ws2.split();
+
+    // Client 1 submits a score
+    write1
+        .send(tungstenite::Message::Text(
+            serde_json::json!({
+                "entry_slug": "player-a",
+                "entry_name": "Player A",
+                "score": 2000.0
+            })
+            .to_string()
+            .into(),
+        ))
+        .await
+        .expect("WS send failed");
+
+    // Client 1 should get {"type":"ok"} first, then possibly the broadcast event
+    let msg1 = tokio::time::timeout(Duration::from_secs(5), read1.next())
+        .await
+        .expect("timed out waiting for client 1 ok")
+        .expect("stream ended")
+        .expect("WS read error");
+
+    let text1 = match msg1 {
+        tungstenite::Message::Text(t) => t.to_string(),
+        other => panic!("expected text message, got {other:?}"),
+    };
+    let json1: serde_json::Value = serde_json::from_str(&text1).expect("invalid JSON");
+    assert_eq!(json1["type"], "ok");
+
+    // Client 2 should receive the score.updated broadcast event
+    let msg2 = tokio::time::timeout(Duration::from_secs(5), read2.next())
+        .await
+        .expect("timed out waiting for client 2 broadcast")
+        .expect("stream ended")
+        .expect("WS read error");
+
+    let text2 = match msg2 {
+        tungstenite::Message::Text(t) => t.to_string(),
+        other => panic!("expected text message, got {other:?}"),
+    };
+    let json2: serde_json::Value = serde_json::from_str(&text2).expect("invalid JSON");
+    assert_eq!(json2["type"], "score.updated");
+    assert_eq!(json2["entry_slug"], "player-a");
+    assert_eq!(json2["score"], 2000.0);
+
+    cleanup(&state, schema).await;
+}
+
+// ── Test: WS score submission on non-realtime board returns error ─────────────
+
+#[tokio::test]
+async fn ws_submit_score_on_non_realtime_board_returns_error() {
+    let schema = "test_ws_submit_nonrt";
+    let (state, addr) = serve_with_ws(schema, 100, 0).await;
+    flush_redis(&state).await;
+
+    // Create a non-realtime board
+    create_board_via_http(addr, "ws-nonrt", "WS Non-Realtime").await;
+
+    let url = format!("ws://{addr}/boards/ws-nonrt/ws");
+    let (ws_stream, _) = tokio_tungstenite::connect_async(&url)
+        .await
+        .expect("WS connect failed");
+    let (mut write, mut read) = ws_stream.split();
+
+    // Try to submit a score
+    write
+        .send(tungstenite::Message::Text(
+            serde_json::json!({
+                "entry_slug": "player-1",
+                "entry_name": "Player One",
+                "score": 100.0
+            })
+            .to_string()
+            .into(),
+        ))
+        .await
+        .expect("WS send failed");
+
+    // Should receive an error response
+    let msg = tokio::time::timeout(Duration::from_secs(5), read.next())
+        .await
+        .expect("timed out waiting for error response")
+        .expect("stream ended")
+        .expect("WS read error");
+
+    let text = match msg {
+        tungstenite::Message::Text(t) => t.to_string(),
+        other => panic!("expected text message, got {other:?}"),
+    };
+    let json: serde_json::Value = serde_json::from_str(&text).expect("invalid JSON");
+    assert_eq!(json["type"], "error");
+    assert!(
+        json["message"]
+            .as_str()
+            .unwrap()
+            .contains("realtime"),
+        "error message should mention realtime requirement, got: {}",
+        json["message"]
+    );
+
+    cleanup(&state, schema).await;
+}
+
+// ── Test: WS invalid score payload returns error ─────────────────────────────
+
+#[tokio::test]
+async fn ws_submit_invalid_score_returns_error() {
+    let schema = "test_ws_submit_invalid";
+    let (state, addr) = serve_with_ws(schema, 100, 0).await;
+    flush_redis(&state).await;
+
+    create_realtime_board_via_http(addr, "ws-rt-invalid", "WS RT Invalid").await;
+
+    let url = format!("ws://{addr}/boards/ws-rt-invalid/ws");
+    let (ws_stream, _) = tokio_tungstenite::connect_async(&url)
+        .await
+        .expect("WS connect failed");
+    let (mut write, mut read) = ws_stream.split();
+
+    // Send malformed JSON
+    write
+        .send(tungstenite::Message::Text("not valid json".into()))
+        .await
+        .expect("WS send failed");
+
+    let msg = tokio::time::timeout(Duration::from_secs(5), read.next())
+        .await
+        .expect("timed out waiting for error response")
+        .expect("stream ended")
+        .expect("WS read error");
+
+    let text = match msg {
+        tungstenite::Message::Text(t) => t.to_string(),
+        other => panic!("expected text message, got {other:?}"),
+    };
+    let json: serde_json::Value = serde_json::from_str(&text).expect("invalid JSON");
+    assert_eq!(json["type"], "error");
+    assert!(
+        json["message"].as_str().unwrap().contains("invalid score payload"),
+        "error message should mention invalid payload, got: {}",
+        json["message"]
+    );
+
+    // Send JSON with missing fields
+    write
+        .send(tungstenite::Message::Text(
+            serde_json::json!({"entry_slug": "p1"}).to_string().into(),
+        ))
+        .await
+        .expect("WS send failed");
+
+    let msg = tokio::time::timeout(Duration::from_secs(5), read.next())
+        .await
+        .expect("timed out waiting for error response")
+        .expect("stream ended")
+        .expect("WS read error");
+
+    let text = match msg {
+        tungstenite::Message::Text(t) => t.to_string(),
+        other => panic!("expected text message, got {other:?}"),
+    };
+    let json: serde_json::Value = serde_json::from_str(&text).expect("invalid JSON");
+    assert_eq!(json["type"], "error");
 
     cleanup(&state, schema).await;
 }

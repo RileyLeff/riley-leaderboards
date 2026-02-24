@@ -44,6 +44,8 @@ Intentional tradeoffs and choices that might look like bugs. If you're reviewing
 
 **No SSE connection timeout.** Connections stay open until the client disconnects. Production deployments should use a reverse proxy to enforce upstream timeouts.
 
+**WS score submission has no per-message rate limiting.** The connection-level limit applies (max concurrent connections), but individual messages are processed as fast as they arrive. Production deployments should use a reverse proxy for message-level throttling if needed.
+
 ## Operations
 
 **`/metrics` and `/docs` are unauthenticated.** Production deployments should restrict access via reverse proxy. Both can be disabled via config (`metrics_enabled`, `docs_enabled`).
