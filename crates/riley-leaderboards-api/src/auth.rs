@@ -431,13 +431,7 @@ pub async fn require_auth(
 /// Extract the Bearer token from the Authorization header.
 /// Per RFC 7235, the scheme is case-insensitive.
 fn extract_bearer_token(request: &Request<axum::body::Body>) -> Option<&str> {
-    let value = request.headers().get("authorization")?.to_str().ok()?;
-    // Case-insensitive check for "Bearer " prefix (RFC 7235 Section 2.1)
-    if value.len() > 7 && value[..7].eq_ignore_ascii_case("bearer ") {
-        Some(&value[7..])
-    } else {
-        None
-    }
+    extract_bearer_from_headers(request.headers())
 }
 
 /// Validate a JWT against the JWKS cache.

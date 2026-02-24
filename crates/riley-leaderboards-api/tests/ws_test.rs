@@ -292,6 +292,83 @@ async fn flush_redis(state: &AppState) {
     }
 }
 
+fn hash_token(token: &str) -> Vec<u8> {
+    use hmac::{Hmac, Mac};
+    use sha2::Sha256;
+    let mut mac = Hmac::<Sha256>::new_from_slice(b"riley-leaderboards-api-token").unwrap();
+    mac.update(token.as_bytes());
+    mac.finalize().into_bytes().to_vec()
+}
+
+/// Starts a WS-enabled server with API token auth.
+async fn serve_with_ws_auth(schema: &str) -> (Arc<AppState>, SocketAddr) {
+    pre_cleanup(schema).await;
+
+    let config = RileyLeaderboardsConfig {
+        server: Some(ServerConfig {
+            sse_enabled: true,
+            ws_enabled: true,
+            ws_timeout_secs: 30,
+            sse_max_connections: 100,
+            sse_score_debounce_ms: 0,
+            ..Default::default()
+        }),
+        database: DatabaseConfig {
+            url: ConfigValue::new(test_db_url()),
+            max_connections: 2,
+            schema: Some(schema.to_string()),
+        },
+        redis: Some(RedisConfig {
+            url: ConfigValue::new(test_redis_url()),
+            key_prefix: "rl".to_string(),
+        }),
+        auth: None,
+        sync: None,
+        limits: None,
+        webhooks: vec![],
+    };
+
+    let pool = db::connect(&config.database).await.expect("connect failed");
+    db::migrate(&pool).await.expect("migrate failed");
+
+    let url = test_redis_url();
+    let client = redis::Client::open(url.as_str()).expect("redis client open failed");
+    let redis_conn = redis::aio::ConnectionManager::new(client)
+        .await
+        .expect("redis connect failed");
+
+    let event_bus = EventBus::new(100, 0, 256);
+
+    let admin_token_hash = hash_token("test-admin-secret");
+    let read_token_hash = hash_token("test-read-secret");
+    let auth_mode = riley_leaderboards_api::auth::AuthMode::ApiToken {
+        admin_token_hash,
+        read_token_hashes: vec![read_token_hash],
+        require_read_auth: false,
+    };
+
+    let state = Arc::new(AppState {
+        pool,
+        redis: Some(redis_conn),
+        config,
+        auth_mode,
+        sync_mutex: tokio::sync::Mutex::new(()),
+        event_bus: Some(event_bus),
+        task_tracker: tokio_util::task::TaskTracker::new(),
+    });
+
+    let router = build_router(state.clone());
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("bind failed");
+    let addr = listener.local_addr().expect("local_addr failed");
+    tokio::spawn(async move {
+        axum::serve(listener, router).await.ok();
+    });
+
+    (state, addr)
+}
+
 async fn create_board_via_http(addr: SocketAddr, slug: &str, name: &str) {
     let client = reqwest::Client::new();
     let resp = client
@@ -867,6 +944,191 @@ async fn ws_submit_score_receives_echo() {
     assert_eq!(json2["type"], "score.updated");
     assert_eq!(json2["entry_slug"], "echo-player");
     assert_eq!(json2["score"], 42.0);
+
+    cleanup(&state, schema).await;
+}
+
+// ── Test: WS score submission with admin token succeeds ──────────────────────
+
+#[tokio::test]
+async fn ws_submit_score_with_admin_token_succeeds() {
+    let schema = "test_ws_auth_admin";
+    let (state, addr) = serve_with_ws_auth(schema).await;
+    flush_redis(&state).await;
+
+    // Create board using admin token (write operation requires auth)
+    let client = reqwest::Client::new();
+    let resp = client
+        .post(format!("http://{addr}/boards"))
+        .bearer_auth("test-admin-secret")
+        .json(&serde_json::json!({
+            "slug": "ws-auth-rt",
+            "name": "WS Auth RT",
+            "board_type": "scored",
+            "accumulative": true,
+            "realtime": true,
+            "sort_direction": "desc"
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 201);
+
+    // Connect WS with admin token
+    let url = format!("ws://{addr}/boards/ws-auth-rt/ws");
+    let request = tungstenite::http::Request::builder()
+        .uri(&url)
+        .header("authorization", "Bearer test-admin-secret")
+        .header("sec-websocket-key", tungstenite::handshake::client::generate_key())
+        .header("sec-websocket-version", "13")
+        .header("connection", "Upgrade")
+        .header("upgrade", "websocket")
+        .header("host", addr.to_string())
+        .body(())
+        .unwrap();
+    let (ws_stream, _) = tokio_tungstenite::connect_async(request)
+        .await
+        .expect("WS connect with admin token failed");
+    let (mut write, mut read) = ws_stream.split();
+
+    // Submit score — should succeed with admin token
+    write
+        .send(tungstenite::Message::Text(
+            serde_json::json!({
+                "entry_slug": "auth-player",
+                "entry_name": "Auth Player",
+                "score": 500.0
+            })
+            .to_string()
+            .into(),
+        ))
+        .await
+        .expect("WS send failed");
+
+    let msg = tokio::time::timeout(Duration::from_secs(5), read.next())
+        .await
+        .expect("timed out waiting for ok")
+        .expect("stream ended")
+        .expect("WS read error");
+    let text = match msg {
+        tungstenite::Message::Text(t) => t.to_string(),
+        other => panic!("expected text, got {other:?}"),
+    };
+    let json: serde_json::Value = serde_json::from_str(&text).expect("invalid JSON");
+    assert_eq!(json["type"], "ok");
+
+    cleanup(&state, schema).await;
+}
+
+// ── Test: WS score submission without admin token is rejected ────────────────
+
+#[tokio::test]
+async fn ws_submit_score_without_write_auth_rejected() {
+    let schema = "test_ws_auth_reject";
+    let (state, addr) = serve_with_ws_auth(schema).await;
+    flush_redis(&state).await;
+
+    // Create board using admin token
+    let client = reqwest::Client::new();
+    let resp = client
+        .post(format!("http://{addr}/boards"))
+        .bearer_auth("test-admin-secret")
+        .json(&serde_json::json!({
+            "slug": "ws-auth-reject",
+            "name": "WS Auth Reject",
+            "board_type": "scored",
+            "accumulative": true,
+            "realtime": true,
+            "sort_direction": "desc"
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 201);
+
+    // Connect WS without any token (reads are public, require_read_auth=false)
+    let url = format!("ws://{addr}/boards/ws-auth-reject/ws");
+    let (ws_stream, _) = tokio_tungstenite::connect_async(&url)
+        .await
+        .expect("WS connect without token should succeed for reads");
+    let (mut write, mut read) = ws_stream.split();
+
+    // Try to submit score — should be rejected (no write auth)
+    write
+        .send(tungstenite::Message::Text(
+            serde_json::json!({
+                "entry_slug": "bad-player",
+                "entry_name": "Bad Player",
+                "score": 999.0
+            })
+            .to_string()
+            .into(),
+        ))
+        .await
+        .expect("WS send failed");
+
+    let msg = tokio::time::timeout(Duration::from_secs(5), read.next())
+        .await
+        .expect("timed out waiting for error")
+        .expect("stream ended")
+        .expect("WS read error");
+    let text = match msg {
+        tungstenite::Message::Text(t) => t.to_string(),
+        other => panic!("expected text, got {other:?}"),
+    };
+    let json: serde_json::Value = serde_json::from_str(&text).expect("invalid JSON");
+    assert_eq!(json["type"], "error");
+    assert!(
+        json["message"].as_str().unwrap().contains("unauthorized"),
+        "error should mention unauthorized, got: {}",
+        json["message"]
+    );
+
+    // Also test with read-only token
+    let request = tungstenite::http::Request::builder()
+        .uri(&url)
+        .header("authorization", "Bearer test-read-secret")
+        .header("sec-websocket-key", tungstenite::handshake::client::generate_key())
+        .header("sec-websocket-version", "13")
+        .header("connection", "Upgrade")
+        .header("upgrade", "websocket")
+        .header("host", addr.to_string())
+        .body(())
+        .unwrap();
+    let (ws_stream2, _) = tokio_tungstenite::connect_async(request)
+        .await
+        .expect("WS connect with read token should succeed for reads");
+    let (mut write2, mut read2) = ws_stream2.split();
+
+    write2
+        .send(tungstenite::Message::Text(
+            serde_json::json!({
+                "entry_slug": "bad-player",
+                "entry_name": "Bad Player",
+                "score": 999.0
+            })
+            .to_string()
+            .into(),
+        ))
+        .await
+        .expect("WS send failed");
+
+    let msg2 = tokio::time::timeout(Duration::from_secs(5), read2.next())
+        .await
+        .expect("timed out waiting for error")
+        .expect("stream ended")
+        .expect("WS read error");
+    let text2 = match msg2 {
+        tungstenite::Message::Text(t) => t.to_string(),
+        other => panic!("expected text, got {other:?}"),
+    };
+    let json2: serde_json::Value = serde_json::from_str(&text2).expect("invalid JSON");
+    assert_eq!(json2["type"], "error");
+    assert!(
+        json2["message"].as_str().unwrap().contains("unauthorized"),
+        "read-only token should be unauthorized for writes, got: {}",
+        json2["message"]
+    );
 
     cleanup(&state, schema).await;
 }
