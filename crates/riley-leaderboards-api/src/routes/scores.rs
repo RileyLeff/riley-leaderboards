@@ -7,7 +7,7 @@ use axum::Json;
 
 use riley_leaderboards_core::config::WebhookEvent;
 use riley_leaderboards_core::error::Error as CoreError;
-use riley_leaderboards_core::models::{SnapshotInput, SubmitScore};
+use riley_leaderboards_core::models::{SnapshotInput, SubmitScore, VersionWithPlacements};
 use riley_leaderboards_core::repo::{boards, realtime, scores};
 
 use crate::AppState;
@@ -16,6 +16,18 @@ use crate::outbound_webhooks;
 
 use super::{check_metadata_size, check_note_size};
 
+#[utoipa::path(
+    post,
+    path = "/boards/{slug}/scores",
+    params(("slug" = String, Path, description = "Board slug")),
+    request_body = SubmitScore,
+    responses(
+        (status = 200, description = "Score submitted"),
+        (status = 404, description = "Board not found"),
+    ),
+    security(("bearer_auth" = [])),
+    tag = "scores"
+)]
 pub async fn submit(
     State(state): State<Arc<AppState>>,
     Path(board_slug): Path<String>,
@@ -48,6 +60,19 @@ pub async fn submit(
     }
 }
 
+#[utoipa::path(
+    post,
+    path = "/boards/{slug}/snapshot",
+    params(("slug" = String, Path, description = "Board slug")),
+    request_body = SnapshotInput,
+    responses(
+        (status = 201, description = "Snapshot created as a new version", body = VersionWithPlacements),
+        (status = 400, description = "Validation error"),
+        (status = 404, description = "Board not found"),
+    ),
+    security(("bearer_auth" = [])),
+    tag = "scores"
+)]
 pub async fn snapshot(
     State(state): State<Arc<AppState>>,
     Path(board_slug): Path<String>,

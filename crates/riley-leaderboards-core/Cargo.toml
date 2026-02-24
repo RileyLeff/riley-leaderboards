@@ -16,3 +16,4 @@ uuid = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
 redis = { workspace = true }
+utoipa = { workspace = true }

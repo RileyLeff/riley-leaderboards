@@ -160,6 +160,9 @@ pub struct ServerConfig {
     /// Enable Prometheus metrics endpoint at /metrics. Default: false.
     #[serde(default)]
     pub metrics_enabled: bool,
+    /// Enable OpenAPI docs (Swagger UI) at /docs. Default: true.
+    #[serde(default = "default_docs_enabled")]
+    pub docs_enabled: bool,
 }
 
 impl Default for ServerConfig {
@@ -178,8 +181,13 @@ impl Default for ServerConfig {
             sse_broadcast_buffer: default_sse_broadcast_buffer(),
             shutdown_timeout_secs: default_shutdown_timeout_secs(),
             metrics_enabled: false,
+            docs_enabled: default_docs_enabled(),
         }
     }
+}
+
+fn default_docs_enabled() -> bool {
+    true
 }
 
 fn default_rate_limit_burst() -> u32 {

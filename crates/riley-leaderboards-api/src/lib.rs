@@ -15,6 +15,7 @@ use tower_http::trace::TraceLayer;
 pub mod auth;
 mod error;
 pub mod metrics;
+pub mod openapi;
 pub mod outbound_webhooks;
 mod routes;
 pub mod sse;
@@ -65,6 +66,15 @@ pub fn build_router(state: Arc<AppState>) -> Router {
                 get(metrics::handler).with_state(prom_handle),
             )
             .layer(axum::middleware::from_fn(metrics::track));
+    }
+
+    // OpenAPI docs (Swagger UI)
+    if server_config.docs_enabled {
+        use utoipa::OpenApi;
+        app = app.merge(
+            utoipa_swagger_ui::SwaggerUi::new("/docs")
+                .url("/api-doc/openapi.json", openapi::ApiDoc::openapi()),
+        );
     }
 
     // Rate limiting (applied before CORS so preflight requests aren't rate-limited)

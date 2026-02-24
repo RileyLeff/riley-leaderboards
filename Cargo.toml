@@ -72,6 +72,10 @@ tokio-util = { version = "0.7", features = ["rt"] }
 metrics = "0.24"
 metrics-exporter-prometheus = "0.16"
 
+# OpenAPI / Swagger
+utoipa = { version = "5", features = ["axum_extras", "chrono", "uuid"] }
+utoipa-swagger-ui = { version = "9", features = ["axum"] }
+
 # Rate limiting
 tower_governor = "0.6"
 

@@ -12,6 +12,7 @@ behind_proxy = false
 # sse_broadcast_buffer = 256            # broadcast channel buffer size per board
 # shutdown_timeout_secs = 30            # graceful shutdown timeout for in-flight tasks (0 = wait forever)
 # metrics_enabled = false               # expose Prometheus metrics at /metrics
+# docs_enabled = true                  # expose Swagger UI at /docs and OpenAPI spec at /api-doc/openapi.json
 
 [database]
 url = "env:DATABASE_URL"               # postgres://user:pass@host/db

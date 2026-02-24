@@ -6,7 +6,9 @@ use axum::response::IntoResponse;
 use axum::Json;
 
 use riley_leaderboards_core::config::WebhookEvent;
-use riley_leaderboards_core::models::{CreateBoard, Nullable, PaginationParams, UpdateBoard};
+use riley_leaderboards_core::models::{
+    Board, BoardSummary, CreateBoard, Nullable, PaginatedResponse, PaginationParams, UpdateBoard,
+};
 use riley_leaderboards_core::repo::{boards, realtime};
 
 use crate::AppState;
@@ -15,6 +17,18 @@ use crate::outbound_webhooks;
 
 use super::check_metadata_size;
 
+#[utoipa::path(
+    post,
+    path = "/boards",
+    request_body = CreateBoard,
+    responses(
+        (status = 201, description = "Board created", body = Board),
+        (status = 400, description = "Validation error"),
+        (status = 409, description = "Slug already exists"),
+    ),
+    security(("bearer_auth" = [])),
+    tag = "boards"
+)]
 pub async fn create(
     State(state): State<Arc<AppState>>,
     Json(input): Json<CreateBoard>,
@@ -35,6 +49,16 @@ pub async fn create(
     Ok((StatusCode::CREATED, Json(board)))
 }
 
+#[utoipa::path(
+    get,
+    path = "/boards",
+    params(PaginationParams),
+    responses(
+        (status = 200, description = "Paginated list of boards", body = inline(PaginatedResponse<BoardSummary>)),
+    ),
+    security(("bearer_auth" = [])),
+    tag = "boards"
+)]
 pub async fn list(
     State(state): State<Arc<AppState>>,
     Query(params): Query<PaginationParams>,
@@ -43,6 +67,17 @@ pub async fn list(
     Ok(Json(page))
 }
 
+#[utoipa::path(
+    get,
+    path = "/boards/{slug}",
+    params(("slug" = String, Path, description = "Board slug")),
+    responses(
+        (status = 200, description = "Board details with summary", body = BoardSummary),
+        (status = 404, description = "Board not found"),
+    ),
+    security(("bearer_auth" = [])),
+    tag = "boards"
+)]
 pub async fn get(
     State(state): State<Arc<AppState>>,
     Path(slug): Path<String>,
@@ -51,6 +86,18 @@ pub async fn get(
     Ok(Json(summary))
 }
 
+#[utoipa::path(
+    patch,
+    path = "/boards/{slug}",
+    params(("slug" = String, Path, description = "Board slug")),
+    request_body = UpdateBoard,
+    responses(
+        (status = 200, description = "Board updated", body = Board),
+        (status = 404, description = "Board not found"),
+    ),
+    security(("bearer_auth" = [])),
+    tag = "boards"
+)]
 pub async fn update(
     State(state): State<Arc<AppState>>,
     Path(slug): Path<String>,
@@ -86,6 +133,17 @@ pub async fn update(
     Ok(Json(board))
 }
 
+#[utoipa::path(
+    delete,
+    path = "/boards/{slug}",
+    params(("slug" = String, Path, description = "Board slug")),
+    responses(
+        (status = 204, description = "Board deleted"),
+        (status = 404, description = "Board not found"),
+    ),
+    security(("bearer_auth" = [])),
+    tag = "boards"
+)]
 pub async fn delete(
     State(state): State<Arc<AppState>>,
     Path(slug): Path<String>,

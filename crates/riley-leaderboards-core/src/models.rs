@@ -1,5 +1,6 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Deserializer, Serialize};
+use utoipa::ToSchema;
 use uuid::Uuid;
 
 // ── Nullable (for PATCH semantics) ─────────────────────────────────────────
@@ -42,14 +43,16 @@ impl<T> Nullable<T> {
 
 // ── Board ──────────────────────────────────────────────────────────────────
 
-#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow, ToSchema)]
 pub struct Board {
     pub id: Uuid,
     pub slug: String,
     pub name: String,
     pub board_type: String,
     pub sort_direction: String,
+    #[schema(value_type = Option<serde_json::Value>)]
     pub tier_config: Option<serde_json::Value>,
+    #[schema(value_type = Option<serde_json::Value>)]
     pub metadata: Option<serde_json::Value>,
     pub accumulative: bool,
     pub realtime: bool,
@@ -58,14 +61,17 @@ pub struct Board {
     pub updated_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct CreateBoard {
     pub slug: String,
     pub name: String,
     pub board_type: String,
     #[serde(default = "default_sort_direction")]
+    #[schema(default = "desc")]
     pub sort_direction: String,
+    #[schema(value_type = Option<serde_json::Value>)]
     pub tier_config: Option<serde_json::Value>,
+    #[schema(value_type = Option<serde_json::Value>)]
     pub metadata: Option<serde_json::Value>,
     #[serde(default)]
     pub accumulative: bool,
@@ -75,13 +81,15 @@ pub struct CreateBoard {
     pub clear_on_snapshot: bool,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct UpdateBoard {
     pub name: Option<String>,
     pub sort_direction: Option<String>,
     #[serde(default)]
+    #[schema(value_type = Option<Option<serde_json::Value>>)]
     pub tier_config: Nullable<serde_json::Value>,
     #[serde(default)]
+    #[schema(value_type = Option<Option<serde_json::Value>>)]
     pub metadata: Nullable<serde_json::Value>,
     pub realtime: Option<bool>,
     pub clear_on_snapshot: Option<bool>,
@@ -93,46 +101,50 @@ fn default_sort_direction() -> String {
 
 // ── Entry ──────────────────────────────────────────────────────────────────
 
-#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow, ToSchema)]
 pub struct Entry {
     pub id: Uuid,
     pub board_id: Uuid,
     pub slug: String,
     pub name: String,
+    #[schema(value_type = Option<serde_json::Value>)]
     pub metadata: Option<serde_json::Value>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct CreateEntry {
     pub slug: String,
     pub name: String,
+    #[schema(value_type = Option<serde_json::Value>)]
     pub metadata: Option<serde_json::Value>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct UpdateEntry {
     pub name: Option<String>,
     #[serde(default)]
+    #[schema(value_type = Option<Option<serde_json::Value>>)]
     pub metadata: Nullable<serde_json::Value>,
 }
 
 // ── Version ────────────────────────────────────────────────────────────────
 
-#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow, ToSchema)]
 pub struct Version {
     pub id: Uuid,
     pub board_id: Uuid,
     pub version_number: i32,
     pub note: Option<String>,
+    #[schema(value_type = Option<serde_json::Value>)]
     pub metadata: Option<serde_json::Value>,
     pub created_at: DateTime<Utc>,
 }
 
 // ── Placement ──────────────────────────────────────────────────────────────
 
-#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow, ToSchema)]
 pub struct Placement {
     pub id: Uuid,
     pub version_id: Uuid,
@@ -140,35 +152,38 @@ pub struct Placement {
     pub position: Option<i32>,
     pub score: Option<f64>,
     pub tier: Option<String>,
+    #[schema(value_type = Option<serde_json::Value>)]
     pub metadata: Option<serde_json::Value>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct CreatePlacement {
     pub entry_slug: String,
     pub position: Option<i32>,
     pub score: Option<f64>,
     pub tier: Option<String>,
+    #[schema(value_type = Option<serde_json::Value>)]
     pub metadata: Option<serde_json::Value>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct CreateVersion {
     pub note: Option<String>,
+    #[schema(value_type = Option<serde_json::Value>)]
     pub metadata: Option<serde_json::Value>,
     pub placements: Vec<CreatePlacement>,
 }
 
 // ── Enriched responses ─────────────────────────────────────────────────────
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct VersionWithPlacements {
     #[serde(flatten)]
     pub version: Version,
     pub placements: Vec<PlacementWithEntry>,
 }
 
-#[derive(Debug, Clone, Serialize, sqlx::FromRow)]
+#[derive(Debug, Clone, Serialize, sqlx::FromRow, ToSchema)]
 pub struct PlacementWithEntry {
     pub id: Uuid,
     pub version_id: Uuid,
@@ -176,12 +191,13 @@ pub struct PlacementWithEntry {
     pub position: Option<i32>,
     pub score: Option<f64>,
     pub tier: Option<String>,
+    #[schema(value_type = Option<serde_json::Value>)]
     pub metadata: Option<serde_json::Value>,
     pub entry_slug: String,
     pub entry_name: String,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct BoardSummary {
     #[serde(flatten)]
     pub board: Board,
@@ -192,18 +208,19 @@ pub struct BoardSummary {
 // ── History + Diffing ─────────────────────────────────────────────────────
 
 /// A single entry's placement in one version (for history endpoint).
-#[derive(Debug, Clone, Serialize, sqlx::FromRow)]
+#[derive(Debug, Clone, Serialize, sqlx::FromRow, ToSchema)]
 pub struct EntryHistoryItem {
     pub version_number: i32,
     pub position: Option<i32>,
     pub score: Option<f64>,
     pub tier: Option<String>,
+    #[schema(value_type = Option<serde_json::Value>)]
     pub metadata: Option<serde_json::Value>,
     pub created_at: DateTime<Utc>,
 }
 
 /// Full diff between two versions.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct VersionDiff {
     pub from_version: i32,
     pub to_version: i32,
@@ -214,7 +231,7 @@ pub struct VersionDiff {
 }
 
 /// An entry that was added, removed, or unchanged between versions.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct DiffEntry {
     pub entry_slug: String,
     pub entry_name: String,
@@ -227,7 +244,7 @@ pub struct DiffEntry {
 }
 
 /// An entry that moved between versions (position, score, or tier changed).
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct DiffMovedEntry {
     pub entry_slug: String,
     pub entry_name: String,
@@ -247,7 +264,7 @@ pub struct DiffMovedEntry {
 
 // ── References ────────────────────────────────────────────────────────────
 
-#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow, ToSchema)]
 pub struct BoardReference {
     pub id: Uuid,
     pub board_id: Uuid,
@@ -259,7 +276,7 @@ pub struct BoardReference {
     pub created_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct CreateReference {
     pub pinned_version_number: Option<i32>,
     pub uri: String,
@@ -269,32 +286,35 @@ pub struct CreateReference {
 
 // ── Collections ─────────────────────────────────────────────────────────
 
-#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow, ToSchema)]
 pub struct Collection {
     pub id: Uuid,
     pub slug: String,
     pub name: String,
+    #[schema(value_type = Option<serde_json::Value>)]
     pub metadata: Option<serde_json::Value>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct CreateCollection {
     pub slug: String,
     pub name: String,
+    #[schema(value_type = Option<serde_json::Value>)]
     pub metadata: Option<serde_json::Value>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct UpdateCollection {
     pub name: Option<String>,
     #[serde(default)]
+    #[schema(value_type = Option<Option<serde_json::Value>>)]
     pub metadata: Nullable<serde_json::Value>,
 }
 
 /// A board within a collection, with its display order and summary info.
-#[derive(Debug, Clone, Serialize, sqlx::FromRow)]
+#[derive(Debug, Clone, Serialize, sqlx::FromRow, ToSchema)]
 pub struct CollectionBoardEntry {
     pub slug: String,
     pub name: String,
@@ -304,14 +324,14 @@ pub struct CollectionBoardEntry {
 }
 
 /// Response for GET /collections/:slug — collection metadata + its boards.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct CollectionWithBoards {
     #[serde(flatten)]
     pub collection: Collection,
     pub boards: Vec<CollectionBoardEntry>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct AddBoardToCollection {
     pub board_slug: String,
     #[serde(default)]
@@ -320,7 +340,7 @@ pub struct AddBoardToCollection {
 
 // ── Accumulated Scores ───────────────────────────────────────────────────
 
-#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow, ToSchema)]
 pub struct AccumulatedScore {
     pub id: Uuid,
     pub board_id: Uuid,
@@ -329,16 +349,17 @@ pub struct AccumulatedScore {
     pub submitted_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct SubmitScore {
     pub entry_slug: String,
     pub entry_name: String,
     pub score: f64,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct SnapshotInput {
     pub note: Option<String>,
+    #[schema(value_type = Option<serde_json::Value>)]
     pub metadata: Option<serde_json::Value>,
 }
 
@@ -348,7 +369,7 @@ pub const DEFAULT_PAGE_LIMIT: i64 = 50;
 pub const MAX_PAGE_LIMIT: i64 = 200;
 
 /// Simple limit-only parameter for endpoints that don't need cursor pagination.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, utoipa::IntoParams)]
 pub struct LimitParam {
     pub limit: Option<i64>,
 }
@@ -362,7 +383,7 @@ impl LimitParam {
 }
 
 /// Cursor-based pagination parameters.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, utoipa::IntoParams)]
 pub struct PaginationParams {
     /// Maximum number of items to return.
     pub limit: Option<i64>,
@@ -399,8 +420,8 @@ impl PaginationParams {
 }
 
 /// Paginated response wrapper.
-#[derive(Debug, Serialize)]
-pub struct PaginatedResponse<T: Serialize> {
+#[derive(Debug, Serialize, ToSchema)]
+pub struct PaginatedResponse<T: Serialize + ToSchema> {
     pub items: Vec<T>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub next_cursor: Option<String>,

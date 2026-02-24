@@ -9,7 +9,10 @@ use serde::Deserialize;
 
 use riley_leaderboards_core::config::WebhookEvent;
 use riley_leaderboards_core::error::Error as CoreError;
-use riley_leaderboards_core::models::{CreateVersion, LimitParam, PaginationParams};
+use riley_leaderboards_core::models::{
+    CreateVersion, LimitParam, PaginatedResponse, PaginationParams, Version, VersionDiff,
+    VersionWithPlacements,
+};
 use riley_leaderboards_core::repo::{boards, realtime, versions};
 
 use crate::AppState;
@@ -18,12 +21,25 @@ use crate::outbound_webhooks;
 
 use super::{check_metadata_size, check_note_size};
 
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::IntoParams)]
 pub struct DiffParams {
     pub from: i32,
     pub to: i32,
 }
 
+#[utoipa::path(
+    post,
+    path = "/boards/{slug}/versions",
+    params(("slug" = String, Path, description = "Board slug")),
+    request_body = CreateVersion,
+    responses(
+        (status = 201, description = "Version created", body = VersionWithPlacements),
+        (status = 400, description = "Validation error"),
+        (status = 404, description = "Board not found"),
+    ),
+    security(("bearer_auth" = [])),
+    tag = "versions"
+)]
 pub async fn create(
     State(state): State<Arc<AppState>>,
     Path(board_slug): Path<String>,
@@ -84,6 +100,20 @@ pub async fn create(
     Ok((StatusCode::CREATED, Json(version)))
 }
 
+#[utoipa::path(
+    get,
+    path = "/boards/{slug}/versions",
+    params(
+        ("slug" = String, Path, description = "Board slug"),
+        PaginationParams,
+    ),
+    responses(
+        (status = 200, description = "Paginated list of versions", body = inline(PaginatedResponse<Version>)),
+        (status = 404, description = "Board not found"),
+    ),
+    security(("bearer_auth" = [])),
+    tag = "versions"
+)]
 pub async fn list(
     State(state): State<Arc<AppState>>,
     Path(board_slug): Path<String>,
@@ -94,6 +124,20 @@ pub async fn list(
     Ok(Json(page))
 }
 
+#[utoipa::path(
+    get,
+    path = "/boards/{slug}/versions/{version_number}",
+    params(
+        ("slug" = String, Path, description = "Board slug"),
+        ("version_number" = i32, Path, description = "Version number"),
+    ),
+    responses(
+        (status = 200, description = "Version with placements", body = VersionWithPlacements),
+        (status = 404, description = "Board or version not found"),
+    ),
+    security(("bearer_auth" = [])),
+    tag = "versions"
+)]
 pub async fn get(
     State(state): State<Arc<AppState>>,
     Path((board_slug, version_number)): Path<(String, i32)>,
@@ -103,6 +147,17 @@ pub async fn get(
     Ok(Json(version))
 }
 
+#[utoipa::path(
+    get,
+    path = "/boards/{slug}/latest",
+    params(("slug" = String, Path, description = "Board slug")),
+    responses(
+        (status = 200, description = "Latest version with placements", body = VersionWithPlacements),
+        (status = 404, description = "Board not found or no versions"),
+    ),
+    security(("bearer_auth" = [])),
+    tag = "versions"
+)]
 pub async fn latest(
     State(state): State<Arc<AppState>>,
     Path(board_slug): Path<String>,
@@ -122,6 +177,21 @@ pub async fn latest(
     Ok(Json(version))
 }
 
+#[utoipa::path(
+    get,
+    path = "/boards/{slug}/diff",
+    params(
+        ("slug" = String, Path, description = "Board slug"),
+        DiffParams,
+    ),
+    responses(
+        (status = 200, description = "Diff between two versions", body = VersionDiff),
+        (status = 400, description = "Validation error"),
+        (status = 404, description = "Board or version not found"),
+    ),
+    security(("bearer_auth" = [])),
+    tag = "versions"
+)]
 pub async fn diff(
     State(state): State<Arc<AppState>>,
     Path(board_slug): Path<String>,
@@ -146,6 +216,21 @@ pub async fn diff(
     Ok(Json(version_diff))
 }
 
+#[utoipa::path(
+    get,
+    path = "/boards/{slug}/since/{version_number}",
+    params(
+        ("slug" = String, Path, description = "Board slug"),
+        ("version_number" = i32, Path, description = "Version number to fetch since"),
+        LimitParam,
+    ),
+    responses(
+        (status = 200, description = "Versions since given number", body = Vec<VersionWithPlacements>),
+        (status = 404, description = "Board not found"),
+    ),
+    security(("bearer_auth" = [])),
+    tag = "versions"
+)]
 pub async fn since(
     State(state): State<Arc<AppState>>,
     Path((board_slug, version_number)): Path<(String, i32)>,
