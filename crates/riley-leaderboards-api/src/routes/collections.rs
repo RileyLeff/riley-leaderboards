@@ -45,7 +45,7 @@ pub async fn create(
     responses(
         (status = 200, description = "Paginated list of collections", body = inline(PaginatedResponse<Collection>)),
     ),
-    security(("bearer_auth" = [])),
+    security((), ("bearer_auth" = [])),
     tag = "collections"
 )]
 pub async fn list(
@@ -64,7 +64,7 @@ pub async fn list(
         (status = 200, description = "Collection with boards", body = CollectionWithBoards),
         (status = 404, description = "Collection not found"),
     ),
-    security(("bearer_auth" = [])),
+    security((), ("bearer_auth" = [])),
     tag = "collections"
 )]
 pub async fn get(

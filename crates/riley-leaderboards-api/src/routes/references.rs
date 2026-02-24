@@ -47,7 +47,7 @@ pub async fn create(
         (status = 200, description = "Paginated list of references", body = inline(PaginatedResponse<BoardReference>)),
         (status = 404, description = "Board not found"),
     ),
-    security(("bearer_auth" = [])),
+    security((), ("bearer_auth" = [])),
     tag = "references"
 )]
 pub async fn list(

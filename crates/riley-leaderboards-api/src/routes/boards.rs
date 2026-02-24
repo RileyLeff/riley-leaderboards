@@ -56,7 +56,7 @@ pub async fn create(
     responses(
         (status = 200, description = "Paginated list of boards", body = inline(PaginatedResponse<Board>)),
     ),
-    security(("bearer_auth" = [])),
+    security((), ("bearer_auth" = [])),
     tag = "boards"
 )]
 pub async fn list(
@@ -75,7 +75,7 @@ pub async fn list(
         (status = 200, description = "Board details with summary", body = BoardSummary),
         (status = 404, description = "Board not found"),
     ),
-    security(("bearer_auth" = [])),
+    security((), ("bearer_auth" = [])),
     tag = "boards"
 )]
 pub async fn get(

@@ -111,7 +111,7 @@ pub async fn create(
         (status = 200, description = "Paginated list of versions", body = inline(PaginatedResponse<Version>)),
         (status = 404, description = "Board not found"),
     ),
-    security(("bearer_auth" = [])),
+    security((), ("bearer_auth" = [])),
     tag = "versions"
 )]
 pub async fn list(
@@ -135,7 +135,7 @@ pub async fn list(
         (status = 200, description = "Version with placements", body = VersionWithPlacements),
         (status = 404, description = "Board or version not found"),
     ),
-    security(("bearer_auth" = [])),
+    security((), ("bearer_auth" = [])),
     tag = "versions"
 )]
 pub async fn get(
@@ -155,7 +155,7 @@ pub async fn get(
         (status = 200, description = "Latest version with placements", body = VersionWithPlacements),
         (status = 404, description = "Board not found or no versions"),
     ),
-    security(("bearer_auth" = [])),
+    security((), ("bearer_auth" = [])),
     tag = "versions"
 )]
 pub async fn latest(
@@ -189,7 +189,7 @@ pub async fn latest(
         (status = 400, description = "Validation error"),
         (status = 404, description = "Board or version not found"),
     ),
-    security(("bearer_auth" = [])),
+    security((), ("bearer_auth" = [])),
     tag = "versions"
 )]
 pub async fn diff(
@@ -228,7 +228,7 @@ pub async fn diff(
         (status = 200, description = "Versions since given number", body = Vec<Version>),
         (status = 404, description = "Board not found"),
     ),
-    security(("bearer_auth" = [])),
+    security((), ("bearer_auth" = [])),
     tag = "versions"
 )]
 pub async fn since(

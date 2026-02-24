@@ -13,7 +13,9 @@ pub struct ErrorResponse {
     info(
         title = "Riley Leaderboards API",
         version = "2.0",
-        description = "A general-purpose versioned ranking service"
+        description = "A general-purpose versioned ranking service.\n\n\
+            **Authentication:** Write operations (POST, PATCH, DELETE) always require a Bearer token. \
+            Read operations (GET) are public by default, but can be restricted via `require_read_auth` in server config."
     ),
     paths(
         // Boards

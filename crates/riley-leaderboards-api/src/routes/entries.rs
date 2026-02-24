@@ -51,7 +51,7 @@ pub async fn create(
         (status = 200, description = "Paginated list of entries", body = inline(PaginatedResponse<Entry>)),
         (status = 404, description = "Board not found"),
     ),
-    security(("bearer_auth" = [])),
+    security((), ("bearer_auth" = [])),
     tag = "entries"
 )]
 pub async fn list(
@@ -75,7 +75,7 @@ pub async fn list(
         (status = 200, description = "Entry details", body = Entry),
         (status = 404, description = "Entry not found"),
     ),
-    security(("bearer_auth" = [])),
+    security((), ("bearer_auth" = [])),
     tag = "entries"
 )]
 pub async fn get(
@@ -152,7 +152,7 @@ pub async fn delete(
         (status = 200, description = "Entry history across versions", body = Vec<EntryHistoryItem>),
         (status = 404, description = "Entry not found"),
     ),
-    security(("bearer_auth" = [])),
+    security((), ("bearer_auth" = [])),
     tag = "entries"
 )]
 pub async fn history(
