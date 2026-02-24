@@ -809,3 +809,64 @@ async fn ws_submit_invalid_score_returns_error() {
 
     cleanup(&state, schema).await;
 }
+
+// ── Test: Submitting client receives ok then its own broadcast echo ───────────
+
+#[tokio::test]
+async fn ws_submit_score_receives_echo() {
+    let schema = "test_ws_submit_echo";
+    let (state, addr) = serve_with_ws(schema, 100, 0).await;
+    flush_redis(&state).await;
+
+    create_realtime_board_via_http(addr, "ws-rt-echo", "WS RT Echo").await;
+
+    let url = format!("ws://{addr}/boards/ws-rt-echo/ws");
+    let (ws_stream, _) = tokio_tungstenite::connect_async(&url)
+        .await
+        .expect("WS connect failed");
+    let (mut write, mut read) = ws_stream.split();
+
+    // Send a score
+    write
+        .send(tungstenite::Message::Text(
+            serde_json::json!({
+                "entry_slug": "echo-player",
+                "entry_name": "Echo Player",
+                "score": 42.0
+            })
+            .to_string()
+            .into(),
+        ))
+        .await
+        .expect("WS send failed");
+
+    // First message: {"type":"ok"}
+    let msg1 = tokio::time::timeout(Duration::from_secs(5), read.next())
+        .await
+        .expect("timed out waiting for ok")
+        .expect("stream ended")
+        .expect("WS read error");
+    let text1 = match msg1 {
+        tungstenite::Message::Text(t) => t.to_string(),
+        other => panic!("expected text, got {other:?}"),
+    };
+    let json1: serde_json::Value = serde_json::from_str(&text1).expect("invalid JSON");
+    assert_eq!(json1["type"], "ok");
+
+    // Second message: the broadcast echo {"type":"score.updated", ...}
+    let msg2 = tokio::time::timeout(Duration::from_secs(5), read.next())
+        .await
+        .expect("timed out waiting for broadcast echo")
+        .expect("stream ended")
+        .expect("WS read error");
+    let text2 = match msg2 {
+        tungstenite::Message::Text(t) => t.to_string(),
+        other => panic!("expected text, got {other:?}"),
+    };
+    let json2: serde_json::Value = serde_json::from_str(&text2).expect("invalid JSON");
+    assert_eq!(json2["type"], "score.updated");
+    assert_eq!(json2["entry_slug"], "echo-player");
+    assert_eq!(json2["score"], 42.0);
+
+    cleanup(&state, schema).await;
+}

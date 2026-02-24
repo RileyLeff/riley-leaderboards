@@ -508,3 +508,51 @@ fn auth_error(message: &str) -> Response {
     )
         .into_response()
 }
+
+/// Check whether the given request headers carry write-level authorization.
+///
+/// Used by the WebSocket handler to determine if an upgraded connection should
+/// be allowed to submit scores (since the WS upgrade itself is a GET/read).
+pub async fn has_write_auth(state: &AppState, headers: &axum::http::HeaderMap) -> bool {
+    match &state.auth_mode {
+        AuthMode::NoAuth => true,
+        AuthMode::ApiToken {
+            admin_token_hash, ..
+        } => {
+            let Some(token) = extract_bearer_from_headers(headers) else {
+                return false;
+            };
+            verify_token(token, admin_token_hash)
+        }
+        AuthMode::Jwt {
+            jwks_cache,
+            required_role,
+            expected_issuer,
+            expected_audience,
+            ..
+        } => {
+            let Some(token) = extract_bearer_from_headers(headers) else {
+                return false;
+            };
+            validate_jwt(
+                token,
+                jwks_cache,
+                required_role.as_deref(),
+                expected_issuer.as_deref(),
+                expected_audience.as_deref(),
+            )
+            .await
+            .is_ok()
+        }
+    }
+}
+
+/// Extract Bearer token from raw header map (for use outside middleware).
+fn extract_bearer_from_headers(headers: &axum::http::HeaderMap) -> Option<&str> {
+    let value = headers.get("authorization")?.to_str().ok()?;
+    if value.len() > 7 && value[..7].eq_ignore_ascii_case("bearer ") {
+        Some(&value[7..])
+    } else {
+        None
+    }
+}

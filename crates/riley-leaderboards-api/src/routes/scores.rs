@@ -34,7 +34,6 @@ pub async fn submit(
     Json(input): Json<SubmitScore>,
 ) -> ApiResult<impl IntoResponse> {
     let board = boards::get_by_slug(&state.pool, &board_slug).await?;
-    metrics::counter!("scores_submitted_total", "board" => board.slug.clone()).increment(1);
 
     if board.realtime {
         let mut redis = state.redis.clone().ok_or(CoreError::ServiceUnavailable(
@@ -43,7 +42,9 @@ pub async fn submit(
         let prefix = state.config.redis_key_prefix();
         realtime::submit(&state.pool, &mut redis, &board, &input, prefix).await?;
 
-        // Publish SSE score.updated event (debounced per-board)
+        metrics::counter!("scores_submitted_total", "board" => board.slug.clone()).increment(1);
+
+        // Publish score.updated event (debounced per-board)
         if let Some(ref event_bus) = state.event_bus {
             event_bus.publish_score(
                 &board.slug,
@@ -56,6 +57,7 @@ pub async fn submit(
         Ok((StatusCode::OK, Json(serde_json::json!({ "ok": true }))))
     } else {
         let score = scores::submit(&state.pool, &board, &input).await?;
+        metrics::counter!("scores_submitted_total", "board" => board.slug.clone()).increment(1);
         Ok((
             StatusCode::OK,
             Json(

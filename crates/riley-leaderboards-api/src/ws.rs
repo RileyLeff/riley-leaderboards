@@ -24,6 +24,7 @@ pub async fn stream(
     ws: WebSocketUpgrade,
     State(state): State<Arc<AppState>>,
     Path(board_slug): Path<String>,
+    headers: axum::http::HeaderMap,
 ) -> ApiResult<Response> {
     // Check WS is enabled
     let ws_enabled = state
@@ -54,7 +55,14 @@ pub async fn stream(
         .map(|s| s.ws_timeout_secs)
         .unwrap_or(1800);
 
-    Ok(ws.on_upgrade(move |socket| handle_socket(socket, rx, guard, timeout_secs, state, board_slug)))
+    // Determine write authorization at upgrade time (WS upgrade is a GET,
+    // so the auth middleware only checks read access). Score submissions
+    // within the WS session require write-level auth.
+    let write_authorized = crate::auth::has_write_auth(&state, &headers).await;
+
+    Ok(ws.on_upgrade(move |socket| {
+        handle_socket(socket, rx, guard, timeout_secs, state, board_slug, write_authorized)
+    }))
 }
 
 async fn handle_socket(
@@ -64,6 +72,7 @@ async fn handle_socket(
     timeout_secs: u64,
     state: Arc<AppState>,
     board_slug: String,
+    write_authorized: bool,
 ) {
     let events = BroadcastStream::new(rx);
     let mut events = std::pin::pin!(events);
@@ -86,7 +95,7 @@ async fn handle_socket(
                 match msg {
                     Some(Ok(Message::Close(_))) | None | Some(Err(_)) => break,
                     Some(Ok(Message::Text(text))) => {
-                        let resp = process_score(&state, &board_slug, &text).await;
+                        let resp = process_score(&state, &board_slug, &text, write_authorized).await;
                         if socket.send(Message::Text(resp.into())).await.is_err() {
                             break;
                         }
@@ -116,14 +125,28 @@ async fn handle_socket(
 ///
 /// Returns a JSON response string: `{"type":"ok"}` on success,
 /// `{"type":"error","message":"..."}` on failure.
-async fn process_score(state: &AppState, board_slug: &str, text: &str) -> String {
-    match try_process_score(state, board_slug, text).await {
+async fn process_score(
+    state: &AppState,
+    board_slug: &str,
+    text: &str,
+    write_authorized: bool,
+) -> String {
+    match try_process_score(state, board_slug, text, write_authorized).await {
         Ok(()) => r#"{"type":"ok"}"#.to_string(),
         Err(msg) => serde_json::json!({"type": "error", "message": msg}).to_string(),
     }
 }
 
-async fn try_process_score(state: &AppState, board_slug: &str, text: &str) -> Result<(), String> {
+async fn try_process_score(
+    state: &AppState,
+    board_slug: &str,
+    text: &str,
+    write_authorized: bool,
+) -> Result<(), String> {
+    if !write_authorized {
+        return Err("unauthorized: score submission requires write access".to_string());
+    }
+
     let input: SubmitScore =
         serde_json::from_str(text).map_err(|e| format!("invalid score payload: {e}"))?;
 
