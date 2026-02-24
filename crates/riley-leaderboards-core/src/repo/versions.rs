@@ -76,7 +76,11 @@ pub async fn create(
     .await?;
 
     // Batch-resolve all entry slugs to IDs in a single query
-    let slugs: Vec<&str> = input.placements.iter().map(|p| p.entry_slug.as_str()).collect();
+    let slugs: Vec<&str> = input
+        .placements
+        .iter()
+        .map(|p| p.entry_slug.as_str())
+        .collect();
     let entries = sqlx::query_as::<_, (Uuid, String, String)>(
         "SELECT id, slug, name FROM entries WHERE board_id = $1 AND slug = ANY($2)",
     )
@@ -422,10 +426,7 @@ pub async fn diff(
 }
 
 /// Public entry point for import validation (same rules as version creation).
-pub fn validate_placements_for_import(
-    board: &Board,
-    placements: &[CreatePlacement],
-) -> Result<()> {
+pub fn validate_placements_for_import(board: &Board, placements: &[CreatePlacement]) -> Result<()> {
     validate_placements(board, placements)
 }
 
@@ -450,12 +451,13 @@ fn validate_placements(board: &Board, placements: &[CreatePlacement]) -> Result<
     // Validate explicit positions across all board types: must be >= 1
     for p in placements {
         if let Some(pos) = p.position
-            && pos < 1 {
-                return Err(Error::Validation(format!(
-                    "position must be >= 1, got {pos} for entry '{}'",
-                    p.entry_slug
-                )));
-            }
+            && pos < 1
+        {
+            return Err(Error::Validation(format!(
+                "position must be >= 1, got {pos} for entry '{}'",
+                p.entry_slug
+            )));
+        }
     }
 
     match board.board_type.as_str() {
@@ -494,16 +496,15 @@ fn validate_placements(board: &Board, placements: &[CreatePlacement]) -> Result<
         }
         "tiered" => {
             // Tiered boards: tier is required, validate against tier_config if present
-            let valid_tiers: Option<Vec<String>> =
-                board.tier_config.as_ref().and_then(|tc| {
-                    tc.get("tiers").and_then(|tiers| {
-                        tiers.as_array().map(|arr| {
-                            arr.iter()
-                                .filter_map(|t| t.get("key").and_then(|k| k.as_str()).map(String::from))
-                                .collect()
-                        })
+            let valid_tiers: Option<Vec<String>> = board.tier_config.as_ref().and_then(|tc| {
+                tc.get("tiers").and_then(|tiers| {
+                    tiers.as_array().map(|arr| {
+                        arr.iter()
+                            .filter_map(|t| t.get("key").and_then(|k| k.as_str()).map(String::from))
+                            .collect()
                     })
-                });
+                })
+            });
 
             for p in placements {
                 let tier = p.tier.as_ref().ok_or_else(|| {
@@ -514,12 +515,13 @@ fn validate_placements(board: &Board, placements: &[CreatePlacement]) -> Result<
                 })?;
 
                 if let Some(ref valid) = valid_tiers
-                    && !valid.contains(tier) {
-                        return Err(Error::Validation(format!(
-                            "invalid tier '{}' for entry '{}': valid tiers are {:?}",
-                            tier, p.entry_slug, valid
-                        )));
-                    }
+                    && !valid.contains(tier)
+                {
+                    return Err(Error::Validation(format!(
+                        "invalid tier '{}' for entry '{}': valid tiers are {:?}",
+                        tier, p.entry_slug, valid
+                    )));
+                }
             }
         }
         _ => {}
@@ -527,4 +529,3 @@ fn validate_placements(board: &Board, placements: &[CreatePlacement]) -> Result<
 
     Ok(())
 }
-

@@ -22,11 +22,14 @@ fn test_db_url() -> String {
 }
 
 fn test_redis_url() -> String {
-    std::env::var("TEST_REDIS_URL")
-        .unwrap_or_else(|_| "redis://localhost:16380".to_string())
+    std::env::var("TEST_REDIS_URL").unwrap_or_else(|_| "redis://localhost:16380".to_string())
 }
 
-async fn setup_with_sse(schema: &str, max_connections: usize, debounce_ms: u64) -> (Arc<AppState>, axum::Router) {
+async fn setup_with_sse(
+    schema: &str,
+    max_connections: usize,
+    debounce_ms: u64,
+) -> (Arc<AppState>, axum::Router) {
     let config = RileyLeaderboardsConfig {
         server: Some(ServerConfig {
             sse_enabled: true,
@@ -304,21 +307,11 @@ async fn event_bus_debounces_score_events() {
     let (mut rx, _guard) = bus.subscribe("debounce-board").unwrap();
 
     // First event should go through
-    let sent1 = bus.publish_score(
-        "debounce-board",
-        "p1".to_string(),
-        "P1".to_string(),
-        100.0,
-    );
+    let sent1 = bus.publish_score("debounce-board", "p1".to_string(), "P1".to_string(), 100.0);
     assert!(sent1);
 
     // Second event within window should be dropped
-    let sent2 = bus.publish_score(
-        "debounce-board",
-        "p1".to_string(),
-        "P1".to_string(),
-        200.0,
-    );
+    let sent2 = bus.publish_score("debounce-board", "p1".to_string(), "P1".to_string(), 200.0);
     assert!(!sent2);
 
     // First event should be in the channel
@@ -328,12 +321,7 @@ async fn event_bus_debounces_score_events() {
 
     // After debounce window, should go through
     tokio::time::sleep(Duration::from_millis(600)).await;
-    let sent3 = bus.publish_score(
-        "debounce-board",
-        "p1".to_string(),
-        "P1".to_string(),
-        300.0,
-    );
+    let sent3 = bus.publish_score("debounce-board", "p1".to_string(), "P1".to_string(), 300.0);
     assert!(sent3);
 
     let event = rx.recv().await.unwrap();
@@ -544,12 +532,7 @@ async fn event_bus_prunes_stale_channels() {
     assert_eq!(bus.channel_count(), 1);
 
     // Publish a score to create a debounce entry
-    bus.publish_score(
-        "prune-board",
-        "p1".to_string(),
-        "P1".to_string(),
-        50.0,
-    );
+    bus.publish_score("prune-board", "p1".to_string(), "P1".to_string(), 50.0);
 
     // Drop the subscriber — receiver count goes to 0 on next publish
     drop(rx);

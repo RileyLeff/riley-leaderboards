@@ -20,8 +20,7 @@ fn test_db_url() -> String {
 }
 
 fn test_redis_url() -> String {
-    std::env::var("TEST_REDIS_URL")
-        .unwrap_or_else(|_| "redis://localhost:16380".to_string())
+    std::env::var("TEST_REDIS_URL").unwrap_or_else(|_| "redis://localhost:16380".to_string())
 }
 
 /// Defensive cleanup: drop a test schema if it exists from a previous panicked run.
@@ -751,7 +750,11 @@ async fn delete_realtime_board_clears_redis() {
     assert_eq!(resp.status(), 200);
     let body = json_body(resp).await;
     let placements = body["placements"].as_array().unwrap();
-    assert_eq!(placements.len(), 0, "expected no stale scores after delete+recreate");
+    assert_eq!(
+        placements.len(),
+        0,
+        "expected no stale scores after delete+recreate"
+    );
 
     cleanup(&state, schema).await;
 }

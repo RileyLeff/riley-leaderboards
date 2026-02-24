@@ -14,9 +14,7 @@ pub fn check_metadata_size(
     max_bytes: usize,
 ) -> Result<(), CoreError> {
     if let Some(meta) = metadata {
-        let size = serde_json::to_string(meta)
-            .map(|s| s.len())
-            .unwrap_or(0);
+        let size = serde_json::to_string(meta).map(|s| s.len()).unwrap_or(0);
         if size > max_bytes {
             return Err(CoreError::Validation(format!(
                 "metadata too large ({size} bytes, max {max_bytes})",

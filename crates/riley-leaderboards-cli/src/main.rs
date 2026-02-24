@@ -77,8 +77,7 @@ async fn main() -> Result<()> {
 
     let cli = Cli::parse();
 
-    let config = config::load_config(cli.config.as_deref())
-        .context("failed to load config")?;
+    let config = config::load_config(cli.config.as_deref()).context("failed to load config")?;
 
     match cli.command {
         Command::Serve => {
@@ -92,9 +91,12 @@ async fn main() -> Result<()> {
                     .context("failed to initialize auth")?;
 
             let redis = if let Some(ref redis_config) = config.redis {
-                let url = redis_config.url.resolve().context("failed to resolve Redis URL")?;
-                let client = redis::Client::open(url.as_str())
-                    .context("failed to create Redis client")?;
+                let url = redis_config
+                    .url
+                    .resolve()
+                    .context("failed to resolve Redis URL")?;
+                let client =
+                    redis::Client::open(url.as_str()).context("failed to create Redis client")?;
                 let mgr = redis::aio::ConnectionManager::new(client)
                     .await
                     .context("failed to connect to Redis")?;
@@ -242,11 +244,16 @@ async fn main() -> Result<()> {
             if boards.is_empty() {
                 println!("No boards found.");
             } else {
-                println!("{:<20} {:<10} {:<6} {:<6} NAME", "SLUG", "TYPE", "SORT", "ACCUM");
+                println!(
+                    "{:<20} {:<10} {:<6} {:<6} NAME",
+                    "SLUG", "TYPE", "SORT", "ACCUM"
+                );
                 for b in &boards {
                     println!(
                         "{:<20} {:<10} {:<6} {:<6} {}",
-                        b.slug, b.board_type, b.sort_direction,
+                        b.slug,
+                        b.board_type,
+                        b.sort_direction,
                         if b.accumulative { "yes" } else { "no" },
                         b.name
                     );
@@ -256,22 +263,27 @@ async fn main() -> Result<()> {
         }
         Command::DeleteBoard { slug } => {
             let pool = db::connect(&config.database).await?;
-            let board = repo::boards::get_by_slug(&pool, &slug).await
+            let board = repo::boards::get_by_slug(&pool, &slug)
+                .await
                 .context("board not found")?;
             let board_name = board.name.clone();
 
             // Clean up Redis keys for realtime boards before Postgres delete
             if board.realtime
-                && let Some(ref redis_config) = config.redis {
-                    let url = redis_config.url.resolve().context("failed to resolve Redis URL")?;
-                    let client = redis::Client::open(url.as_str())
-                        .context("failed to create Redis client")?;
-                    let mut mgr = redis::aio::ConnectionManager::new(client)
-                        .await
-                        .context("failed to connect to Redis")?;
-                    let prefix = config.redis_key_prefix();
-                    let _ = repo::realtime::clear(&mut mgr, &slug, prefix).await;
-                }
+                && let Some(ref redis_config) = config.redis
+            {
+                let url = redis_config
+                    .url
+                    .resolve()
+                    .context("failed to resolve Redis URL")?;
+                let client =
+                    redis::Client::open(url.as_str()).context("failed to create Redis client")?;
+                let mut mgr = redis::aio::ConnectionManager::new(client)
+                    .await
+                    .context("failed to connect to Redis")?;
+                let prefix = config.redis_key_prefix();
+                let _ = repo::realtime::clear(&mut mgr, &slug, prefix).await;
+            }
 
             repo::boards::delete(&pool, &slug).await?;
             let handles = riley_leaderboards_api::outbound_webhooks::fire(
@@ -308,8 +320,8 @@ async fn main() -> Result<()> {
         Command::Export { slug } => {
             let pool = db::connect_readonly(&config.database).await?;
             let export = repo::export::export_board(&pool, &slug).await?;
-            let json = serde_json::to_string_pretty(&export)
-                .context("failed to serialize export")?;
+            let json =
+                serde_json::to_string_pretty(&export).context("failed to serialize export")?;
             println!("{json}");
         }
         Command::Import { file } => {

@@ -1,9 +1,9 @@
 use std::sync::Arc;
 
+use axum::Json;
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
-use axum::Json;
 
 use serde::Deserialize;
 
@@ -203,12 +203,14 @@ pub async fn diff(
     if from < 1 || to < 1 {
         return Err(riley_leaderboards_core::error::Error::Validation(
             "version numbers must be >= 1".to_string(),
-        ).into());
+        )
+        .into());
     }
     if from >= to {
         return Err(riley_leaderboards_core::error::Error::Validation(
             "'from' must be less than 'to'".to_string(),
-        ).into());
+        )
+        .into());
     }
 
     let board = boards::get_by_slug(&state.pool, &board_slug).await?;
@@ -237,7 +239,12 @@ pub async fn since(
     Query(params): Query<LimitParam>,
 ) -> ApiResult<impl IntoResponse> {
     let board = boards::get_by_slug(&state.pool, &board_slug).await?;
-    let versions =
-        versions::since(&state.pool, board.id, version_number, params.effective_limit()).await?;
+    let versions = versions::since(
+        &state.pool,
+        board.id,
+        version_number,
+        params.effective_limit(),
+    )
+    .await?;
     Ok(Json(versions))
 }

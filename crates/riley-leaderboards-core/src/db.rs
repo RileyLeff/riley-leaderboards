@@ -83,11 +83,7 @@ async fn build_pool(url: &str, schema: &str, max_connections: u32) -> Result<PgP
             let schema = schema_clone.clone();
             Box::pin(async move {
                 conn.execute(
-                    format!(
-                        "SET search_path TO {}, public",
-                        quote_identifier(&schema)
-                    )
-                    .as_str(),
+                    format!("SET search_path TO {}, public", quote_identifier(&schema)).as_str(),
                 )
                 .await?;
                 Ok(())

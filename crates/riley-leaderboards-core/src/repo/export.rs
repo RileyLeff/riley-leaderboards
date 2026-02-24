@@ -327,12 +327,8 @@ pub async fn import_board(pool: &PgPool, export: &BoardExport) -> Result<ImportR
 
         // Derive positions for scored boards (positions are based on score + sort_direction)
         if board.board_type == "scored" {
-            super::versions::derive_scored_positions(
-                &mut tx,
-                version.id,
-                &board.sort_direction,
-            )
-            .await?;
+            super::versions::derive_scored_positions(&mut tx, version.id, &board.sort_direction)
+                .await?;
         }
     }
 

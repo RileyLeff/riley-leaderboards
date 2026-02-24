@@ -1,9 +1,9 @@
 use std::sync::Arc;
 
+use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
-use axum::Json;
 
 use riley_leaderboards_core::config::WebhookEvent;
 use riley_leaderboards_core::error::Error as CoreError;
@@ -56,7 +56,13 @@ pub async fn submit(
         Ok((StatusCode::OK, Json(serde_json::json!({ "ok": true }))))
     } else {
         let score = scores::submit(&state.pool, &board, &input).await?;
-        Ok((StatusCode::OK, Json(serde_json::to_value(score).map_err(|e| CoreError::Internal(format!("serialization error: {e}")))?)))
+        Ok((
+            StatusCode::OK,
+            Json(
+                serde_json::to_value(score)
+                    .map_err(|e| CoreError::Internal(format!("serialization error: {e}")))?,
+            ),
+        ))
     }
 }
 
@@ -139,5 +145,11 @@ pub async fn snapshot(
         );
     }
 
-    Ok((StatusCode::CREATED, Json(serde_json::to_value(version).map_err(|e| CoreError::Internal(format!("serialization error: {e}")))?)))
+    Ok((
+        StatusCode::CREATED,
+        Json(
+            serde_json::to_value(version)
+                .map_err(|e| CoreError::Internal(format!("serialization error: {e}")))?,
+        ),
+    ))
 }

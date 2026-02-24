@@ -34,12 +34,7 @@ pub struct AppState {
 }
 
 pub fn build_router(state: Arc<AppState>) -> Router {
-    let server_config = state
-        .config
-        .server
-        .as_ref()
-        .cloned()
-        .unwrap_or_default();
+    let server_config = state.config.server.as_ref().cloned().unwrap_or_default();
 
     let body_limit = server_config.max_request_body_bytes;
 
@@ -64,10 +59,7 @@ pub fn build_router(state: Arc<AppState>) -> Router {
     if server_config.metrics_enabled {
         let prom_handle = metrics::init();
         app = app
-            .route(
-                "/metrics",
-                get(metrics::handler).with_state(prom_handle),
-            )
+            .route("/metrics", get(metrics::handler).with_state(prom_handle))
             .layer(axum::middleware::from_fn(metrics::track));
     }
 
@@ -113,9 +105,7 @@ pub fn build_router(state: Arc<AppState>) -> Router {
     app = app.layer(
         TraceLayer::new_for_http()
             .make_span_with(tower_http::trace::DefaultMakeSpan::new().level(tracing::Level::INFO))
-            .on_response(
-                tower_http::trace::DefaultOnResponse::new().level(tracing::Level::INFO),
-            ),
+            .on_response(tower_http::trace::DefaultOnResponse::new().level(tracing::Level::INFO)),
     );
 
     // CORS (outermost layer — handles preflight before rate limiting)
@@ -186,10 +176,16 @@ fn board_routes(state: Arc<AppState>) -> Router<Arc<AppState>> {
             "/{slug}/versions",
             get(routes::versions::list).post(routes::versions::create),
         )
-        .route("/{slug}/versions/{version_number}", get(routes::versions::get))
+        .route(
+            "/{slug}/versions/{version_number}",
+            get(routes::versions::get),
+        )
         .route("/{slug}/latest", get(routes::versions::latest))
         .route("/{slug}/diff", get(routes::versions::diff))
-        .route("/{slug}/since/{version_number}", get(routes::versions::since))
+        .route(
+            "/{slug}/since/{version_number}",
+            get(routes::versions::since),
+        )
         .route(
             "/{slug}/references",
             get(routes::references::list).post(routes::references::create),
@@ -198,16 +194,16 @@ fn board_routes(state: Arc<AppState>) -> Router<Arc<AppState>> {
             "/{slug}/references/{reference_id}",
             axum::routing::delete(routes::references::delete),
         )
-        .route("/{slug}/scores", axum::routing::post(routes::scores::submit))
+        .route(
+            "/{slug}/scores",
+            axum::routing::post(routes::scores::submit),
+        )
         .route(
             "/{slug}/snapshot",
             axum::routing::post(routes::scores::snapshot),
         )
         .route("/{slug}/stream", get(sse::stream))
-        .layer(middleware::from_fn_with_state(
-            state,
-            auth::require_auth,
-        ))
+        .layer(middleware::from_fn_with_state(state, auth::require_auth))
 }
 
 fn collection_routes(state: Arc<AppState>) -> Router<Arc<AppState>> {
@@ -230,10 +226,7 @@ fn collection_routes(state: Arc<AppState>) -> Router<Arc<AppState>> {
             "/{slug}/boards/{board_slug}",
             axum::routing::delete(routes::collections::remove_board),
         )
-        .layer(middleware::from_fn_with_state(
-            state,
-            auth::require_auth,
-        ))
+        .layer(middleware::from_fn_with_state(state, auth::require_auth))
 }
 
 async fn health(State(state): State<Arc<AppState>>) -> impl IntoResponse {
@@ -275,12 +268,7 @@ async fn health(State(state): State<Arc<AppState>>) -> impl IntoResponse {
 }
 
 pub async fn serve(state: Arc<AppState>) -> anyhow::Result<()> {
-    let server_config = state
-        .config
-        .server
-        .as_ref()
-        .cloned()
-        .unwrap_or_default();
+    let server_config = state.config.server.as_ref().cloned().unwrap_or_default();
 
     let app = build_router(state.clone());
 
@@ -318,9 +306,8 @@ pub async fn serve(state: Arc<AppState>) -> anyhow::Result<()> {
 
 async fn shutdown_signal() {
     let ctrl_c = tokio::signal::ctrl_c();
-    let mut sigterm =
-        tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
-            .expect("failed to register SIGTERM handler");
+    let mut sigterm = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+        .expect("failed to register SIGTERM handler");
 
     tokio::select! {
         _ = ctrl_c => {},

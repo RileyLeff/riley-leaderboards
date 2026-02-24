@@ -58,12 +58,13 @@ async fn connect_custom_schema() {
     let pool = db::connect(&config).await.expect("connect failed");
 
     // Verify the schema was created
-    let exists: (bool,) =
-        sqlx::query_as("SELECT EXISTS(SELECT 1 FROM information_schema.schemata WHERE schema_name = $1)")
-            .bind(schema_name)
-            .fetch_one(&pool)
-            .await
-            .expect("schema check failed");
+    let exists: (bool,) = sqlx::query_as(
+        "SELECT EXISTS(SELECT 1 FROM information_schema.schemata WHERE schema_name = $1)",
+    )
+    .bind(schema_name)
+    .fetch_one(&pool)
+    .await
+    .expect("schema check failed");
     assert!(exists.0, "custom schema should exist");
 
     // Verify search_path includes our schema
@@ -78,10 +79,13 @@ async fn connect_custom_schema() {
     );
 
     // Clean up
-    sqlx::query(&format!("DROP SCHEMA IF EXISTS \"{}\" CASCADE", schema_name))
-        .execute(&pool)
-        .await
-        .expect("test cleanup: failed to drop schema");
+    sqlx::query(&format!(
+        "DROP SCHEMA IF EXISTS \"{}\" CASCADE",
+        schema_name
+    ))
+    .execute(&pool)
+    .await
+    .expect("test cleanup: failed to drop schema");
     pool.close().await;
 }
 
@@ -107,9 +111,18 @@ async fn migrate_default_schema() {
 
     let table_names: Vec<&str> = tables.iter().map(|t| t.0.as_str()).collect();
     assert!(table_names.contains(&"boards"), "boards table should exist");
-    assert!(table_names.contains(&"entries"), "entries table should exist");
-    assert!(table_names.contains(&"versions"), "versions table should exist");
-    assert!(table_names.contains(&"placements"), "placements table should exist");
+    assert!(
+        table_names.contains(&"entries"),
+        "entries table should exist"
+    );
+    assert!(
+        table_names.contains(&"versions"),
+        "versions table should exist"
+    );
+    assert!(
+        table_names.contains(&"placements"),
+        "placements table should exist"
+    );
     assert!(
         table_names.contains(&"board_references"),
         "board_references table should exist"
@@ -124,10 +137,13 @@ async fn migrate_default_schema() {
     );
 
     // Clean up
-    sqlx::query(&format!("DROP SCHEMA IF EXISTS \"{}\" CASCADE", schema_name))
-        .execute(&pool)
-        .await
-        .expect("test cleanup: failed to drop schema");
+    sqlx::query(&format!(
+        "DROP SCHEMA IF EXISTS \"{}\" CASCADE",
+        schema_name
+    ))
+    .execute(&pool)
+    .await
+    .expect("test cleanup: failed to drop schema");
     pool.close().await;
 }
 

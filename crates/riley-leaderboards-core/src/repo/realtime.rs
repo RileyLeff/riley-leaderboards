@@ -98,7 +98,10 @@ pub async fn latest(
     };
 
     // Batch-fetch entry names from the hash
-    let entry_slugs: Vec<&str> = entries_with_scores.iter().map(|(s, _)| s.as_str()).collect();
+    let entry_slugs: Vec<&str> = entries_with_scores
+        .iter()
+        .map(|(s, _)| s.as_str())
+        .collect();
     let entry_names: Vec<Option<String>> = if entry_slugs.is_empty() {
         vec![]
     } else {
@@ -267,13 +270,14 @@ pub async fn snapshot(
 
     // Safety limit: max entries per version
     if let Some(max) = max_entries
-        && entries_with_scores.len() > max {
-            delete_snap_keys(redis, &snap_keys).await;
-            return Err(Error::Validation(format!(
-                "too many entries to snapshot ({}, max {max})",
-                entries_with_scores.len(),
-            )));
-        }
+        && entries_with_scores.len() > max
+    {
+        delete_snap_keys(redis, &snap_keys).await;
+        return Err(Error::Validation(format!(
+            "too many entries to snapshot ({}, max {max})",
+            entries_with_scores.len(),
+        )));
+    }
 
     // Get next version number
     let next_number: i32 = sqlx::query_scalar(
@@ -297,17 +301,21 @@ pub async fn snapshot(
     .await?;
 
     // Batch-fetch entry IDs from Postgres to avoid O(N) individual lookups
-    let entry_slugs: Vec<&str> = entries_with_scores.iter().map(|(s, _)| s.as_str()).collect();
-    let entry_rows: Vec<(Uuid, String)> = sqlx::query_as(
-        "SELECT id, slug FROM entries WHERE board_id = $1 AND slug = ANY($2)",
-    )
-    .bind(board.id)
-    .bind(&entry_slugs)
-    .fetch_all(&mut *tx)
-    .await?;
+    let entry_slugs: Vec<&str> = entries_with_scores
+        .iter()
+        .map(|(s, _)| s.as_str())
+        .collect();
+    let entry_rows: Vec<(Uuid, String)> =
+        sqlx::query_as("SELECT id, slug FROM entries WHERE board_id = $1 AND slug = ANY($2)")
+            .bind(board.id)
+            .bind(&entry_slugs)
+            .fetch_all(&mut *tx)
+            .await?;
 
-    let entry_map: std::collections::HashMap<String, Uuid> =
-        entry_rows.into_iter().map(|(id, slug)| (slug, id)).collect();
+    let entry_map: std::collections::HashMap<String, Uuid> = entry_rows
+        .into_iter()
+        .map(|(id, slug)| (slug, id))
+        .collect();
 
     // Insert placements
     for (entry_slug, score) in &entries_with_scores {

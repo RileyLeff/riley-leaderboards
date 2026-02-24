@@ -20,12 +20,10 @@ pub async fn create(pool: &PgPool, board_id: Uuid, input: &CreateEntry) -> Resul
     .fetch_one(pool)
     .await
     .map_err(|e| match &e {
-        sqlx::Error::Database(db_err) if db_err.is_unique_violation() => {
-            Error::Conflict(format!(
-                "entry with slug '{}' already exists on this board",
-                input.slug
-            ))
-        }
+        sqlx::Error::Database(db_err) if db_err.is_unique_violation() => Error::Conflict(format!(
+            "entry with slug '{}' already exists on this board",
+            input.slug
+        )),
         _ => Error::Database(e),
     })?;
 
@@ -87,14 +85,12 @@ pub async fn list_paginated(
 }
 
 pub async fn get_by_slug(pool: &PgPool, board_id: Uuid, slug: &str) -> Result<Entry> {
-    sqlx::query_as::<_, Entry>(
-        "SELECT * FROM entries WHERE board_id = $1 AND slug = $2",
-    )
-    .bind(board_id)
-    .bind(slug)
-    .fetch_optional(pool)
-    .await?
-    .ok_or_else(|| Error::NotFound(format!("entry '{slug}' not found")))
+    sqlx::query_as::<_, Entry>("SELECT * FROM entries WHERE board_id = $1 AND slug = $2")
+        .bind(board_id)
+        .bind(slug)
+        .fetch_optional(pool)
+        .await?
+        .ok_or_else(|| Error::NotFound(format!("entry '{slug}' not found")))
 }
 
 pub async fn update(
@@ -161,12 +157,11 @@ pub async fn delete(pool: &PgPool, board_id: Uuid, slug: &str) -> Result<()> {
 
     // Reject deletion if the entry has any placements — this would silently
     // mutate historical versions via CASCADE, contradicting version immutability.
-    let version_count: (i64,) = sqlx::query_as(
-        "SELECT count(DISTINCT version_id) FROM placements WHERE entry_id = $1",
-    )
-    .bind(entry.id)
-    .fetch_one(&mut *tx)
-    .await?;
+    let version_count: (i64,) =
+        sqlx::query_as("SELECT count(DISTINCT version_id) FROM placements WHERE entry_id = $1")
+            .bind(entry.id)
+            .fetch_one(&mut *tx)
+            .await?;
     if version_count.0 > 0 {
         return Err(Error::Conflict(format!(
             "entry '{slug}' cannot be deleted because it has placements in {} version(s)",

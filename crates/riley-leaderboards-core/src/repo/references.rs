@@ -24,9 +24,8 @@ pub async fn create(
             .fetch_optional(pool)
             .await?;
 
-            let (id,) = version_id.ok_or_else(|| {
-                Error::NotFound(format!("version {num} not found on this board"))
-            })?;
+            let (id,) = version_id
+                .ok_or_else(|| Error::NotFound(format!("version {num} not found on this board")))?;
             Some(id)
         }
         None => None,
@@ -127,12 +126,11 @@ pub async fn list_paginated(
 }
 
 pub async fn delete(pool: &PgPool, board_id: Uuid, reference_id: Uuid) -> Result<()> {
-    let result =
-        sqlx::query("DELETE FROM board_references WHERE id = $1 AND board_id = $2")
-            .bind(reference_id)
-            .bind(board_id)
-            .execute(pool)
-            .await?;
+    let result = sqlx::query("DELETE FROM board_references WHERE id = $1 AND board_id = $2")
+        .bind(reference_id)
+        .bind(board_id)
+        .execute(pool)
+        .await?;
 
     if result.rows_affected() == 0 {
         return Err(Error::NotFound(format!(
@@ -165,10 +163,11 @@ fn validate_uri(uri: &str) -> Result<()> {
 
 fn validate_label(label: &Option<String>) -> Result<()> {
     if let Some(l) = label
-        && l.len() > 256 {
-            return Err(Error::Validation(
-                "label must not exceed 256 characters".to_string(),
-            ));
-        }
+        && l.len() > 256
+    {
+        return Err(Error::Validation(
+            "label must not exceed 256 characters".to_string(),
+        ));
+    }
     Ok(())
 }

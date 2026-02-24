@@ -13,8 +13,8 @@ use axum::extract::{Path, State};
 use axum::response::sse::{Event, KeepAlive, Sse};
 use serde::Serialize;
 use tokio::sync::broadcast;
-use tokio_stream::wrappers::BroadcastStream;
 use tokio_stream::StreamExt;
+use tokio_stream::wrappers::BroadcastStream;
 
 use crate::AppState;
 use crate::error::ApiResult;
@@ -86,12 +86,10 @@ impl EventBus {
         let buffer = self.broadcast_buffer;
         let rx = {
             let mut channels = self.channels.write().unwrap();
-            let tx = channels
-                .entry(board_slug.to_string())
-                .or_insert_with(|| {
-                    let (tx, _) = broadcast::channel(buffer);
-                    tx
-                });
+            let tx = channels.entry(board_slug.to_string()).or_insert_with(|| {
+                let (tx, _) = broadcast::channel(buffer);
+                tx
+            });
             tx.subscribe()
         };
 
@@ -168,13 +166,11 @@ impl EventBus {
         let mut channels = self.channels.write().unwrap();
         // Re-check under write lock — a new subscriber may have appeared
         if let Some(tx) = channels.get(board_slug)
-            && tx.receiver_count() == 0 {
-                channels.remove(board_slug);
-                self.last_score_event
-                    .write()
-                    .unwrap()
-                    .remove(board_slug);
-            }
+            && tx.receiver_count() == 0
+        {
+            channels.remove(board_slug);
+            self.last_score_event.write().unwrap().remove(board_slug);
+        }
     }
 
     pub fn active_connections(&self) -> usize {
@@ -229,7 +225,9 @@ pub async fn stream(
         Ok(event) => {
             let event_type = event.event_type().to_string();
             match serde_json::to_string(&event) {
-                Ok(data) => Some(Ok::<_, Infallible>(Event::default().event(event_type).data(data))),
+                Ok(data) => Some(Ok::<_, Infallible>(
+                    Event::default().event(event_type).data(data),
+                )),
                 Err(_) => None,
             }
         }

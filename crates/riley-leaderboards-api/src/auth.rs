@@ -49,7 +49,9 @@ impl AuthMode {
         // Resolve the effective admin token (admin_token or legacy api_token alias)
         let effective_admin_token = match (&auth.admin_token, &auth.api_token) {
             (Some(_), Some(_)) => {
-                anyhow::bail!("auth config: admin_token and api_token are mutually exclusive (api_token is a legacy alias for admin_token)");
+                anyhow::bail!(
+                    "auth config: admin_token and api_token are mutually exclusive (api_token is a legacy alias for admin_token)"
+                );
             }
             (Some(t), None) | (None, Some(t)) => Some(t),
             (None, None) => None,
@@ -69,7 +71,9 @@ impl AuthMode {
 
         match (&auth.jwks_url, effective_admin_token) {
             (Some(_), Some(_)) => {
-                anyhow::bail!("auth config: jwks_url and admin_token/api_token are mutually exclusive");
+                anyhow::bail!(
+                    "auth config: jwks_url and admin_token/api_token are mutually exclusive"
+                );
             }
             (Some(url), None) => {
                 let cache = JwksCache::new(url).await?;
@@ -230,7 +234,10 @@ impl JwksCache {
 
     /// Get a decoding key by kid. Returns None if the kid is unknown or if
     /// the cache is stale beyond the maximum allowed age.
-    pub async fn get_key(&self, kid: &str) -> std::result::Result<Option<(DecodingKey, Algorithm)>, &'static str> {
+    pub async fn get_key(
+        &self,
+        kid: &str,
+    ) -> std::result::Result<Option<(DecodingKey, Algorithm)>, &'static str> {
         let elapsed = self.last_refresh.read().await.elapsed();
         if elapsed.as_secs() > JWKS_MAX_STALE_SECS {
             return Err("JWKS cache is stale — refresh has been failing");
@@ -240,10 +247,7 @@ impl JwksCache {
 
     /// Spawn a background task that refreshes the JWKS every 60 minutes.
     /// When a `TaskTracker` is provided, the task is registered for graceful shutdown.
-    pub fn spawn_refresh_task(
-        self: &Arc<Self>,
-        tracker: Option<&tokio_util::task::TaskTracker>,
-    ) {
+    pub fn spawn_refresh_task(self: &Arc<Self>, tracker: Option<&tokio_util::task::TaskTracker>) {
         let cache = Arc::clone(self);
         let fut = async move {
             let mut interval = tokio::time::interval(std::time::Duration::from_secs(3600));
@@ -405,7 +409,11 @@ pub async fn require_auth(
             }
 
             // Validate JWT — for writes, enforce required_role; for reads, any valid JWT
-            let role_to_check = if is_read { None } else { required_role.as_deref() };
+            let role_to_check = if is_read {
+                None
+            } else {
+                required_role.as_deref()
+            };
             validate_jwt(
                 token,
                 jwks_cache,

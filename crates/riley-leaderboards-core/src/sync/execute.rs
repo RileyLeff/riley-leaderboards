@@ -190,7 +190,10 @@ async fn sync_board(
 
     // If no entries in the file, nothing to version
     if parsed.entries.is_empty() {
-        info!("board '{}': no entries in rankings.toml, skipping version creation", parsed.slug);
+        info!(
+            "board '{}': no entries in rankings.toml, skipping version creation",
+            parsed.slug
+        );
         return Ok(BoardSyncResult {
             name: board.name.clone(),
             slug: parsed.slug,
@@ -268,16 +271,17 @@ async fn sync_board(
         true
     } else {
         match versions::get_latest(pool, board.id).await {
-            Ok(latest) => {
-                placements_changed(&board.board_type, &latest.placements, &placements)
-            }
+            Ok(latest) => placements_changed(&board.board_type, &latest.placements, &placements),
             Err(Error::NotFound(_)) => true, // No versions yet
             Err(e) => return Err(e),
         }
     };
 
     if !needs_version {
-        info!("board '{}': no changes detected, skipping version creation", parsed.slug);
+        info!(
+            "board '{}': no changes detected, skipping version creation",
+            parsed.slug
+        );
         return Ok(BoardSyncResult {
             name: board.name.clone(),
             slug: parsed.slug,
@@ -326,10 +330,8 @@ fn placements_changed(
     }
 
     // Build a lookup of current placements by entry slug
-    let current_map: std::collections::HashMap<&str, &crate::models::PlacementWithEntry> = current
-        .iter()
-        .map(|p| (p.entry_slug.as_str(), p))
-        .collect();
+    let current_map: std::collections::HashMap<&str, &crate::models::PlacementWithEntry> =
+        current.iter().map(|p| (p.entry_slug.as_str(), p)).collect();
 
     for (idx, p) in proposed.iter().enumerate() {
         match current_map.get(p.entry_slug.as_str()) {
@@ -368,4 +370,3 @@ fn placements_changed(
 
     false
 }
-

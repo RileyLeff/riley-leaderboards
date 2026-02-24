@@ -288,11 +288,7 @@ fn validate_tier_config(tier_config: Option<&serde_json::Value>) -> Result<()> {
     let tiers = tc
         .get("tiers")
         .and_then(|t| t.as_array())
-        .ok_or_else(|| {
-            Error::Validation(
-                "tier_config must have a 'tiers' array".to_string(),
-            )
-        })?;
+        .ok_or_else(|| Error::Validation("tier_config must have a 'tiers' array".to_string()))?;
 
     if tiers.is_empty() {
         return Err(Error::Validation(
@@ -303,18 +299,14 @@ fn validate_tier_config(tier_config: Option<&serde_json::Value>) -> Result<()> {
     let mut seen_keys = std::collections::HashSet::new();
     for (i, tier) in tiers.iter().enumerate() {
         let key = tier.get("key").and_then(|k| k.as_str()).ok_or_else(|| {
-            Error::Validation(format!(
-                "tier_config.tiers[{i}] must have a string 'key'"
-            ))
+            Error::Validation(format!("tier_config.tiers[{i}] must have a string 'key'"))
         })?;
         if !seen_keys.insert(key) {
             return Err(Error::Validation(format!(
                 "tier_config has duplicate tier key '{key}'"
             )));
         }
-        let pos = tier
-            .get("position")
-            .and_then(|p| p.as_i64());
+        let pos = tier.get("position").and_then(|p| p.as_i64());
         match pos {
             None => {
                 return Err(Error::Validation(format!(

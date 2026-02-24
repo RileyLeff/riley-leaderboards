@@ -153,9 +153,10 @@ async fn deliver(url: &str, body: &[u8], secret: Option<&str>) {
             .body(body.to_vec());
 
         if let Some(secret) = secret
-            && let Some(sig) = compute_signature(secret, body) {
-                request = request.header("X-Webhook-Signature-256", format!("sha256={sig}"));
-            }
+            && let Some(sig) = compute_signature(secret, body)
+        {
+            request = request.header("X-Webhook-Signature-256", format!("sha256={sig}"));
+        }
 
         match request.send().await {
             Ok(resp) if resp.status().is_success() => {
@@ -164,11 +165,9 @@ async fn deliver(url: &str, body: &[u8], secret: Option<&str>) {
                 return;
             }
             Ok(resp) if resp.status().is_client_error() => {
-                tracing::warn!(
-                    "webhook to {url} returned {} (not retrying)",
-                    resp.status()
-                );
-                metrics::counter!("webhook_deliveries_total", "status" => "client_error").increment(1);
+                tracing::warn!("webhook to {url} returned {} (not retrying)", resp.status());
+                metrics::counter!("webhook_deliveries_total", "status" => "client_error")
+                    .increment(1);
                 return;
             }
             Ok(resp) => {

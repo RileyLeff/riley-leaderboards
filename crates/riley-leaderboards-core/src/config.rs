@@ -271,9 +271,8 @@ impl ConfigValue {
 
     pub fn resolve(&self) -> Result<String> {
         if let Some(var_name) = self.0.strip_prefix("env:") {
-            std::env::var(var_name).map_err(|_| {
-                Error::Config(format!("environment variable {var_name} not set"))
-            })
+            std::env::var(var_name)
+                .map_err(|_| Error::Config(format!("environment variable {var_name} not set")))
         } else {
             Ok(self.0.clone())
         }
@@ -347,10 +346,16 @@ pub fn load_config(explicit_path: Option<&Path>) -> Result<RileyLeaderboardsConf
 
 fn load_from_path(path: &Path) -> Result<RileyLeaderboardsConfig> {
     let contents = std::fs::read_to_string(path).map_err(|e| {
-        Error::Config(format!("failed to read config from {}: {e}", path.display()))
+        Error::Config(format!(
+            "failed to read config from {}: {e}",
+            path.display()
+        ))
     })?;
     let config: RileyLeaderboardsConfig = toml::from_str(&contents).map_err(|e| {
-        Error::Config(format!("failed to parse config from {}: {e}", path.display()))
+        Error::Config(format!(
+            "failed to parse config from {}: {e}",
+            path.display()
+        ))
     })?;
     validate_webhook_board_patterns(&config)?;
     Ok(config)
@@ -472,7 +477,10 @@ secret = "env:OUTBOUND_WEBHOOK_SECRET"
         assert!(wh0.secret.is_none());
 
         let wh1 = &config.webhooks[1];
-        assert_eq!(wh1.events, vec![WebhookEvent::VersionCreated, WebhookEvent::BoardCreated]);
+        assert_eq!(
+            wh1.events,
+            vec![WebhookEvent::VersionCreated, WebhookEvent::BoardCreated]
+        );
         assert!(wh1.secret.is_some());
         assert!(wh1.boards.is_empty());
     }
@@ -551,7 +559,11 @@ url = "postgres://localhost/leaderboards"
             webhooks: vec![WebhookConfig {
                 url: "https://example.com".to_string(),
                 events: vec![WebhookEvent::VersionCreated],
-                boards: vec!["dc-*".to_string(), "*".to_string(), "exact-match".to_string()],
+                boards: vec![
+                    "dc-*".to_string(),
+                    "*".to_string(),
+                    "exact-match".to_string(),
+                ],
                 secret: None,
             }],
         };

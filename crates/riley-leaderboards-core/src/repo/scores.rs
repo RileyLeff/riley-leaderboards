@@ -8,11 +8,7 @@ use crate::models::{
 
 /// Submit (upsert) a score for an accumulative board.
 /// Creates the entry if it doesn't exist; updates name on re-submission.
-pub async fn submit(
-    pool: &PgPool,
-    board: &Board,
-    input: &SubmitScore,
-) -> Result<AccumulatedScore> {
+pub async fn submit(pool: &PgPool, board: &Board, input: &SubmitScore) -> Result<AccumulatedScore> {
     if !board.accumulative {
         return Err(Error::Validation(
             "score submission is only allowed on accumulative boards".to_string(),
@@ -130,12 +126,13 @@ pub async fn snapshot(
 
     // Safety limit: max entries per version
     if let Some(max) = max_entries
-        && scores.len() > max {
-            return Err(Error::Validation(format!(
-                "too many entries to snapshot ({}, max {max})",
-                scores.len(),
-            )));
-        }
+        && scores.len() > max
+    {
+        return Err(Error::Validation(format!(
+            "too many entries to snapshot ({}, max {max})",
+            scores.len(),
+        )));
+    }
 
     // Get next version number
     let next_number: i32 = sqlx::query_scalar(

@@ -69,32 +69,18 @@ pub fn parse_board_dir(dir: &Path) -> Result<ParsedBoard> {
     crate::repo::validate_slug(&slug)?;
 
     let board_path = dir.join("board.toml");
-    let board_str = std::fs::read_to_string(&board_path).map_err(|e| {
-        Error::Validation(format!(
-            "failed to read {}: {e}",
-            board_path.display()
-        ))
-    })?;
-    let board: BoardToml = toml::from_str(&board_str).map_err(|e| {
-        Error::Validation(format!(
-            "failed to parse {}: {e}",
-            board_path.display()
-        ))
-    })?;
+    let board_str = std::fs::read_to_string(&board_path)
+        .map_err(|e| Error::Validation(format!("failed to read {}: {e}", board_path.display())))?;
+    let board: BoardToml = toml::from_str(&board_str)
+        .map_err(|e| Error::Validation(format!("failed to parse {}: {e}", board_path.display())))?;
 
     let rankings_path = dir.join("rankings.toml");
     let (entries, version_metadata) = if rankings_path.exists() {
         let rankings_str = std::fs::read_to_string(&rankings_path).map_err(|e| {
-            Error::Validation(format!(
-                "failed to read {}: {e}",
-                rankings_path.display()
-            ))
+            Error::Validation(format!("failed to read {}: {e}", rankings_path.display()))
         })?;
         let rankings: RankingsToml = toml::from_str(&rankings_str).map_err(|e| {
-            Error::Validation(format!(
-                "failed to parse {}: {e}",
-                rankings_path.display()
-            ))
+            Error::Validation(format!("failed to parse {}: {e}", rankings_path.display()))
         })?;
         let vm = rankings.version_metadata.as_ref().map(toml_to_json);
         (rankings.entries, vm)
@@ -150,9 +136,7 @@ pub fn toml_to_json(value: &toml::Value) -> serde_json::Value {
         toml::Value::Float(f) => serde_json::json!(*f),
         toml::Value::Boolean(b) => serde_json::Value::Bool(*b),
         toml::Value::Datetime(dt) => serde_json::Value::String(dt.to_string()),
-        toml::Value::Array(arr) => {
-            serde_json::Value::Array(arr.iter().map(toml_to_json).collect())
-        }
+        toml::Value::Array(arr) => serde_json::Value::Array(arr.iter().map(toml_to_json).collect()),
         toml::Value::Table(table) => {
             let map: serde_json::Map<String, serde_json::Value> = table
                 .iter()

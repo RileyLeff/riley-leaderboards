@@ -50,7 +50,11 @@ async fn health_returns_ok() {
     let app = build_router(state);
 
     let response = app
-        .oneshot(Request::get("/health").body(axum::body::Body::empty()).unwrap())
+        .oneshot(
+            Request::get("/health")
+                .body(axum::body::Body::empty())
+                .unwrap(),
+        )
         .await
         .unwrap();
 
@@ -179,9 +183,11 @@ async fn openapi_spec_returns_valid_json() {
     // Verify basic OpenAPI structure
     assert_eq!(json["info"]["title"], "Riley Leaderboards API");
     // 28 handlers across 18 unique paths (multiple methods per path are grouped)
-    assert!(json["paths"].as_object().is_some_and(|p| p.len() >= 15),
+    assert!(
+        json["paths"].as_object().is_some_and(|p| p.len() >= 15),
         "expected at least 15 paths in OpenAPI spec, got {}",
-        json["paths"].as_object().map_or(0, |p| p.len()));
+        json["paths"].as_object().map_or(0, |p| p.len())
+    );
 
     // Clean up
     sqlx::query("DROP SCHEMA IF EXISTS \"test_openapi_endpoint\" CASCADE")

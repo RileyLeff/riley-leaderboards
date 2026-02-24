@@ -1,9 +1,9 @@
 use std::sync::Arc;
 
+use axum::Json;
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
-use axum::Json;
 
 use riley_leaderboards_core::models::{
     AddBoardToCollection, Collection, CollectionWithBoards, CreateCollection, Nullable,

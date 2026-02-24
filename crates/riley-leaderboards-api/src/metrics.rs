@@ -49,11 +49,7 @@ pub async fn track(request: Request, next: Next) -> Response {
     let duration = start.elapsed().as_secs_f64();
     let status = response.status().as_u16().to_string();
 
-    let labels = [
-        ("method", method),
-        ("path", path),
-        ("status", status),
-    ];
+    let labels = [("method", method), ("path", path), ("status", status)];
 
     metrics::counter!("http_requests_total", &labels).increment(1);
     metrics::histogram!("http_request_duration_seconds", &labels).record(duration);

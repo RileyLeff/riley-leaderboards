@@ -1,11 +1,11 @@
 use std::path::Path;
 use std::sync::Arc;
 
+use axum::Json;
 use axum::body::Bytes;
 use axum::extract::State;
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::IntoResponse;
-use axum::Json;
 use hmac::{Hmac, Mac};
 use sha2::Sha256;
 
@@ -115,10 +115,7 @@ pub async fn github(
     match event_type.as_str() {
         "push" => {} // proceed
         "ping" => {
-            return (
-                StatusCode::OK,
-                Json(serde_json::json!({ "pong": true })),
-            );
+            return (StatusCode::OK, Json(serde_json::json!({ "pong": true })));
         }
         _ => {
             return (
@@ -288,11 +285,7 @@ async fn run_sync(
                             Some(&state.task_tracker),
                         );
                         if let Some(ref event_bus) = state.event_bus {
-                            event_bus.publish_version(
-                                &r.slug,
-                                *version_number,
-                                note.clone(),
-                            );
+                            event_bus.publish_version(&r.slug, *version_number, note.clone());
                         }
                     }
                     riley_leaderboards_core::sync::execute::SyncAction::Updated {
@@ -311,21 +304,14 @@ async fn run_sync(
                             Some(&state.task_tracker),
                         );
                         if let Some(ref event_bus) = state.event_bus {
-                            event_bus.publish_version(
-                                &r.slug,
-                                *version_number,
-                                note.clone(),
-                            );
+                            event_bus.publish_version(&r.slug, *version_number, note.clone());
                         }
                     }
                     _ => {}
                 }
             }
 
-            tracing::info!(
-                "webhook sync completed: {} boards processed",
-                results.len()
-            );
+            tracing::info!("webhook sync completed: {} boards processed", results.len());
             Ok(())
         }
         Err(e) => Err(format!("sync failed: {e}")),

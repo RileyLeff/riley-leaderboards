@@ -84,7 +84,9 @@ fn json_request(method: &str, uri: &str, body: Option<serde_json::Value>) -> Req
         .header("content-type", "application/json");
 
     if let Some(b) = body {
-        builder.body(Body::from(serde_json::to_vec(&b).unwrap())).unwrap()
+        builder
+            .body(Body::from(serde_json::to_vec(&b).unwrap()))
+            .unwrap()
     } else {
         builder.body(Body::empty()).unwrap()
     }
@@ -98,15 +100,19 @@ async fn board_create_list_get_update_delete() {
     let (state, app) = setup(schema).await;
 
     // Create
-    let resp = app.clone().oneshot(json_request(
-        "POST",
-        "/boards",
-        Some(serde_json::json!({
-            "slug": "test-board",
-            "name": "Test Board",
-            "board_type": "ordered"
-        })),
-    )).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(json_request(
+            "POST",
+            "/boards",
+            Some(serde_json::json!({
+                "slug": "test-board",
+                "name": "Test Board",
+                "board_type": "ordered"
+            })),
+        ))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), 201);
     let board = json_body(resp).await;
     assert_eq!(board["slug"], "test-board");
@@ -116,13 +122,21 @@ async fn board_create_list_get_update_delete() {
     assert_eq!(board["accumulative"], false);
 
     // List
-    let resp = app.clone().oneshot(json_request("GET", "/boards", None)).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(json_request("GET", "/boards", None))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), 200);
     let boards = json_body(resp).await;
     assert_eq!(boards["items"].as_array().unwrap().len(), 1);
 
     // Get (returns BoardSummary with latest_version and entry_count)
-    let resp = app.clone().oneshot(json_request("GET", "/boards/test-board", None)).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(json_request("GET", "/boards/test-board", None))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), 200);
     let summary = json_body(resp).await;
     assert_eq!(summary["slug"], "test-board");
@@ -130,23 +144,35 @@ async fn board_create_list_get_update_delete() {
     assert_eq!(summary["entry_count"], 0);
 
     // Update
-    let resp = app.clone().oneshot(json_request(
-        "PATCH",
-        "/boards/test-board",
-        Some(serde_json::json!({
-            "name": "Updated Board"
-        })),
-    )).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(json_request(
+            "PATCH",
+            "/boards/test-board",
+            Some(serde_json::json!({
+                "name": "Updated Board"
+            })),
+        ))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), 200);
     let updated = json_body(resp).await;
     assert_eq!(updated["name"], "Updated Board");
 
     // Delete
-    let resp = app.clone().oneshot(json_request("DELETE", "/boards/test-board", None)).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(json_request("DELETE", "/boards/test-board", None))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), 204);
 
     // Verify deleted
-    let resp = app.clone().oneshot(json_request("GET", "/boards/test-board", None)).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(json_request("GET", "/boards/test-board", None))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), 404);
 
     cleanup(&state, schema).await;
@@ -163,10 +189,18 @@ async fn board_create_duplicate_slug_returns_409() {
         "board_type": "ordered"
     });
 
-    let resp = app.clone().oneshot(json_request("POST", "/boards", Some(body.clone()))).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(json_request("POST", "/boards", Some(body.clone())))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), 201);
 
-    let resp = app.clone().oneshot(json_request("POST", "/boards", Some(body))).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(json_request("POST", "/boards", Some(body)))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), 409);
 
     cleanup(&state, schema).await;
@@ -177,15 +211,19 @@ async fn board_create_invalid_type_returns_400() {
     let schema = "test_board_invalid";
     let (state, app) = setup(schema).await;
 
-    let resp = app.clone().oneshot(json_request(
-        "POST",
-        "/boards",
-        Some(serde_json::json!({
-            "slug": "bad",
-            "name": "Bad",
-            "board_type": "invalid"
-        })),
-    )).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(json_request(
+            "POST",
+            "/boards",
+            Some(serde_json::json!({
+                "slug": "bad",
+                "name": "Bad",
+                "board_type": "invalid"
+            })),
+        ))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), 400);
 
     cleanup(&state, schema).await;
@@ -199,70 +237,90 @@ async fn entry_create_list_get_update_delete() {
     let (state, app) = setup(schema).await;
 
     // Create board first
-    let resp = app.clone().oneshot(json_request(
-        "POST",
-        "/boards",
-        Some(serde_json::json!({
-            "slug": "sandwich-board",
-            "name": "Sandwiches",
-            "board_type": "ordered"
-        })),
-    )).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(json_request(
+            "POST",
+            "/boards",
+            Some(serde_json::json!({
+                "slug": "sandwich-board",
+                "name": "Sandwiches",
+                "board_type": "ordered"
+            })),
+        ))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), 201);
 
     // Create entry
-    let resp = app.clone().oneshot(json_request(
-        "POST",
-        "/boards/sandwich-board/entries",
-        Some(serde_json::json!({
-            "slug": "crunchy-boi",
-            "name": "Compliments Only Crunchy Boi",
-            "metadata": { "address": "1026 Vermont Ave NW" }
-        })),
-    )).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(json_request(
+            "POST",
+            "/boards/sandwich-board/entries",
+            Some(serde_json::json!({
+                "slug": "crunchy-boi",
+                "name": "Compliments Only Crunchy Boi",
+                "metadata": { "address": "1026 Vermont Ave NW" }
+            })),
+        ))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), 201);
     let entry = json_body(resp).await;
     assert_eq!(entry["slug"], "crunchy-boi");
     assert!(entry["metadata"]["address"].as_str().is_some());
 
     // List entries
-    let resp = app.clone().oneshot(json_request(
-        "GET",
-        "/boards/sandwich-board/entries",
-        None,
-    )).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(json_request("GET", "/boards/sandwich-board/entries", None))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), 200);
     let entries = json_body(resp).await;
     assert_eq!(entries["items"].as_array().unwrap().len(), 1);
 
     // Get entry
-    let resp = app.clone().oneshot(json_request(
-        "GET",
-        "/boards/sandwich-board/entries/crunchy-boi",
-        None,
-    )).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(json_request(
+            "GET",
+            "/boards/sandwich-board/entries/crunchy-boi",
+            None,
+        ))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), 200);
     let entry = json_body(resp).await;
     assert_eq!(entry["name"], "Compliments Only Crunchy Boi");
 
     // Update entry
-    let resp = app.clone().oneshot(json_request(
-        "PATCH",
-        "/boards/sandwich-board/entries/crunchy-boi",
-        Some(serde_json::json!({
-            "name": "The Crunchy Boi"
-        })),
-    )).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(json_request(
+            "PATCH",
+            "/boards/sandwich-board/entries/crunchy-boi",
+            Some(serde_json::json!({
+                "name": "The Crunchy Boi"
+            })),
+        ))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), 200);
     let updated = json_body(resp).await;
     assert_eq!(updated["name"], "The Crunchy Boi");
 
     // Delete entry
-    let resp = app.clone().oneshot(json_request(
-        "DELETE",
-        "/boards/sandwich-board/entries/crunchy-boi",
-        None,
-    )).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(json_request(
+            "DELETE",
+            "/boards/sandwich-board/entries/crunchy-boi",
+            None,
+        ))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), 204);
 
     cleanup(&state, schema).await;
@@ -273,14 +331,18 @@ async fn entry_on_nonexistent_board_returns_404() {
     let schema = "test_entry_no_board";
     let (state, app) = setup(schema).await;
 
-    let resp = app.clone().oneshot(json_request(
-        "POST",
-        "/boards/nonexistent/entries",
-        Some(serde_json::json!({
-            "slug": "test",
-            "name": "Test"
-        })),
-    )).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(json_request(
+            "POST",
+            "/boards/nonexistent/entries",
+            Some(serde_json::json!({
+                "slug": "test",
+                "name": "Test"
+            })),
+        ))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), 404);
 
     cleanup(&state, schema).await;
@@ -294,38 +356,52 @@ async fn ordered_version_create_and_fetch() {
     let (state, app) = setup(schema).await;
 
     // Create board
-    app.clone().oneshot(json_request(
-        "POST",
-        "/boards",
-        Some(serde_json::json!({
-            "slug": "dc-sandwiches",
-            "name": "Best Sandwiches in DC",
-            "board_type": "ordered"
-        })),
-    )).await.unwrap();
+    app.clone()
+        .oneshot(json_request(
+            "POST",
+            "/boards",
+            Some(serde_json::json!({
+                "slug": "dc-sandwiches",
+                "name": "Best Sandwiches in DC",
+                "board_type": "ordered"
+            })),
+        ))
+        .await
+        .unwrap();
 
     // Create entries
-    for (slug, name) in [("crunchy-boi", "Crunchy Boi"), ("humberto", "Humberto"), ("litteri", "A. Litteri")] {
-        app.clone().oneshot(json_request(
-            "POST",
-            "/boards/dc-sandwiches/entries",
-            Some(serde_json::json!({ "slug": slug, "name": name })),
-        )).await.unwrap();
+    for (slug, name) in [
+        ("crunchy-boi", "Crunchy Boi"),
+        ("humberto", "Humberto"),
+        ("litteri", "A. Litteri"),
+    ] {
+        app.clone()
+            .oneshot(json_request(
+                "POST",
+                "/boards/dc-sandwiches/entries",
+                Some(serde_json::json!({ "slug": slug, "name": name })),
+            ))
+            .await
+            .unwrap();
     }
 
     // Create version with placements
-    let resp = app.clone().oneshot(json_request(
-        "POST",
-        "/boards/dc-sandwiches/versions",
-        Some(serde_json::json!({
-            "note": "Initial rankings",
-            "placements": [
-                { "entry_slug": "crunchy-boi", "position": 1 },
-                { "entry_slug": "humberto", "position": 2 },
-                { "entry_slug": "litteri", "position": 3 }
-            ]
-        })),
-    )).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(json_request(
+            "POST",
+            "/boards/dc-sandwiches/versions",
+            Some(serde_json::json!({
+                "note": "Initial rankings",
+                "placements": [
+                    { "entry_slug": "crunchy-boi", "position": 1 },
+                    { "entry_slug": "humberto", "position": 2 },
+                    { "entry_slug": "litteri", "position": 3 }
+                ]
+            })),
+        ))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), 201);
     let version = json_body(resp).await;
     assert_eq!(version["version_number"], 1);
@@ -335,49 +411,57 @@ async fn ordered_version_create_and_fetch() {
     assert_eq!(version["placements"][0]["position"], 1);
 
     // Get version by number
-    let resp = app.clone().oneshot(json_request(
-        "GET",
-        "/boards/dc-sandwiches/versions/1",
-        None,
-    )).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(json_request(
+            "GET",
+            "/boards/dc-sandwiches/versions/1",
+            None,
+        ))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), 200);
     let fetched = json_body(resp).await;
     assert_eq!(fetched["version_number"], 1);
     assert_eq!(fetched["placements"].as_array().unwrap().len(), 3);
 
     // Get latest
-    let resp = app.clone().oneshot(json_request(
-        "GET",
-        "/boards/dc-sandwiches/latest",
-        None,
-    )).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(json_request("GET", "/boards/dc-sandwiches/latest", None))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), 200);
     let latest = json_body(resp).await;
     assert_eq!(latest["version_number"], 1);
 
     // Create second version
-    let resp = app.clone().oneshot(json_request(
-        "POST",
-        "/boards/dc-sandwiches/versions",
-        Some(serde_json::json!({
-            "note": "Updated rankings",
-            "placements": [
-                { "entry_slug": "humberto", "position": 1 },
-                { "entry_slug": "crunchy-boi", "position": 2 },
-                { "entry_slug": "litteri", "position": 3 }
-            ]
-        })),
-    )).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(json_request(
+            "POST",
+            "/boards/dc-sandwiches/versions",
+            Some(serde_json::json!({
+                "note": "Updated rankings",
+                "placements": [
+                    { "entry_slug": "humberto", "position": 1 },
+                    { "entry_slug": "crunchy-boi", "position": 2 },
+                    { "entry_slug": "litteri", "position": 3 }
+                ]
+            })),
+        ))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), 201);
     let v2 = json_body(resp).await;
     assert_eq!(v2["version_number"], 2);
 
     // List versions
-    let resp = app.clone().oneshot(json_request(
-        "GET",
-        "/boards/dc-sandwiches/versions",
-        None,
-    )).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(json_request("GET", "/boards/dc-sandwiches/versions", None))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), 200);
     let versions = json_body(resp).await;
     assert_eq!(versions["items"].as_array().unwrap().len(), 2);
@@ -386,21 +470,21 @@ async fn ordered_version_create_and_fetch() {
     assert_eq!(versions["items"][1]["version_number"], 1);
 
     // Latest should now be version 2
-    let resp = app.clone().oneshot(json_request(
-        "GET",
-        "/boards/dc-sandwiches/latest",
-        None,
-    )).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(json_request("GET", "/boards/dc-sandwiches/latest", None))
+        .await
+        .unwrap();
     let latest = json_body(resp).await;
     assert_eq!(latest["version_number"], 2);
     assert_eq!(latest["placements"][0]["entry_slug"], "humberto");
 
     // Board summary should reflect entry count and latest version
-    let resp = app.clone().oneshot(json_request(
-        "GET",
-        "/boards/dc-sandwiches",
-        None,
-    )).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(json_request("GET", "/boards/dc-sandwiches", None))
+        .await
+        .unwrap();
     let summary = json_body(resp).await;
     assert_eq!(summary["latest_version"], 2);
     assert_eq!(summary["entry_count"], 3);
@@ -413,36 +497,46 @@ async fn ordered_version_implicit_positions() {
     let schema = "test_ordered_implicit";
     let (state, app) = setup(schema).await;
 
-    app.clone().oneshot(json_request(
-        "POST",
-        "/boards",
-        Some(serde_json::json!({
-            "slug": "books",
-            "name": "Best Books",
-            "board_type": "ordered"
-        })),
-    )).await.unwrap();
+    app.clone()
+        .oneshot(json_request(
+            "POST",
+            "/boards",
+            Some(serde_json::json!({
+                "slug": "books",
+                "name": "Best Books",
+                "board_type": "ordered"
+            })),
+        ))
+        .await
+        .unwrap();
 
     for slug in ["book-a", "book-b", "book-c"] {
-        app.clone().oneshot(json_request(
-            "POST",
-            "/boards/books/entries",
-            Some(serde_json::json!({ "slug": slug, "name": slug })),
-        )).await.unwrap();
+        app.clone()
+            .oneshot(json_request(
+                "POST",
+                "/boards/books/entries",
+                Some(serde_json::json!({ "slug": slug, "name": slug })),
+            ))
+            .await
+            .unwrap();
     }
 
     // Create version WITHOUT explicit positions — should use array order
-    let resp = app.clone().oneshot(json_request(
-        "POST",
-        "/boards/books/versions",
-        Some(serde_json::json!({
-            "placements": [
-                { "entry_slug": "book-c" },
-                { "entry_slug": "book-a" },
-                { "entry_slug": "book-b" }
-            ]
-        })),
-    )).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(json_request(
+            "POST",
+            "/boards/books/versions",
+            Some(serde_json::json!({
+                "placements": [
+                    { "entry_slug": "book-c" },
+                    { "entry_slug": "book-a" },
+                    { "entry_slug": "book-b" }
+                ]
+            })),
+        ))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), 201);
     let version = json_body(resp).await;
     let placements = version["placements"].as_array().unwrap();
@@ -465,45 +559,68 @@ async fn scored_board_derives_positions() {
     let schema = "test_scored_board";
     let (state, app) = setup(schema).await;
 
-    app.clone().oneshot(json_request(
-        "POST",
-        "/boards",
-        Some(serde_json::json!({
-            "slug": "high-scores",
-            "name": "High Scores",
-            "board_type": "scored",
-            "sort_direction": "desc"
-        })),
-    )).await.unwrap();
-
-    for (slug, name) in [("player-a", "Alice"), ("player-b", "Bob"), ("player-c", "Charlie")] {
-        app.clone().oneshot(json_request(
+    app.clone()
+        .oneshot(json_request(
             "POST",
-            "/boards/high-scores/entries",
-            Some(serde_json::json!({ "slug": slug, "name": name })),
-        )).await.unwrap();
+            "/boards",
+            Some(serde_json::json!({
+                "slug": "high-scores",
+                "name": "High Scores",
+                "board_type": "scored",
+                "sort_direction": "desc"
+            })),
+        ))
+        .await
+        .unwrap();
+
+    for (slug, name) in [
+        ("player-a", "Alice"),
+        ("player-b", "Bob"),
+        ("player-c", "Charlie"),
+    ] {
+        app.clone()
+            .oneshot(json_request(
+                "POST",
+                "/boards/high-scores/entries",
+                Some(serde_json::json!({ "slug": slug, "name": name })),
+            ))
+            .await
+            .unwrap();
     }
 
-    let resp = app.clone().oneshot(json_request(
-        "POST",
-        "/boards/high-scores/versions",
-        Some(serde_json::json!({
-            "note": "Round 1",
-            "placements": [
-                { "entry_slug": "player-a", "score": 100.0 },
-                { "entry_slug": "player-b", "score": 250.0 },
-                { "entry_slug": "player-c", "score": 175.0 }
-            ]
-        })),
-    )).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(json_request(
+            "POST",
+            "/boards/high-scores/versions",
+            Some(serde_json::json!({
+                "note": "Round 1",
+                "placements": [
+                    { "entry_slug": "player-a", "score": 100.0 },
+                    { "entry_slug": "player-b", "score": 250.0 },
+                    { "entry_slug": "player-c", "score": 175.0 }
+                ]
+            })),
+        ))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), 201);
     let version = json_body(resp).await;
     let placements = version["placements"].as_array().unwrap();
 
     // Sort direction is desc, so Bob (250) should be position 1
-    let bob = placements.iter().find(|p| p["entry_slug"] == "player-b").unwrap();
-    let charlie = placements.iter().find(|p| p["entry_slug"] == "player-c").unwrap();
-    let alice = placements.iter().find(|p| p["entry_slug"] == "player-a").unwrap();
+    let bob = placements
+        .iter()
+        .find(|p| p["entry_slug"] == "player-b")
+        .unwrap();
+    let charlie = placements
+        .iter()
+        .find(|p| p["entry_slug"] == "player-c")
+        .unwrap();
+    let alice = placements
+        .iter()
+        .find(|p| p["entry_slug"] == "player-a")
+        .unwrap();
 
     assert_eq!(bob["position"], 1);
     assert_eq!(charlie["position"], 2);
@@ -517,42 +634,58 @@ async fn scored_board_asc_direction() {
     let schema = "test_scored_asc";
     let (state, app) = setup(schema).await;
 
-    app.clone().oneshot(json_request(
-        "POST",
-        "/boards",
-        Some(serde_json::json!({
-            "slug": "golf",
-            "name": "Golf Scores",
-            "board_type": "scored",
-            "sort_direction": "asc"
-        })),
-    )).await.unwrap();
+    app.clone()
+        .oneshot(json_request(
+            "POST",
+            "/boards",
+            Some(serde_json::json!({
+                "slug": "golf",
+                "name": "Golf Scores",
+                "board_type": "scored",
+                "sort_direction": "asc"
+            })),
+        ))
+        .await
+        .unwrap();
 
     for slug in ["alice", "bob"] {
-        app.clone().oneshot(json_request(
-            "POST",
-            "/boards/golf/entries",
-            Some(serde_json::json!({ "slug": slug, "name": slug })),
-        )).await.unwrap();
+        app.clone()
+            .oneshot(json_request(
+                "POST",
+                "/boards/golf/entries",
+                Some(serde_json::json!({ "slug": slug, "name": slug })),
+            ))
+            .await
+            .unwrap();
     }
 
-    let resp = app.clone().oneshot(json_request(
-        "POST",
-        "/boards/golf/versions",
-        Some(serde_json::json!({
-            "placements": [
-                { "entry_slug": "alice", "score": 72.0 },
-                { "entry_slug": "bob", "score": 68.0 }
-            ]
-        })),
-    )).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(json_request(
+            "POST",
+            "/boards/golf/versions",
+            Some(serde_json::json!({
+                "placements": [
+                    { "entry_slug": "alice", "score": 72.0 },
+                    { "entry_slug": "bob", "score": 68.0 }
+                ]
+            })),
+        ))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), 201);
     let version = json_body(resp).await;
     let placements = version["placements"].as_array().unwrap();
 
     // asc: Bob (68) should be position 1
-    let bob = placements.iter().find(|p| p["entry_slug"] == "bob").unwrap();
-    let alice = placements.iter().find(|p| p["entry_slug"] == "alice").unwrap();
+    let bob = placements
+        .iter()
+        .find(|p| p["entry_slug"] == "bob")
+        .unwrap();
+    let alice = placements
+        .iter()
+        .find(|p| p["entry_slug"] == "alice")
+        .unwrap();
     assert_eq!(bob["position"], 1);
     assert_eq!(alice["position"], 2);
 
@@ -564,31 +697,41 @@ async fn scored_board_requires_score() {
     let schema = "test_scored_no_score";
     let (state, app) = setup(schema).await;
 
-    app.clone().oneshot(json_request(
-        "POST",
-        "/boards",
-        Some(serde_json::json!({
-            "slug": "scores",
-            "name": "Scores",
-            "board_type": "scored"
-        })),
-    )).await.unwrap();
+    app.clone()
+        .oneshot(json_request(
+            "POST",
+            "/boards",
+            Some(serde_json::json!({
+                "slug": "scores",
+                "name": "Scores",
+                "board_type": "scored"
+            })),
+        ))
+        .await
+        .unwrap();
 
-    app.clone().oneshot(json_request(
-        "POST",
-        "/boards/scores/entries",
-        Some(serde_json::json!({ "slug": "p1", "name": "Player 1" })),
-    )).await.unwrap();
+    app.clone()
+        .oneshot(json_request(
+            "POST",
+            "/boards/scores/entries",
+            Some(serde_json::json!({ "slug": "p1", "name": "Player 1" })),
+        ))
+        .await
+        .unwrap();
 
-    let resp = app.clone().oneshot(json_request(
-        "POST",
-        "/boards/scores/versions",
-        Some(serde_json::json!({
-            "placements": [
-                { "entry_slug": "p1" }
-            ]
-        })),
-    )).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(json_request(
+            "POST",
+            "/boards/scores/versions",
+            Some(serde_json::json!({
+                "placements": [
+                    { "entry_slug": "p1" }
+                ]
+            })),
+        ))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), 400);
 
     cleanup(&state, schema).await;
@@ -601,48 +744,61 @@ async fn tiered_board_with_tier_config() {
     let schema = "test_tiered_board";
     let (state, app) = setup(schema).await;
 
-    app.clone().oneshot(json_request(
-        "POST",
-        "/boards",
-        Some(serde_json::json!({
-            "slug": "tier-list",
-            "name": "Tier List",
-            "board_type": "tiered",
-            "tier_config": {
-                "tiers": [
-                    { "key": "s", "label": "S Tier", "position": 1 },
-                    { "key": "a", "label": "A Tier", "position": 2 },
-                    { "key": "b", "label": "B Tier", "position": 3 }
-                ]
-            }
-        })),
-    )).await.unwrap();
+    app.clone()
+        .oneshot(json_request(
+            "POST",
+            "/boards",
+            Some(serde_json::json!({
+                "slug": "tier-list",
+                "name": "Tier List",
+                "board_type": "tiered",
+                "tier_config": {
+                    "tiers": [
+                        { "key": "s", "label": "S Tier", "position": 1 },
+                        { "key": "a", "label": "A Tier", "position": 2 },
+                        { "key": "b", "label": "B Tier", "position": 3 }
+                    ]
+                }
+            })),
+        ))
+        .await
+        .unwrap();
 
     for slug in ["item-x", "item-y", "item-z"] {
-        app.clone().oneshot(json_request(
-            "POST",
-            "/boards/tier-list/entries",
-            Some(serde_json::json!({ "slug": slug, "name": slug })),
-        )).await.unwrap();
+        app.clone()
+            .oneshot(json_request(
+                "POST",
+                "/boards/tier-list/entries",
+                Some(serde_json::json!({ "slug": slug, "name": slug })),
+            ))
+            .await
+            .unwrap();
     }
 
-    let resp = app.clone().oneshot(json_request(
-        "POST",
-        "/boards/tier-list/versions",
-        Some(serde_json::json!({
-            "placements": [
-                { "entry_slug": "item-x", "tier": "s", "position": 1 },
-                { "entry_slug": "item-y", "tier": "a", "position": 1 },
-                { "entry_slug": "item-z", "tier": "b", "position": 1 }
-            ]
-        })),
-    )).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(json_request(
+            "POST",
+            "/boards/tier-list/versions",
+            Some(serde_json::json!({
+                "placements": [
+                    { "entry_slug": "item-x", "tier": "s", "position": 1 },
+                    { "entry_slug": "item-y", "tier": "a", "position": 1 },
+                    { "entry_slug": "item-z", "tier": "b", "position": 1 }
+                ]
+            })),
+        ))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), 201);
     let version = json_body(resp).await;
     let placements = version["placements"].as_array().unwrap();
     assert_eq!(placements.len(), 3);
 
-    let x = placements.iter().find(|p| p["entry_slug"] == "item-x").unwrap();
+    let x = placements
+        .iter()
+        .find(|p| p["entry_slug"] == "item-x")
+        .unwrap();
     assert_eq!(x["tier"], "s");
 
     cleanup(&state, schema).await;
@@ -654,46 +810,60 @@ async fn tiered_board_requires_tier() {
     let (state, app) = setup(schema).await;
 
     // Creating a tiered board without tier_config should be rejected
-    let resp = app.clone().oneshot(json_request(
-        "POST",
-        "/boards",
-        Some(serde_json::json!({
-            "slug": "tiers",
-            "name": "Tiers",
-            "board_type": "tiered"
-        })),
-    )).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(json_request(
+            "POST",
+            "/boards",
+            Some(serde_json::json!({
+                "slug": "tiers",
+                "name": "Tiers",
+                "board_type": "tiered"
+            })),
+        ))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), 400);
 
     // With tier_config, board creation succeeds but placements missing tier are rejected
-    app.clone().oneshot(json_request(
-        "POST",
-        "/boards",
-        Some(serde_json::json!({
-            "slug": "tiers",
-            "name": "Tiers",
-            "board_type": "tiered",
-            "tier_config": {
-                "tiers": [{ "key": "s", "label": "S Tier", "position": 1 }]
-            }
-        })),
-    )).await.unwrap();
+    app.clone()
+        .oneshot(json_request(
+            "POST",
+            "/boards",
+            Some(serde_json::json!({
+                "slug": "tiers",
+                "name": "Tiers",
+                "board_type": "tiered",
+                "tier_config": {
+                    "tiers": [{ "key": "s", "label": "S Tier", "position": 1 }]
+                }
+            })),
+        ))
+        .await
+        .unwrap();
 
-    app.clone().oneshot(json_request(
-        "POST",
-        "/boards/tiers/entries",
-        Some(serde_json::json!({ "slug": "item", "name": "Item" })),
-    )).await.unwrap();
+    app.clone()
+        .oneshot(json_request(
+            "POST",
+            "/boards/tiers/entries",
+            Some(serde_json::json!({ "slug": "item", "name": "Item" })),
+        ))
+        .await
+        .unwrap();
 
-    let resp = app.clone().oneshot(json_request(
-        "POST",
-        "/boards/tiers/versions",
-        Some(serde_json::json!({
-            "placements": [
-                { "entry_slug": "item", "position": 1 }
-            ]
-        })),
-    )).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(json_request(
+            "POST",
+            "/boards/tiers/versions",
+            Some(serde_json::json!({
+                "placements": [
+                    { "entry_slug": "item", "position": 1 }
+                ]
+            })),
+        ))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), 400);
 
     cleanup(&state, schema).await;
@@ -704,36 +874,46 @@ async fn tiered_board_invalid_tier_returns_400() {
     let schema = "test_tiered_invalid";
     let (state, app) = setup(schema).await;
 
-    app.clone().oneshot(json_request(
-        "POST",
-        "/boards",
-        Some(serde_json::json!({
-            "slug": "tiers",
-            "name": "Tiers",
-            "board_type": "tiered",
-            "tier_config": {
-                "tiers": [
-                    { "key": "s", "label": "S", "position": 1 }
+    app.clone()
+        .oneshot(json_request(
+            "POST",
+            "/boards",
+            Some(serde_json::json!({
+                "slug": "tiers",
+                "name": "Tiers",
+                "board_type": "tiered",
+                "tier_config": {
+                    "tiers": [
+                        { "key": "s", "label": "S", "position": 1 }
+                    ]
+                }
+            })),
+        ))
+        .await
+        .unwrap();
+
+    app.clone()
+        .oneshot(json_request(
+            "POST",
+            "/boards/tiers/entries",
+            Some(serde_json::json!({ "slug": "item", "name": "Item" })),
+        ))
+        .await
+        .unwrap();
+
+    let resp = app
+        .clone()
+        .oneshot(json_request(
+            "POST",
+            "/boards/tiers/versions",
+            Some(serde_json::json!({
+                "placements": [
+                    { "entry_slug": "item", "tier": "nonexistent" }
                 ]
-            }
-        })),
-    )).await.unwrap();
-
-    app.clone().oneshot(json_request(
-        "POST",
-        "/boards/tiers/entries",
-        Some(serde_json::json!({ "slug": "item", "name": "Item" })),
-    )).await.unwrap();
-
-    let resp = app.clone().oneshot(json_request(
-        "POST",
-        "/boards/tiers/versions",
-        Some(serde_json::json!({
-            "placements": [
-                { "entry_slug": "item", "tier": "nonexistent" }
-            ]
-        })),
-    )).await.unwrap();
+            })),
+        ))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), 400);
 
     cleanup(&state, schema).await;
@@ -746,25 +926,32 @@ async fn version_with_nonexistent_entry_returns_400() {
     let schema = "test_version_no_entry";
     let (state, app) = setup(schema).await;
 
-    app.clone().oneshot(json_request(
-        "POST",
-        "/boards",
-        Some(serde_json::json!({
-            "slug": "board",
-            "name": "Board",
-            "board_type": "ordered"
-        })),
-    )).await.unwrap();
+    app.clone()
+        .oneshot(json_request(
+            "POST",
+            "/boards",
+            Some(serde_json::json!({
+                "slug": "board",
+                "name": "Board",
+                "board_type": "ordered"
+            })),
+        ))
+        .await
+        .unwrap();
 
-    let resp = app.clone().oneshot(json_request(
-        "POST",
-        "/boards/board/versions",
-        Some(serde_json::json!({
-            "placements": [
-                { "entry_slug": "nonexistent" }
-            ]
-        })),
-    )).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(json_request(
+            "POST",
+            "/boards/board/versions",
+            Some(serde_json::json!({
+                "placements": [
+                    { "entry_slug": "nonexistent" }
+                ]
+            })),
+        ))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), 400);
 
     cleanup(&state, schema).await;
@@ -775,32 +962,42 @@ async fn version_with_duplicate_entries_returns_400() {
     let schema = "test_version_dup_entry";
     let (state, app) = setup(schema).await;
 
-    app.clone().oneshot(json_request(
-        "POST",
-        "/boards",
-        Some(serde_json::json!({
-            "slug": "board",
-            "name": "Board",
-            "board_type": "ordered"
-        })),
-    )).await.unwrap();
+    app.clone()
+        .oneshot(json_request(
+            "POST",
+            "/boards",
+            Some(serde_json::json!({
+                "slug": "board",
+                "name": "Board",
+                "board_type": "ordered"
+            })),
+        ))
+        .await
+        .unwrap();
 
-    app.clone().oneshot(json_request(
-        "POST",
-        "/boards/board/entries",
-        Some(serde_json::json!({ "slug": "item", "name": "Item" })),
-    )).await.unwrap();
+    app.clone()
+        .oneshot(json_request(
+            "POST",
+            "/boards/board/entries",
+            Some(serde_json::json!({ "slug": "item", "name": "Item" })),
+        ))
+        .await
+        .unwrap();
 
-    let resp = app.clone().oneshot(json_request(
-        "POST",
-        "/boards/board/versions",
-        Some(serde_json::json!({
-            "placements": [
-                { "entry_slug": "item", "position": 1 },
-                { "entry_slug": "item", "position": 2 }
-            ]
-        })),
-    )).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(json_request(
+            "POST",
+            "/boards/board/versions",
+            Some(serde_json::json!({
+                "placements": [
+                    { "entry_slug": "item", "position": 1 },
+                    { "entry_slug": "item", "position": 2 }
+                ]
+            })),
+        ))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), 400);
 
     cleanup(&state, schema).await;
@@ -811,23 +1008,30 @@ async fn version_with_empty_placements_returns_400() {
     let schema = "test_version_empty";
     let (state, app) = setup(schema).await;
 
-    app.clone().oneshot(json_request(
-        "POST",
-        "/boards",
-        Some(serde_json::json!({
-            "slug": "board",
-            "name": "Board",
-            "board_type": "ordered"
-        })),
-    )).await.unwrap();
+    app.clone()
+        .oneshot(json_request(
+            "POST",
+            "/boards",
+            Some(serde_json::json!({
+                "slug": "board",
+                "name": "Board",
+                "board_type": "ordered"
+            })),
+        ))
+        .await
+        .unwrap();
 
-    let resp = app.clone().oneshot(json_request(
-        "POST",
-        "/boards/board/versions",
-        Some(serde_json::json!({
-            "placements": []
-        })),
-    )).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(json_request(
+            "POST",
+            "/boards/board/versions",
+            Some(serde_json::json!({
+                "placements": []
+            })),
+        ))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), 400);
 
     cleanup(&state, schema).await;
@@ -841,36 +1045,53 @@ async fn board_delete_cascades_entries_and_versions() {
     let (state, app) = setup(schema).await;
 
     // Create board with entries and a version
-    app.clone().oneshot(json_request(
-        "POST",
-        "/boards",
-        Some(serde_json::json!({
-            "slug": "ephemeral",
-            "name": "Ephemeral",
-            "board_type": "ordered"
-        })),
-    )).await.unwrap();
+    app.clone()
+        .oneshot(json_request(
+            "POST",
+            "/boards",
+            Some(serde_json::json!({
+                "slug": "ephemeral",
+                "name": "Ephemeral",
+                "board_type": "ordered"
+            })),
+        ))
+        .await
+        .unwrap();
 
-    app.clone().oneshot(json_request(
-        "POST",
-        "/boards/ephemeral/entries",
-        Some(serde_json::json!({ "slug": "item", "name": "Item" })),
-    )).await.unwrap();
+    app.clone()
+        .oneshot(json_request(
+            "POST",
+            "/boards/ephemeral/entries",
+            Some(serde_json::json!({ "slug": "item", "name": "Item" })),
+        ))
+        .await
+        .unwrap();
 
-    app.clone().oneshot(json_request(
-        "POST",
-        "/boards/ephemeral/versions",
-        Some(serde_json::json!({
-            "placements": [{ "entry_slug": "item", "position": 1 }]
-        })),
-    )).await.unwrap();
+    app.clone()
+        .oneshot(json_request(
+            "POST",
+            "/boards/ephemeral/versions",
+            Some(serde_json::json!({
+                "placements": [{ "entry_slug": "item", "position": 1 }]
+            })),
+        ))
+        .await
+        .unwrap();
 
     // Delete the board
-    let resp = app.clone().oneshot(json_request("DELETE", "/boards/ephemeral", None)).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(json_request("DELETE", "/boards/ephemeral", None))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), 204);
 
     // Board, entries, versions all gone
-    let resp = app.clone().oneshot(json_request("GET", "/boards/ephemeral", None)).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(json_request("GET", "/boards/ephemeral", None))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), 404);
 
     cleanup(&state, schema).await;
@@ -884,39 +1105,51 @@ async fn invalid_board_slug_returns_400() {
     let (state, app) = setup(schema).await;
 
     // Uppercase
-    let resp = app.clone().oneshot(json_request(
-        "POST",
-        "/boards",
-        Some(serde_json::json!({
-            "slug": "Bad-Slug",
-            "name": "Bad",
-            "board_type": "ordered"
-        })),
-    )).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(json_request(
+            "POST",
+            "/boards",
+            Some(serde_json::json!({
+                "slug": "Bad-Slug",
+                "name": "Bad",
+                "board_type": "ordered"
+            })),
+        ))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), 400);
 
     // Spaces
-    let resp = app.clone().oneshot(json_request(
-        "POST",
-        "/boards",
-        Some(serde_json::json!({
-            "slug": "bad slug",
-            "name": "Bad",
-            "board_type": "ordered"
-        })),
-    )).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(json_request(
+            "POST",
+            "/boards",
+            Some(serde_json::json!({
+                "slug": "bad slug",
+                "name": "Bad",
+                "board_type": "ordered"
+            })),
+        ))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), 400);
 
     // Leading hyphen
-    let resp = app.clone().oneshot(json_request(
-        "POST",
-        "/boards",
-        Some(serde_json::json!({
-            "slug": "-bad",
-            "name": "Bad",
-            "board_type": "ordered"
-        })),
-    )).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(json_request(
+            "POST",
+            "/boards",
+            Some(serde_json::json!({
+                "slug": "-bad",
+                "name": "Bad",
+                "board_type": "ordered"
+            })),
+        ))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), 400);
 
     cleanup(&state, schema).await;
@@ -927,24 +1160,31 @@ async fn invalid_entry_slug_returns_400() {
     let schema = "test_entry_invalid_slug";
     let (state, app) = setup(schema).await;
 
-    app.clone().oneshot(json_request(
-        "POST",
-        "/boards",
-        Some(serde_json::json!({
-            "slug": "board",
-            "name": "Board",
-            "board_type": "ordered"
-        })),
-    )).await.unwrap();
+    app.clone()
+        .oneshot(json_request(
+            "POST",
+            "/boards",
+            Some(serde_json::json!({
+                "slug": "board",
+                "name": "Board",
+                "board_type": "ordered"
+            })),
+        ))
+        .await
+        .unwrap();
 
-    let resp = app.clone().oneshot(json_request(
-        "POST",
-        "/boards/board/entries",
-        Some(serde_json::json!({
-            "slug": "Bad Entry!",
-            "name": "Bad"
-        })),
-    )).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(json_request(
+            "POST",
+            "/boards/board/entries",
+            Some(serde_json::json!({
+                "slug": "Bad Entry!",
+                "name": "Bad"
+            })),
+        ))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), 400);
 
     cleanup(&state, schema).await;
@@ -958,36 +1198,51 @@ async fn board_patch_can_clear_metadata_to_null() {
     let (state, app) = setup(schema).await;
 
     // Create board with metadata
-    app.clone().oneshot(json_request(
-        "POST",
-        "/boards",
-        Some(serde_json::json!({
-            "slug": "meta-board",
-            "name": "Board with Metadata",
-            "board_type": "ordered",
-            "metadata": { "description": "some description" }
-        })),
-    )).await.unwrap();
+    app.clone()
+        .oneshot(json_request(
+            "POST",
+            "/boards",
+            Some(serde_json::json!({
+                "slug": "meta-board",
+                "name": "Board with Metadata",
+                "board_type": "ordered",
+                "metadata": { "description": "some description" }
+            })),
+        ))
+        .await
+        .unwrap();
 
     // Verify metadata is set
-    let resp = app.clone().oneshot(json_request("GET", "/boards/meta-board", None)).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(json_request("GET", "/boards/meta-board", None))
+        .await
+        .unwrap();
     let board = json_body(resp).await;
     assert!(board["metadata"].is_object());
 
     // PATCH with metadata: null to clear it
-    let resp = app.clone().oneshot(json_request(
-        "PATCH",
-        "/boards/meta-board",
-        Some(serde_json::json!({
-            "metadata": null
-        })),
-    )).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(json_request(
+            "PATCH",
+            "/boards/meta-board",
+            Some(serde_json::json!({
+                "metadata": null
+            })),
+        ))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), 200);
     let updated = json_body(resp).await;
     assert!(updated["metadata"].is_null());
 
     // Verify it persisted
-    let resp = app.clone().oneshot(json_request("GET", "/boards/meta-board", None)).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(json_request("GET", "/boards/meta-board", None))
+        .await
+        .unwrap();
     let board = json_body(resp).await;
     assert!(board["metadata"].is_null());
 
@@ -999,25 +1254,32 @@ async fn board_patch_omitted_fields_keep_old_values() {
     let schema = "test_patch_omit";
     let (state, app) = setup(schema).await;
 
-    app.clone().oneshot(json_request(
-        "POST",
-        "/boards",
-        Some(serde_json::json!({
-            "slug": "keep-board",
-            "name": "Original",
-            "board_type": "ordered",
-            "metadata": { "key": "value" }
-        })),
-    )).await.unwrap();
+    app.clone()
+        .oneshot(json_request(
+            "POST",
+            "/boards",
+            Some(serde_json::json!({
+                "slug": "keep-board",
+                "name": "Original",
+                "board_type": "ordered",
+                "metadata": { "key": "value" }
+            })),
+        ))
+        .await
+        .unwrap();
 
     // PATCH only name — metadata should stay
-    let resp = app.clone().oneshot(json_request(
-        "PATCH",
-        "/boards/keep-board",
-        Some(serde_json::json!({
-            "name": "Updated Name"
-        })),
-    )).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(json_request(
+            "PATCH",
+            "/boards/keep-board",
+            Some(serde_json::json!({
+                "name": "Updated Name"
+            })),
+        ))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), 200);
     let updated = json_body(resp).await;
     assert_eq!(updated["name"], "Updated Name");
@@ -1033,37 +1295,46 @@ async fn entry_delete_with_placements_returns_409() {
     let schema = "test_entry_del_conflict";
     let (state, app) = setup(schema).await;
 
-    app.clone().oneshot(json_request(
-        "POST",
-        "/boards",
-        Some(serde_json::json!({
-            "slug": "board",
-            "name": "Board",
-            "board_type": "ordered"
-        })),
-    )).await.unwrap();
+    app.clone()
+        .oneshot(json_request(
+            "POST",
+            "/boards",
+            Some(serde_json::json!({
+                "slug": "board",
+                "name": "Board",
+                "board_type": "ordered"
+            })),
+        ))
+        .await
+        .unwrap();
 
-    app.clone().oneshot(json_request(
-        "POST",
-        "/boards/board/entries",
-        Some(serde_json::json!({ "slug": "item", "name": "Item" })),
-    )).await.unwrap();
+    app.clone()
+        .oneshot(json_request(
+            "POST",
+            "/boards/board/entries",
+            Some(serde_json::json!({ "slug": "item", "name": "Item" })),
+        ))
+        .await
+        .unwrap();
 
     // Create a version with this entry
-    app.clone().oneshot(json_request(
-        "POST",
-        "/boards/board/versions",
-        Some(serde_json::json!({
-            "placements": [{ "entry_slug": "item", "position": 1 }]
-        })),
-    )).await.unwrap();
+    app.clone()
+        .oneshot(json_request(
+            "POST",
+            "/boards/board/versions",
+            Some(serde_json::json!({
+                "placements": [{ "entry_slug": "item", "position": 1 }]
+            })),
+        ))
+        .await
+        .unwrap();
 
     // Try to delete the entry — should be rejected
-    let resp = app.clone().oneshot(json_request(
-        "DELETE",
-        "/boards/board/entries/item",
-        None,
-    )).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(json_request("DELETE", "/boards/board/entries/item", None))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), 409);
 
     cleanup(&state, schema).await;
@@ -1074,28 +1345,34 @@ async fn entry_delete_without_placements_succeeds() {
     let schema = "test_entry_del_ok";
     let (state, app) = setup(schema).await;
 
-    app.clone().oneshot(json_request(
-        "POST",
-        "/boards",
-        Some(serde_json::json!({
-            "slug": "board",
-            "name": "Board",
-            "board_type": "ordered"
-        })),
-    )).await.unwrap();
+    app.clone()
+        .oneshot(json_request(
+            "POST",
+            "/boards",
+            Some(serde_json::json!({
+                "slug": "board",
+                "name": "Board",
+                "board_type": "ordered"
+            })),
+        ))
+        .await
+        .unwrap();
 
-    app.clone().oneshot(json_request(
-        "POST",
-        "/boards/board/entries",
-        Some(serde_json::json!({ "slug": "unused", "name": "Unused" })),
-    )).await.unwrap();
+    app.clone()
+        .oneshot(json_request(
+            "POST",
+            "/boards/board/entries",
+            Some(serde_json::json!({ "slug": "unused", "name": "Unused" })),
+        ))
+        .await
+        .unwrap();
 
     // Delete entry with no placements — should work
-    let resp = app.clone().oneshot(json_request(
-        "DELETE",
-        "/boards/board/entries/unused",
-        None,
-    )).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(json_request("DELETE", "/boards/board/entries/unused", None))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), 204);
 
     cleanup(&state, schema).await;
@@ -1108,34 +1385,44 @@ async fn ordered_board_duplicate_positions_returns_400() {
     let schema = "test_dup_positions";
     let (state, app) = setup(schema).await;
 
-    app.clone().oneshot(json_request(
-        "POST",
-        "/boards",
-        Some(serde_json::json!({
-            "slug": "board",
-            "name": "Board",
-            "board_type": "ordered"
-        })),
-    )).await.unwrap();
+    app.clone()
+        .oneshot(json_request(
+            "POST",
+            "/boards",
+            Some(serde_json::json!({
+                "slug": "board",
+                "name": "Board",
+                "board_type": "ordered"
+            })),
+        ))
+        .await
+        .unwrap();
 
     for slug in ["a", "b"] {
-        app.clone().oneshot(json_request(
-            "POST",
-            "/boards/board/entries",
-            Some(serde_json::json!({ "slug": slug, "name": slug })),
-        )).await.unwrap();
+        app.clone()
+            .oneshot(json_request(
+                "POST",
+                "/boards/board/entries",
+                Some(serde_json::json!({ "slug": slug, "name": slug })),
+            ))
+            .await
+            .unwrap();
     }
 
-    let resp = app.clone().oneshot(json_request(
-        "POST",
-        "/boards/board/versions",
-        Some(serde_json::json!({
-            "placements": [
-                { "entry_slug": "a", "position": 1 },
-                { "entry_slug": "b", "position": 1 }
-            ]
-        })),
-    )).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(json_request(
+            "POST",
+            "/boards/board/versions",
+            Some(serde_json::json!({
+                "placements": [
+                    { "entry_slug": "a", "position": 1 },
+                    { "entry_slug": "b", "position": 1 }
+                ]
+            })),
+        ))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), 400);
 
     cleanup(&state, schema).await;
@@ -1149,37 +1436,52 @@ async fn ordered_board_mixed_explicit_implicit_position_collision() {
     let (state, app) = setup(schema).await;
 
     // Create board and entries
-    app.clone().oneshot(json_request(
-        "POST",
-        "/boards",
-        Some(serde_json::json!({
-            "slug": "board",
-            "name": "Board",
-            "board_type": "ordered"
-        })),
-    )).await.unwrap();
-    for slug in ["a", "b"] {
-        app.clone().oneshot(json_request(
+    app.clone()
+        .oneshot(json_request(
             "POST",
-            "/boards/board/entries",
-            Some(serde_json::json!({ "slug": slug, "name": slug })),
-        )).await.unwrap();
+            "/boards",
+            Some(serde_json::json!({
+                "slug": "board",
+                "name": "Board",
+                "board_type": "ordered"
+            })),
+        ))
+        .await
+        .unwrap();
+    for slug in ["a", "b"] {
+        app.clone()
+            .oneshot(json_request(
+                "POST",
+                "/boards/board/entries",
+                Some(serde_json::json!({ "slug": slug, "name": slug })),
+            ))
+            .await
+            .unwrap();
     }
 
     // Entry "a" implicit position = 1, entry "b" explicit position = 1 → collision
-    let resp = app.clone().oneshot(json_request(
-        "POST",
-        "/boards/board/versions",
-        Some(serde_json::json!({
-            "placements": [
-                { "entry_slug": "a" },
-                { "entry_slug": "b", "position": 1 }
-            ]
-        })),
-    )).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(json_request(
+            "POST",
+            "/boards/board/versions",
+            Some(serde_json::json!({
+                "placements": [
+                    { "entry_slug": "a" },
+                    { "entry_slug": "b", "position": 1 }
+                ]
+            })),
+        ))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), 400);
     let body = json_body(resp).await;
-    assert!(body["error"].as_str().unwrap().contains("duplicate position"));
+    assert!(
+        body["error"]
+            .as_str()
+            .unwrap()
+            .contains("duplicate position")
+    );
 
     cleanup(&state, schema).await;
 }
@@ -1190,31 +1492,44 @@ async fn tiered_board_invalid_tier_config_shape_returns_400() {
     let (state, app) = setup(schema).await;
 
     // Missing 'position' field in tier
-    let resp = app.clone().oneshot(json_request(
-        "POST",
-        "/boards",
-        Some(serde_json::json!({
-            "slug": "board",
-            "name": "Board",
-            "board_type": "tiered",
-            "tier_config": { "tiers": [{ "key": "s" }] }
-        })),
-    )).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(json_request(
+            "POST",
+            "/boards",
+            Some(serde_json::json!({
+                "slug": "board",
+                "name": "Board",
+                "board_type": "tiered",
+                "tier_config": { "tiers": [{ "key": "s" }] }
+            })),
+        ))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), 400);
     let body = json_body(resp).await;
-    assert!(body["error"].as_str().unwrap().contains("integer 'position'"));
+    assert!(
+        body["error"]
+            .as_str()
+            .unwrap()
+            .contains("integer 'position'")
+    );
 
     // tiers is not an array
-    let resp = app.clone().oneshot(json_request(
-        "POST",
-        "/boards",
-        Some(serde_json::json!({
-            "slug": "board2",
-            "name": "Board2",
-            "board_type": "tiered",
-            "tier_config": { "tiers": "not-an-array" }
-        })),
-    )).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(json_request(
+            "POST",
+            "/boards",
+            Some(serde_json::json!({
+                "slug": "board2",
+                "name": "Board2",
+                "board_type": "tiered",
+                "tier_config": { "tiers": "not-an-array" }
+            })),
+        ))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), 400);
 
     cleanup(&state, schema).await;
@@ -1226,38 +1541,59 @@ async fn empty_name_returns_400() {
     let (state, app) = setup(schema).await;
 
     // Empty board name
-    let resp = app.clone().oneshot(json_request(
-        "POST",
-        "/boards",
-        Some(serde_json::json!({
-            "slug": "board",
-            "name": "",
-            "board_type": "ordered"
-        })),
-    )).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(json_request(
+            "POST",
+            "/boards",
+            Some(serde_json::json!({
+                "slug": "board",
+                "name": "",
+                "board_type": "ordered"
+            })),
+        ))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), 400);
     let body = json_body(resp).await;
-    assert!(body["error"].as_str().unwrap().contains("name must not be empty"));
+    assert!(
+        body["error"]
+            .as_str()
+            .unwrap()
+            .contains("name must not be empty")
+    );
 
     // Create valid board, then test empty entry name
-    app.clone().oneshot(json_request(
-        "POST",
-        "/boards",
-        Some(serde_json::json!({
-            "slug": "board",
-            "name": "Board",
-            "board_type": "ordered"
-        })),
-    )).await.unwrap();
+    app.clone()
+        .oneshot(json_request(
+            "POST",
+            "/boards",
+            Some(serde_json::json!({
+                "slug": "board",
+                "name": "Board",
+                "board_type": "ordered"
+            })),
+        ))
+        .await
+        .unwrap();
 
-    let resp = app.clone().oneshot(json_request(
-        "POST",
-        "/boards/board/entries",
-        Some(serde_json::json!({ "slug": "entry", "name": "" })),
-    )).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(json_request(
+            "POST",
+            "/boards/board/entries",
+            Some(serde_json::json!({ "slug": "entry", "name": "" })),
+        ))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), 400);
     let body = json_body(resp).await;
-    assert!(body["error"].as_str().unwrap().contains("name must not be empty"));
+    assert!(
+        body["error"]
+            .as_str()
+            .unwrap()
+            .contains("name must not be empty")
+    );
 
     cleanup(&state, schema).await;
 }
@@ -1270,58 +1606,74 @@ async fn entry_history_across_versions() {
     let (state, app) = setup(schema).await;
 
     // Create board and entries
-    app.clone().oneshot(json_request(
-        "POST",
-        "/boards",
-        Some(serde_json::json!({
-            "slug": "sandwiches",
-            "name": "Sandwiches",
-            "board_type": "ordered"
-        })),
-    )).await.unwrap();
+    app.clone()
+        .oneshot(json_request(
+            "POST",
+            "/boards",
+            Some(serde_json::json!({
+                "slug": "sandwiches",
+                "name": "Sandwiches",
+                "board_type": "ordered"
+            })),
+        ))
+        .await
+        .unwrap();
 
     for slug in ["crunchy-boi", "humberto", "litteri"] {
-        app.clone().oneshot(json_request(
-            "POST",
-            "/boards/sandwiches/entries",
-            Some(serde_json::json!({ "slug": slug, "name": slug })),
-        )).await.unwrap();
+        app.clone()
+            .oneshot(json_request(
+                "POST",
+                "/boards/sandwiches/entries",
+                Some(serde_json::json!({ "slug": slug, "name": slug })),
+            ))
+            .await
+            .unwrap();
     }
 
     // Version 1: crunchy=1, humberto=2, litteri=3
-    app.clone().oneshot(json_request(
-        "POST",
-        "/boards/sandwiches/versions",
-        Some(serde_json::json!({
-            "note": "v1",
-            "placements": [
-                { "entry_slug": "crunchy-boi", "position": 1 },
-                { "entry_slug": "humberto", "position": 2 },
-                { "entry_slug": "litteri", "position": 3 }
-            ]
-        })),
-    )).await.unwrap();
+    app.clone()
+        .oneshot(json_request(
+            "POST",
+            "/boards/sandwiches/versions",
+            Some(serde_json::json!({
+                "note": "v1",
+                "placements": [
+                    { "entry_slug": "crunchy-boi", "position": 1 },
+                    { "entry_slug": "humberto", "position": 2 },
+                    { "entry_slug": "litteri", "position": 3 }
+                ]
+            })),
+        ))
+        .await
+        .unwrap();
 
     // Version 2: humberto=1, crunchy=2, litteri=3
-    app.clone().oneshot(json_request(
-        "POST",
-        "/boards/sandwiches/versions",
-        Some(serde_json::json!({
-            "note": "v2",
-            "placements": [
-                { "entry_slug": "humberto", "position": 1 },
-                { "entry_slug": "crunchy-boi", "position": 2 },
-                { "entry_slug": "litteri", "position": 3 }
-            ]
-        })),
-    )).await.unwrap();
+    app.clone()
+        .oneshot(json_request(
+            "POST",
+            "/boards/sandwiches/versions",
+            Some(serde_json::json!({
+                "note": "v2",
+                "placements": [
+                    { "entry_slug": "humberto", "position": 1 },
+                    { "entry_slug": "crunchy-boi", "position": 2 },
+                    { "entry_slug": "litteri", "position": 3 }
+                ]
+            })),
+        ))
+        .await
+        .unwrap();
 
     // Get history for crunchy-boi (moved from pos 1 → 2)
-    let resp = app.clone().oneshot(json_request(
-        "GET",
-        "/boards/sandwiches/entries/crunchy-boi/history",
-        None,
-    )).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(json_request(
+            "GET",
+            "/boards/sandwiches/entries/crunchy-boi/history",
+            None,
+        ))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), 200);
     let history = json_body(resp).await;
     let items = history.as_array().unwrap();
@@ -1332,26 +1684,37 @@ async fn entry_history_across_versions() {
     assert_eq!(items[1]["position"], 2);
 
     // History for entry not in any version yet returns empty array
-    app.clone().oneshot(json_request(
-        "POST",
-        "/boards/sandwiches/entries",
-        Some(serde_json::json!({ "slug": "new-entry", "name": "New" })),
-    )).await.unwrap();
-    let resp = app.clone().oneshot(json_request(
-        "GET",
-        "/boards/sandwiches/entries/new-entry/history",
-        None,
-    )).await.unwrap();
+    app.clone()
+        .oneshot(json_request(
+            "POST",
+            "/boards/sandwiches/entries",
+            Some(serde_json::json!({ "slug": "new-entry", "name": "New" })),
+        ))
+        .await
+        .unwrap();
+    let resp = app
+        .clone()
+        .oneshot(json_request(
+            "GET",
+            "/boards/sandwiches/entries/new-entry/history",
+            None,
+        ))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), 200);
     let empty = json_body(resp).await;
     assert_eq!(empty.as_array().unwrap().len(), 0);
 
     // History for nonexistent entry returns 404
-    let resp = app.clone().oneshot(json_request(
-        "GET",
-        "/boards/sandwiches/entries/nonexistent/history",
-        None,
-    )).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(json_request(
+            "GET",
+            "/boards/sandwiches/entries/nonexistent/history",
+            None,
+        ))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), 404);
 
     cleanup(&state, schema).await;
@@ -1362,54 +1725,70 @@ async fn entry_history_scored_board() {
     let schema = "test_history_scored";
     let (state, app) = setup(schema).await;
 
-    app.clone().oneshot(json_request(
-        "POST",
-        "/boards",
-        Some(serde_json::json!({
-            "slug": "scores",
-            "name": "Scores",
-            "board_type": "scored",
-            "sort_direction": "desc"
-        })),
-    )).await.unwrap();
+    app.clone()
+        .oneshot(json_request(
+            "POST",
+            "/boards",
+            Some(serde_json::json!({
+                "slug": "scores",
+                "name": "Scores",
+                "board_type": "scored",
+                "sort_direction": "desc"
+            })),
+        ))
+        .await
+        .unwrap();
 
     for slug in ["alice", "bob"] {
-        app.clone().oneshot(json_request(
-            "POST",
-            "/boards/scores/entries",
-            Some(serde_json::json!({ "slug": slug, "name": slug })),
-        )).await.unwrap();
+        app.clone()
+            .oneshot(json_request(
+                "POST",
+                "/boards/scores/entries",
+                Some(serde_json::json!({ "slug": slug, "name": slug })),
+            ))
+            .await
+            .unwrap();
     }
 
     // V1: alice=100, bob=200
-    app.clone().oneshot(json_request(
-        "POST",
-        "/boards/scores/versions",
-        Some(serde_json::json!({
-            "placements": [
-                { "entry_slug": "alice", "score": 100.0 },
-                { "entry_slug": "bob", "score": 200.0 }
-            ]
-        })),
-    )).await.unwrap();
+    app.clone()
+        .oneshot(json_request(
+            "POST",
+            "/boards/scores/versions",
+            Some(serde_json::json!({
+                "placements": [
+                    { "entry_slug": "alice", "score": 100.0 },
+                    { "entry_slug": "bob", "score": 200.0 }
+                ]
+            })),
+        ))
+        .await
+        .unwrap();
 
     // V2: alice=300, bob=200
-    app.clone().oneshot(json_request(
-        "POST",
-        "/boards/scores/versions",
-        Some(serde_json::json!({
-            "placements": [
-                { "entry_slug": "alice", "score": 300.0 },
-                { "entry_slug": "bob", "score": 200.0 }
-            ]
-        })),
-    )).await.unwrap();
+    app.clone()
+        .oneshot(json_request(
+            "POST",
+            "/boards/scores/versions",
+            Some(serde_json::json!({
+                "placements": [
+                    { "entry_slug": "alice", "score": 300.0 },
+                    { "entry_slug": "bob", "score": 200.0 }
+                ]
+            })),
+        ))
+        .await
+        .unwrap();
 
-    let resp = app.clone().oneshot(json_request(
-        "GET",
-        "/boards/scores/entries/alice/history",
-        None,
-    )).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(json_request(
+            "GET",
+            "/boards/scores/entries/alice/history",
+            None,
+        ))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), 200);
     let history = json_body(resp).await;
     let items = history.as_array().unwrap();
@@ -1431,55 +1810,67 @@ async fn version_diff_ordered_board() {
     let schema = "test_diff_ordered";
     let (state, app) = setup(schema).await;
 
-    app.clone().oneshot(json_request(
-        "POST",
-        "/boards",
-        Some(serde_json::json!({
-            "slug": "board",
-            "name": "Board",
-            "board_type": "ordered"
-        })),
-    )).await.unwrap();
+    app.clone()
+        .oneshot(json_request(
+            "POST",
+            "/boards",
+            Some(serde_json::json!({
+                "slug": "board",
+                "name": "Board",
+                "board_type": "ordered"
+            })),
+        ))
+        .await
+        .unwrap();
 
     for slug in ["a", "b", "c", "d"] {
-        app.clone().oneshot(json_request(
-            "POST",
-            "/boards/board/entries",
-            Some(serde_json::json!({ "slug": slug, "name": slug })),
-        )).await.unwrap();
+        app.clone()
+            .oneshot(json_request(
+                "POST",
+                "/boards/board/entries",
+                Some(serde_json::json!({ "slug": slug, "name": slug })),
+            ))
+            .await
+            .unwrap();
     }
 
     // V1: a=1, b=2, c=3
-    app.clone().oneshot(json_request(
-        "POST",
-        "/boards/board/versions",
-        Some(serde_json::json!({
-            "placements": [
-                { "entry_slug": "a", "position": 1 },
-                { "entry_slug": "b", "position": 2 },
-                { "entry_slug": "c", "position": 3 }
-            ]
-        })),
-    )).await.unwrap();
+    app.clone()
+        .oneshot(json_request(
+            "POST",
+            "/boards/board/versions",
+            Some(serde_json::json!({
+                "placements": [
+                    { "entry_slug": "a", "position": 1 },
+                    { "entry_slug": "b", "position": 2 },
+                    { "entry_slug": "c", "position": 3 }
+                ]
+            })),
+        ))
+        .await
+        .unwrap();
 
     // V2: b=1, a=2, d=3 (c removed, d added, a and b swapped)
-    app.clone().oneshot(json_request(
-        "POST",
-        "/boards/board/versions",
-        Some(serde_json::json!({
-            "placements": [
-                { "entry_slug": "b", "position": 1 },
-                { "entry_slug": "a", "position": 2 },
-                { "entry_slug": "d", "position": 3 }
-            ]
-        })),
-    )).await.unwrap();
+    app.clone()
+        .oneshot(json_request(
+            "POST",
+            "/boards/board/versions",
+            Some(serde_json::json!({
+                "placements": [
+                    { "entry_slug": "b", "position": 1 },
+                    { "entry_slug": "a", "position": 2 },
+                    { "entry_slug": "d", "position": 3 }
+                ]
+            })),
+        ))
+        .await
+        .unwrap();
 
-    let resp = app.clone().oneshot(json_request(
-        "GET",
-        "/boards/board/diff?from=1&to=2",
-        None,
-    )).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(json_request("GET", "/boards/board/diff?from=1&to=2", None))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), 200);
     let diff = json_body(resp).await;
 
@@ -1518,59 +1909,71 @@ async fn version_diff_tiered_board() {
     let schema = "test_diff_tiered";
     let (state, app) = setup(schema).await;
 
-    app.clone().oneshot(json_request(
-        "POST",
-        "/boards",
-        Some(serde_json::json!({
-            "slug": "tiers",
-            "name": "Tiers",
-            "board_type": "tiered",
-            "tier_config": {
-                "tiers": [
-                    { "key": "s", "label": "S", "position": 1 },
-                    { "key": "a", "label": "A", "position": 2 }
-                ]
-            }
-        })),
-    )).await.unwrap();
+    app.clone()
+        .oneshot(json_request(
+            "POST",
+            "/boards",
+            Some(serde_json::json!({
+                "slug": "tiers",
+                "name": "Tiers",
+                "board_type": "tiered",
+                "tier_config": {
+                    "tiers": [
+                        { "key": "s", "label": "S", "position": 1 },
+                        { "key": "a", "label": "A", "position": 2 }
+                    ]
+                }
+            })),
+        ))
+        .await
+        .unwrap();
 
     for slug in ["x", "y"] {
-        app.clone().oneshot(json_request(
-            "POST",
-            "/boards/tiers/entries",
-            Some(serde_json::json!({ "slug": slug, "name": slug })),
-        )).await.unwrap();
+        app.clone()
+            .oneshot(json_request(
+                "POST",
+                "/boards/tiers/entries",
+                Some(serde_json::json!({ "slug": slug, "name": slug })),
+            ))
+            .await
+            .unwrap();
     }
 
     // V1: x in tier A, y in tier A
-    app.clone().oneshot(json_request(
-        "POST",
-        "/boards/tiers/versions",
-        Some(serde_json::json!({
-            "placements": [
-                { "entry_slug": "x", "tier": "a", "position": 1 },
-                { "entry_slug": "y", "tier": "a", "position": 2 }
-            ]
-        })),
-    )).await.unwrap();
+    app.clone()
+        .oneshot(json_request(
+            "POST",
+            "/boards/tiers/versions",
+            Some(serde_json::json!({
+                "placements": [
+                    { "entry_slug": "x", "tier": "a", "position": 1 },
+                    { "entry_slug": "y", "tier": "a", "position": 2 }
+                ]
+            })),
+        ))
+        .await
+        .unwrap();
 
     // V2: x promoted to S, y stays in A
-    app.clone().oneshot(json_request(
-        "POST",
-        "/boards/tiers/versions",
-        Some(serde_json::json!({
-            "placements": [
-                { "entry_slug": "x", "tier": "s", "position": 1 },
-                { "entry_slug": "y", "tier": "a", "position": 1 }
-            ]
-        })),
-    )).await.unwrap();
+    app.clone()
+        .oneshot(json_request(
+            "POST",
+            "/boards/tiers/versions",
+            Some(serde_json::json!({
+                "placements": [
+                    { "entry_slug": "x", "tier": "s", "position": 1 },
+                    { "entry_slug": "y", "tier": "a", "position": 1 }
+                ]
+            })),
+        ))
+        .await
+        .unwrap();
 
-    let resp = app.clone().oneshot(json_request(
-        "GET",
-        "/boards/tiers/diff?from=1&to=2",
-        None,
-    )).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(json_request("GET", "/boards/tiers/diff?from=1&to=2", None))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), 200);
     let diff = json_body(resp).await;
 
@@ -1596,30 +1999,33 @@ async fn version_diff_missing_params_returns_400() {
     let schema = "test_diff_missing_params";
     let (state, app) = setup(schema).await;
 
-    app.clone().oneshot(json_request(
-        "POST",
-        "/boards",
-        Some(serde_json::json!({
-            "slug": "board",
-            "name": "Board",
-            "board_type": "ordered"
-        })),
-    )).await.unwrap();
+    app.clone()
+        .oneshot(json_request(
+            "POST",
+            "/boards",
+            Some(serde_json::json!({
+                "slug": "board",
+                "name": "Board",
+                "board_type": "ordered"
+            })),
+        ))
+        .await
+        .unwrap();
 
     // Missing both params
-    let resp = app.clone().oneshot(json_request(
-        "GET",
-        "/boards/board/diff",
-        None,
-    )).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(json_request("GET", "/boards/board/diff", None))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), 400);
 
     // Missing 'to'
-    let resp = app.clone().oneshot(json_request(
-        "GET",
-        "/boards/board/diff?from=1",
-        None,
-    )).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(json_request("GET", "/boards/board/diff?from=1", None))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), 400);
 
     cleanup(&state, schema).await;
@@ -1630,21 +2036,24 @@ async fn version_diff_nonexistent_version_returns_404() {
     let schema = "test_diff_no_version";
     let (state, app) = setup(schema).await;
 
-    app.clone().oneshot(json_request(
-        "POST",
-        "/boards",
-        Some(serde_json::json!({
-            "slug": "board",
-            "name": "Board",
-            "board_type": "ordered"
-        })),
-    )).await.unwrap();
+    app.clone()
+        .oneshot(json_request(
+            "POST",
+            "/boards",
+            Some(serde_json::json!({
+                "slug": "board",
+                "name": "Board",
+                "board_type": "ordered"
+            })),
+        ))
+        .await
+        .unwrap();
 
-    let resp = app.clone().oneshot(json_request(
-        "GET",
-        "/boards/board/diff?from=1&to=2",
-        None,
-    )).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(json_request("GET", "/boards/board/diff?from=1&to=2", None))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), 404);
 
     cleanup(&state, schema).await;
@@ -1655,40 +2064,49 @@ async fn since_returns_newer_versions() {
     let schema = "test_since";
     let (state, app) = setup(schema).await;
 
-    app.clone().oneshot(json_request(
-        "POST",
-        "/boards",
-        Some(serde_json::json!({
-            "slug": "board",
-            "name": "Board",
-            "board_type": "ordered"
-        })),
-    )).await.unwrap();
+    app.clone()
+        .oneshot(json_request(
+            "POST",
+            "/boards",
+            Some(serde_json::json!({
+                "slug": "board",
+                "name": "Board",
+                "board_type": "ordered"
+            })),
+        ))
+        .await
+        .unwrap();
 
-    app.clone().oneshot(json_request(
-        "POST",
-        "/boards/board/entries",
-        Some(serde_json::json!({ "slug": "item", "name": "Item" })),
-    )).await.unwrap();
+    app.clone()
+        .oneshot(json_request(
+            "POST",
+            "/boards/board/entries",
+            Some(serde_json::json!({ "slug": "item", "name": "Item" })),
+        ))
+        .await
+        .unwrap();
 
     // Create 3 versions
     for i in 1..=3 {
-        app.clone().oneshot(json_request(
-            "POST",
-            "/boards/board/versions",
-            Some(serde_json::json!({
-                "note": format!("v{i}"),
-                "placements": [{ "entry_slug": "item", "position": 1 }]
-            })),
-        )).await.unwrap();
+        app.clone()
+            .oneshot(json_request(
+                "POST",
+                "/boards/board/versions",
+                Some(serde_json::json!({
+                    "note": format!("v{i}"),
+                    "placements": [{ "entry_slug": "item", "position": 1 }]
+                })),
+            ))
+            .await
+            .unwrap();
     }
 
     // since/1 should return v2 and v3
-    let resp = app.clone().oneshot(json_request(
-        "GET",
-        "/boards/board/since/1",
-        None,
-    )).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(json_request("GET", "/boards/board/since/1", None))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), 200);
     let versions = json_body(resp).await;
     let arr = versions.as_array().unwrap();
@@ -1697,21 +2115,21 @@ async fn since_returns_newer_versions() {
     assert_eq!(arr[1]["version_number"], 3);
 
     // since/3 should return empty
-    let resp = app.clone().oneshot(json_request(
-        "GET",
-        "/boards/board/since/3",
-        None,
-    )).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(json_request("GET", "/boards/board/since/3", None))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), 200);
     let versions = json_body(resp).await;
     assert_eq!(versions.as_array().unwrap().len(), 0);
 
     // since/0 should return all 3
-    let resp = app.clone().oneshot(json_request(
-        "GET",
-        "/boards/board/since/0",
-        None,
-    )).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(json_request("GET", "/boards/board/since/0", None))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), 200);
     let versions = json_body(resp).await;
     assert_eq!(versions.as_array().unwrap().len(), 3);
@@ -1727,42 +2145,55 @@ async fn reference_create_list_delete() {
     let (state, app) = setup(schema).await;
 
     // Create board with an entry and version
-    app.clone().oneshot(json_request(
-        "POST",
-        "/boards",
-        Some(serde_json::json!({
-            "slug": "sandwiches",
-            "name": "Sandwiches",
-            "board_type": "ordered"
-        })),
-    )).await.unwrap();
+    app.clone()
+        .oneshot(json_request(
+            "POST",
+            "/boards",
+            Some(serde_json::json!({
+                "slug": "sandwiches",
+                "name": "Sandwiches",
+                "board_type": "ordered"
+            })),
+        ))
+        .await
+        .unwrap();
 
-    app.clone().oneshot(json_request(
-        "POST",
-        "/boards/sandwiches/entries",
-        Some(serde_json::json!({ "slug": "item", "name": "Item" })),
-    )).await.unwrap();
+    app.clone()
+        .oneshot(json_request(
+            "POST",
+            "/boards/sandwiches/entries",
+            Some(serde_json::json!({ "slug": "item", "name": "Item" })),
+        ))
+        .await
+        .unwrap();
 
-    app.clone().oneshot(json_request(
-        "POST",
-        "/boards/sandwiches/versions",
-        Some(serde_json::json!({
-            "note": "v1",
-            "placements": [{ "entry_slug": "item", "position": 1 }]
-        })),
-    )).await.unwrap();
+    app.clone()
+        .oneshot(json_request(
+            "POST",
+            "/boards/sandwiches/versions",
+            Some(serde_json::json!({
+                "note": "v1",
+                "placements": [{ "entry_slug": "item", "position": 1 }]
+            })),
+        ))
+        .await
+        .unwrap();
 
     // Create a reference pinned to version 1
-    let resp = app.clone().oneshot(json_request(
-        "POST",
-        "/boards/sandwiches/references",
-        Some(serde_json::json!({
-            "pinned_version_number": 1,
-            "uri": "/blog/sandwich-rankings",
-            "ref_type": "embed",
-            "label": "Blog Post"
-        })),
-    )).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(json_request(
+            "POST",
+            "/boards/sandwiches/references",
+            Some(serde_json::json!({
+                "pinned_version_number": 1,
+                "uri": "/blog/sandwich-rankings",
+                "ref_type": "embed",
+                "label": "Blog Post"
+            })),
+        ))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), 201);
     let reference = json_body(resp).await;
     assert_eq!(reference["uri"], "/blog/sandwich-rankings");
@@ -1773,43 +2204,51 @@ async fn reference_create_list_delete() {
     let ref_id = reference["id"].as_str().unwrap().to_string();
 
     // Create a reference without pinned version (follow latest)
-    let resp = app.clone().oneshot(json_request(
-        "POST",
-        "/boards/sandwiches/references",
-        Some(serde_json::json!({
-            "uri": "https://forestroyale.rileyleff.com",
-            "ref_type": "context"
-        })),
-    )).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(json_request(
+            "POST",
+            "/boards/sandwiches/references",
+            Some(serde_json::json!({
+                "uri": "https://forestroyale.rileyleff.com",
+                "ref_type": "context"
+            })),
+        ))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), 201);
     let ref2 = json_body(resp).await;
     assert!(ref2["pinned_version_id"].is_null());
     assert!(ref2["pinned_version_number"].is_null()); // null when unpinned
 
     // List references
-    let resp = app.clone().oneshot(json_request(
-        "GET",
-        "/boards/sandwiches/references",
-        None,
-    )).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(json_request("GET", "/boards/sandwiches/references", None))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), 200);
     let refs = json_body(resp).await;
     assert_eq!(refs["items"].as_array().unwrap().len(), 2);
 
     // Delete first reference
-    let resp = app.clone().oneshot(json_request(
-        "DELETE",
-        &format!("/boards/sandwiches/references/{ref_id}"),
-        None,
-    )).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(json_request(
+            "DELETE",
+            &format!("/boards/sandwiches/references/{ref_id}"),
+            None,
+        ))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), 204);
 
     // Verify only one remains
-    let resp = app.clone().oneshot(json_request(
-        "GET",
-        "/boards/sandwiches/references",
-        None,
-    )).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(json_request("GET", "/boards/sandwiches/references", None))
+        .await
+        .unwrap();
     let refs = json_body(resp).await;
     assert_eq!(refs["items"].as_array().unwrap().len(), 1);
 
@@ -1821,24 +2260,31 @@ async fn reference_invalid_ref_type_returns_400() {
     let schema = "test_ref_invalid_type";
     let (state, app) = setup(schema).await;
 
-    app.clone().oneshot(json_request(
-        "POST",
-        "/boards",
-        Some(serde_json::json!({
-            "slug": "board",
-            "name": "Board",
-            "board_type": "ordered"
-        })),
-    )).await.unwrap();
+    app.clone()
+        .oneshot(json_request(
+            "POST",
+            "/boards",
+            Some(serde_json::json!({
+                "slug": "board",
+                "name": "Board",
+                "board_type": "ordered"
+            })),
+        ))
+        .await
+        .unwrap();
 
-    let resp = app.clone().oneshot(json_request(
-        "POST",
-        "/boards/board/references",
-        Some(serde_json::json!({
-            "uri": "/blog",
-            "ref_type": "invalid"
-        })),
-    )).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(json_request(
+            "POST",
+            "/boards/board/references",
+            Some(serde_json::json!({
+                "uri": "/blog",
+                "ref_type": "invalid"
+            })),
+        ))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), 400);
     let body = json_body(resp).await;
     assert!(body["error"].as_str().unwrap().contains("invalid ref_type"));
@@ -1851,25 +2297,32 @@ async fn reference_nonexistent_version_returns_404() {
     let schema = "test_ref_no_version";
     let (state, app) = setup(schema).await;
 
-    app.clone().oneshot(json_request(
-        "POST",
-        "/boards",
-        Some(serde_json::json!({
-            "slug": "board",
-            "name": "Board",
-            "board_type": "ordered"
-        })),
-    )).await.unwrap();
+    app.clone()
+        .oneshot(json_request(
+            "POST",
+            "/boards",
+            Some(serde_json::json!({
+                "slug": "board",
+                "name": "Board",
+                "board_type": "ordered"
+            })),
+        ))
+        .await
+        .unwrap();
 
-    let resp = app.clone().oneshot(json_request(
-        "POST",
-        "/boards/board/references",
-        Some(serde_json::json!({
-            "pinned_version_number": 999,
-            "uri": "/blog",
-            "ref_type": "embed"
-        })),
-    )).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(json_request(
+            "POST",
+            "/boards/board/references",
+            Some(serde_json::json!({
+                "pinned_version_number": 999,
+                "uri": "/blog",
+                "ref_type": "embed"
+            })),
+        ))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), 404);
 
     cleanup(&state, schema).await;
@@ -1880,21 +2333,28 @@ async fn reference_delete_nonexistent_returns_404() {
     let schema = "test_ref_del_404";
     let (state, app) = setup(schema).await;
 
-    app.clone().oneshot(json_request(
-        "POST",
-        "/boards",
-        Some(serde_json::json!({
-            "slug": "board",
-            "name": "Board",
-            "board_type": "ordered"
-        })),
-    )).await.unwrap();
+    app.clone()
+        .oneshot(json_request(
+            "POST",
+            "/boards",
+            Some(serde_json::json!({
+                "slug": "board",
+                "name": "Board",
+                "board_type": "ordered"
+            })),
+        ))
+        .await
+        .unwrap();
 
-    let resp = app.clone().oneshot(json_request(
-        "DELETE",
-        "/boards/board/references/00000000-0000-0000-0000-000000000000",
-        None,
-    )).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(json_request(
+            "DELETE",
+            "/boards/board/references/00000000-0000-0000-0000-000000000000",
+            None,
+        ))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), 404);
 
     cleanup(&state, schema).await;
@@ -1905,32 +2365,46 @@ async fn board_delete_cascades_references() {
     let schema = "test_ref_cascade";
     let (state, app) = setup(schema).await;
 
-    app.clone().oneshot(json_request(
-        "POST",
-        "/boards",
-        Some(serde_json::json!({
-            "slug": "board",
-            "name": "Board",
-            "board_type": "ordered"
-        })),
-    )).await.unwrap();
+    app.clone()
+        .oneshot(json_request(
+            "POST",
+            "/boards",
+            Some(serde_json::json!({
+                "slug": "board",
+                "name": "Board",
+                "board_type": "ordered"
+            })),
+        ))
+        .await
+        .unwrap();
 
     // Create reference (no pinned version)
-    app.clone().oneshot(json_request(
-        "POST",
-        "/boards/board/references",
-        Some(serde_json::json!({
-            "uri": "/page",
-            "ref_type": "citation"
-        })),
-    )).await.unwrap();
+    app.clone()
+        .oneshot(json_request(
+            "POST",
+            "/boards/board/references",
+            Some(serde_json::json!({
+                "uri": "/page",
+                "ref_type": "citation"
+            })),
+        ))
+        .await
+        .unwrap();
 
     // Delete board — references should cascade
-    let resp = app.clone().oneshot(json_request("DELETE", "/boards/board", None)).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(json_request("DELETE", "/boards/board", None))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), 204);
 
     // Board gone
-    let resp = app.clone().oneshot(json_request("GET", "/boards/board", None)).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(json_request("GET", "/boards/board", None))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), 404);
 
     cleanup(&state, schema).await;
@@ -1941,27 +2415,39 @@ async fn reference_empty_uri_returns_400() {
     let schema = "test_ref_empty_uri";
     let (state, app) = setup(schema).await;
 
-    app.clone().oneshot(json_request(
-        "POST",
-        "/boards",
-        Some(serde_json::json!({
-            "slug": "board",
-            "name": "Board",
-            "board_type": "ordered"
-        })),
-    )).await.unwrap();
+    app.clone()
+        .oneshot(json_request(
+            "POST",
+            "/boards",
+            Some(serde_json::json!({
+                "slug": "board",
+                "name": "Board",
+                "board_type": "ordered"
+            })),
+        ))
+        .await
+        .unwrap();
 
-    let resp = app.clone().oneshot(json_request(
-        "POST",
-        "/boards/board/references",
-        Some(serde_json::json!({
-            "uri": "",
-            "ref_type": "embed"
-        })),
-    )).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(json_request(
+            "POST",
+            "/boards/board/references",
+            Some(serde_json::json!({
+                "uri": "",
+                "ref_type": "embed"
+            })),
+        ))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), 400);
     let body = json_body(resp).await;
-    assert!(body["error"].as_str().unwrap().contains("uri must not be empty"));
+    assert!(
+        body["error"]
+            .as_str()
+            .unwrap()
+            .contains("uri must not be empty")
+    );
 
     cleanup(&state, schema).await;
 }
@@ -1971,29 +2457,41 @@ async fn reference_label_too_long_returns_400() {
     let schema = "test_ref_long_label";
     let (state, app) = setup(schema).await;
 
-    app.clone().oneshot(json_request(
-        "POST",
-        "/boards",
-        Some(serde_json::json!({
-            "slug": "board",
-            "name": "Board",
-            "board_type": "ordered"
-        })),
-    )).await.unwrap();
+    app.clone()
+        .oneshot(json_request(
+            "POST",
+            "/boards",
+            Some(serde_json::json!({
+                "slug": "board",
+                "name": "Board",
+                "board_type": "ordered"
+            })),
+        ))
+        .await
+        .unwrap();
 
     let long_label = "x".repeat(257);
-    let resp = app.clone().oneshot(json_request(
-        "POST",
-        "/boards/board/references",
-        Some(serde_json::json!({
-            "uri": "/blog",
-            "ref_type": "embed",
-            "label": long_label
-        })),
-    )).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(json_request(
+            "POST",
+            "/boards/board/references",
+            Some(serde_json::json!({
+                "uri": "/blog",
+                "ref_type": "embed",
+                "label": long_label
+            })),
+        ))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), 400);
     let body = json_body(resp).await;
-    assert!(body["error"].as_str().unwrap().contains("label must not exceed 256"));
+    assert!(
+        body["error"]
+            .as_str()
+            .unwrap()
+            .contains("label must not exceed 256")
+    );
 
     cleanup(&state, schema).await;
 }
@@ -2006,60 +2504,77 @@ async fn accumulative_score_submit_and_snapshot() {
     let (state, app) = setup(schema).await;
 
     // Create accumulative scored board
-    app.clone().oneshot(json_request(
-        "POST",
-        "/boards",
-        Some(serde_json::json!({
-            "slug": "forest-royale",
-            "name": "Forest Royale High Scores",
-            "board_type": "scored",
-            "accumulative": true,
-            "sort_direction": "desc"
-        })),
-    )).await.unwrap();
+    app.clone()
+        .oneshot(json_request(
+            "POST",
+            "/boards",
+            Some(serde_json::json!({
+                "slug": "forest-royale",
+                "name": "Forest Royale High Scores",
+                "board_type": "scored",
+                "accumulative": true,
+                "sort_direction": "desc"
+            })),
+        ))
+        .await
+        .unwrap();
 
     // Submit scores (creates entries automatically)
-    let resp = app.clone().oneshot(json_request(
-        "POST",
-        "/boards/forest-royale/scores",
-        Some(serde_json::json!({
-            "entry_slug": "rileyleff",
-            "entry_name": "rileyleff",
-            "score": 847.0
-        })),
-    )).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(json_request(
+            "POST",
+            "/boards/forest-royale/scores",
+            Some(serde_json::json!({
+                "entry_slug": "rileyleff",
+                "entry_name": "rileyleff",
+                "score": 847.0
+            })),
+        ))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), 200);
     let score = json_body(resp).await;
     assert_eq!(score["score"], 847.0);
 
-    app.clone().oneshot(json_request(
-        "POST",
-        "/boards/forest-royale/scores",
-        Some(serde_json::json!({
-            "entry_slug": "alice",
-            "entry_name": "Alice",
-            "score": 1200.0
-        })),
-    )).await.unwrap();
+    app.clone()
+        .oneshot(json_request(
+            "POST",
+            "/boards/forest-royale/scores",
+            Some(serde_json::json!({
+                "entry_slug": "alice",
+                "entry_name": "Alice",
+                "score": 1200.0
+            })),
+        ))
+        .await
+        .unwrap();
 
-    app.clone().oneshot(json_request(
-        "POST",
-        "/boards/forest-royale/scores",
-        Some(serde_json::json!({
-            "entry_slug": "bob",
-            "entry_name": "Bob",
-            "score": 500.0
-        })),
-    )).await.unwrap();
+    app.clone()
+        .oneshot(json_request(
+            "POST",
+            "/boards/forest-royale/scores",
+            Some(serde_json::json!({
+                "entry_slug": "bob",
+                "entry_name": "Bob",
+                "score": 500.0
+            })),
+        ))
+        .await
+        .unwrap();
 
     // Snapshot
-    let resp = app.clone().oneshot(json_request(
-        "POST",
-        "/boards/forest-royale/snapshot",
-        Some(serde_json::json!({
-            "note": "Daily standings"
-        })),
-    )).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(json_request(
+            "POST",
+            "/boards/forest-royale/snapshot",
+            Some(serde_json::json!({
+                "note": "Daily standings"
+            })),
+        ))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), 201);
     let version = json_body(resp).await;
     assert_eq!(version["version_number"], 1);
@@ -2077,11 +2592,11 @@ async fn accumulative_score_submit_and_snapshot() {
     assert_eq!(placements[2]["position"], 3);
 
     // Entries were auto-created — list should show them
-    let resp = app.clone().oneshot(json_request(
-        "GET",
-        "/boards/forest-royale/entries",
-        None,
-    )).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(json_request("GET", "/boards/forest-royale/entries", None))
+        .await
+        .unwrap();
     let entries = json_body(resp).await;
     assert_eq!(entries["items"].as_array().unwrap().len(), 3);
 
@@ -2093,48 +2608,62 @@ async fn accumulative_score_upsert_behavior() {
     let schema = "test_accum_upsert";
     let (state, app) = setup(schema).await;
 
-    app.clone().oneshot(json_request(
-        "POST",
-        "/boards",
-        Some(serde_json::json!({
-            "slug": "board",
-            "name": "Board",
-            "board_type": "scored",
-            "accumulative": true
-        })),
-    )).await.unwrap();
+    app.clone()
+        .oneshot(json_request(
+            "POST",
+            "/boards",
+            Some(serde_json::json!({
+                "slug": "board",
+                "name": "Board",
+                "board_type": "scored",
+                "accumulative": true
+            })),
+        ))
+        .await
+        .unwrap();
 
     // Submit initial score
-    app.clone().oneshot(json_request(
-        "POST",
-        "/boards/board/scores",
-        Some(serde_json::json!({
-            "entry_slug": "player",
-            "entry_name": "Player",
-            "score": 100.0
-        })),
-    )).await.unwrap();
+    app.clone()
+        .oneshot(json_request(
+            "POST",
+            "/boards/board/scores",
+            Some(serde_json::json!({
+                "entry_slug": "player",
+                "entry_name": "Player",
+                "score": 100.0
+            })),
+        ))
+        .await
+        .unwrap();
 
     // Submit higher score with updated name — should overwrite both
-    let resp = app.clone().oneshot(json_request(
-        "POST",
-        "/boards/board/scores",
-        Some(serde_json::json!({
-            "entry_slug": "player",
-            "entry_name": "Player Updated",
-            "score": 999.0
-        })),
-    )).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(json_request(
+            "POST",
+            "/boards/board/scores",
+            Some(serde_json::json!({
+                "entry_slug": "player",
+                "entry_name": "Player Updated",
+                "score": 999.0
+            })),
+        ))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), 200);
     let score = json_body(resp).await;
     assert_eq!(score["score"], 999.0);
 
     // Snapshot should use latest score and updated name
-    let resp = app.clone().oneshot(json_request(
-        "POST",
-        "/boards/board/snapshot",
-        Some(serde_json::json!({})),
-    )).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(json_request(
+            "POST",
+            "/boards/board/snapshot",
+            Some(serde_json::json!({})),
+        ))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), 201);
     let version = json_body(resp).await;
     assert_eq!(version["placements"][0]["score"], 999.0);
@@ -2148,41 +2677,57 @@ async fn accumulative_asc_sort_direction() {
     let schema = "test_accum_asc";
     let (state, app) = setup(schema).await;
 
-    app.clone().oneshot(json_request(
-        "POST",
-        "/boards",
-        Some(serde_json::json!({
-            "slug": "golf",
-            "name": "Golf",
-            "board_type": "scored",
-            "accumulative": true,
-            "sort_direction": "asc"
-        })),
-    )).await.unwrap();
+    app.clone()
+        .oneshot(json_request(
+            "POST",
+            "/boards",
+            Some(serde_json::json!({
+                "slug": "golf",
+                "name": "Golf",
+                "board_type": "scored",
+                "accumulative": true,
+                "sort_direction": "asc"
+            })),
+        ))
+        .await
+        .unwrap();
 
     for (slug, name, score) in [("alice", "Alice", 72.0), ("bob", "Bob", 68.0)] {
-        app.clone().oneshot(json_request(
-            "POST",
-            "/boards/golf/scores",
-            Some(serde_json::json!({
-                "entry_slug": slug,
-                "entry_name": name,
-                "score": score
-            })),
-        )).await.unwrap();
+        app.clone()
+            .oneshot(json_request(
+                "POST",
+                "/boards/golf/scores",
+                Some(serde_json::json!({
+                    "entry_slug": slug,
+                    "entry_name": name,
+                    "score": score
+                })),
+            ))
+            .await
+            .unwrap();
     }
 
-    let resp = app.clone().oneshot(json_request(
-        "POST",
-        "/boards/golf/snapshot",
-        Some(serde_json::json!({})),
-    )).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(json_request(
+            "POST",
+            "/boards/golf/snapshot",
+            Some(serde_json::json!({})),
+        ))
+        .await
+        .unwrap();
     let version = json_body(resp).await;
     let placements = version["placements"].as_array().unwrap();
 
     // asc: Bob (68) #1, Alice (72) #2
-    let bob = placements.iter().find(|p| p["entry_slug"] == "bob").unwrap();
-    let alice = placements.iter().find(|p| p["entry_slug"] == "alice").unwrap();
+    let bob = placements
+        .iter()
+        .find(|p| p["entry_slug"] == "bob")
+        .unwrap();
+    let alice = placements
+        .iter()
+        .find(|p| p["entry_slug"] == "alice")
+        .unwrap();
     assert_eq!(bob["position"], 1);
     assert_eq!(alice["position"], 2);
 
@@ -2194,36 +2739,47 @@ async fn accumulative_score_on_non_accumulative_returns_400() {
     let schema = "test_accum_reject_curated";
     let (state, app) = setup(schema).await;
 
-    app.clone().oneshot(json_request(
-        "POST",
-        "/boards",
-        Some(serde_json::json!({
-            "slug": "board",
-            "name": "Board",
-            "board_type": "ordered"
-        })),
-    )).await.unwrap();
+    app.clone()
+        .oneshot(json_request(
+            "POST",
+            "/boards",
+            Some(serde_json::json!({
+                "slug": "board",
+                "name": "Board",
+                "board_type": "ordered"
+            })),
+        ))
+        .await
+        .unwrap();
 
     // Score submission on non-accumulative board should fail
-    let resp = app.clone().oneshot(json_request(
-        "POST",
-        "/boards/board/scores",
-        Some(serde_json::json!({
-            "entry_slug": "x",
-            "entry_name": "X",
-            "score": 100.0
-        })),
-    )).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(json_request(
+            "POST",
+            "/boards/board/scores",
+            Some(serde_json::json!({
+                "entry_slug": "x",
+                "entry_name": "X",
+                "score": 100.0
+            })),
+        ))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), 400);
     let body = json_body(resp).await;
     assert!(body["error"].as_str().unwrap().contains("accumulative"));
 
     // Snapshot on non-accumulative board should fail
-    let resp = app.clone().oneshot(json_request(
-        "POST",
-        "/boards/board/snapshot",
-        Some(serde_json::json!({})),
-    )).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(json_request(
+            "POST",
+            "/boards/board/snapshot",
+            Some(serde_json::json!({})),
+        ))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), 400);
 
     cleanup(&state, schema).await;
@@ -2234,38 +2790,48 @@ async fn accumulative_version_create_rejected() {
     let schema = "test_accum_no_version";
     let (state, app) = setup(schema).await;
 
-    app.clone().oneshot(json_request(
-        "POST",
-        "/boards",
-        Some(serde_json::json!({
-            "slug": "board",
-            "name": "Board",
-            "board_type": "scored",
-            "accumulative": true
-        })),
-    )).await.unwrap();
+    app.clone()
+        .oneshot(json_request(
+            "POST",
+            "/boards",
+            Some(serde_json::json!({
+                "slug": "board",
+                "name": "Board",
+                "board_type": "scored",
+                "accumulative": true
+            })),
+        ))
+        .await
+        .unwrap();
 
     // Submit a score to create an entry
-    app.clone().oneshot(json_request(
-        "POST",
-        "/boards/board/scores",
-        Some(serde_json::json!({
-            "entry_slug": "player",
-            "entry_name": "Player",
-            "score": 100.0
-        })),
-    )).await.unwrap();
+    app.clone()
+        .oneshot(json_request(
+            "POST",
+            "/boards/board/scores",
+            Some(serde_json::json!({
+                "entry_slug": "player",
+                "entry_name": "Player",
+                "score": 100.0
+            })),
+        ))
+        .await
+        .unwrap();
 
     // Direct version creation should be rejected on accumulative boards
-    let resp = app.clone().oneshot(json_request(
-        "POST",
-        "/boards/board/versions",
-        Some(serde_json::json!({
-            "placements": [
-                { "entry_slug": "player", "score": 100.0 }
-            ]
-        })),
-    )).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(json_request(
+            "POST",
+            "/boards/board/versions",
+            Some(serde_json::json!({
+                "placements": [
+                    { "entry_slug": "player", "score": 100.0 }
+                ]
+            })),
+        ))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), 400);
     let body = json_body(resp).await;
     assert!(body["error"].as_str().unwrap().contains("accumulative"));
@@ -2278,26 +2844,38 @@ async fn accumulative_snapshot_no_scores_returns_400() {
     let schema = "test_accum_empty_snap";
     let (state, app) = setup(schema).await;
 
-    app.clone().oneshot(json_request(
-        "POST",
-        "/boards",
-        Some(serde_json::json!({
-            "slug": "board",
-            "name": "Board",
-            "board_type": "scored",
-            "accumulative": true
-        })),
-    )).await.unwrap();
+    app.clone()
+        .oneshot(json_request(
+            "POST",
+            "/boards",
+            Some(serde_json::json!({
+                "slug": "board",
+                "name": "Board",
+                "board_type": "scored",
+                "accumulative": true
+            })),
+        ))
+        .await
+        .unwrap();
 
     // Snapshot with no scores should fail
-    let resp = app.clone().oneshot(json_request(
-        "POST",
-        "/boards/board/snapshot",
-        Some(serde_json::json!({})),
-    )).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(json_request(
+            "POST",
+            "/boards/board/snapshot",
+            Some(serde_json::json!({})),
+        ))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), 400);
     let body = json_body(resp).await;
-    assert!(body["error"].as_str().unwrap().contains("no accumulated scores"));
+    assert!(
+        body["error"]
+            .as_str()
+            .unwrap()
+            .contains("no accumulated scores")
+    );
 
     cleanup(&state, schema).await;
 }
@@ -2307,65 +2885,85 @@ async fn accumulative_multiple_snapshots() {
     let schema = "test_accum_multi_snap";
     let (state, app) = setup(schema).await;
 
-    app.clone().oneshot(json_request(
-        "POST",
-        "/boards",
-        Some(serde_json::json!({
-            "slug": "board",
-            "name": "Board",
-            "board_type": "scored",
-            "accumulative": true
-        })),
-    )).await.unwrap();
+    app.clone()
+        .oneshot(json_request(
+            "POST",
+            "/boards",
+            Some(serde_json::json!({
+                "slug": "board",
+                "name": "Board",
+                "board_type": "scored",
+                "accumulative": true
+            })),
+        ))
+        .await
+        .unwrap();
 
     // Submit scores
-    app.clone().oneshot(json_request(
-        "POST",
-        "/boards/board/scores",
-        Some(serde_json::json!({
-            "entry_slug": "a",
-            "entry_name": "A",
-            "score": 100.0
-        })),
-    )).await.unwrap();
+    app.clone()
+        .oneshot(json_request(
+            "POST",
+            "/boards/board/scores",
+            Some(serde_json::json!({
+                "entry_slug": "a",
+                "entry_name": "A",
+                "score": 100.0
+            })),
+        ))
+        .await
+        .unwrap();
 
     // First snapshot
-    let resp = app.clone().oneshot(json_request(
-        "POST",
-        "/boards/board/snapshot",
-        Some(serde_json::json!({ "note": "snap 1" })),
-    )).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(json_request(
+            "POST",
+            "/boards/board/snapshot",
+            Some(serde_json::json!({ "note": "snap 1" })),
+        ))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), 201);
     let v1 = json_body(resp).await;
     assert_eq!(v1["version_number"], 1);
 
     // Update score and add new player
-    app.clone().oneshot(json_request(
-        "POST",
-        "/boards/board/scores",
-        Some(serde_json::json!({
-            "entry_slug": "a",
-            "entry_name": "A",
-            "score": 200.0
-        })),
-    )).await.unwrap();
+    app.clone()
+        .oneshot(json_request(
+            "POST",
+            "/boards/board/scores",
+            Some(serde_json::json!({
+                "entry_slug": "a",
+                "entry_name": "A",
+                "score": 200.0
+            })),
+        ))
+        .await
+        .unwrap();
 
-    app.clone().oneshot(json_request(
-        "POST",
-        "/boards/board/scores",
-        Some(serde_json::json!({
-            "entry_slug": "b",
-            "entry_name": "B",
-            "score": 150.0
-        })),
-    )).await.unwrap();
+    app.clone()
+        .oneshot(json_request(
+            "POST",
+            "/boards/board/scores",
+            Some(serde_json::json!({
+                "entry_slug": "b",
+                "entry_name": "B",
+                "score": 150.0
+            })),
+        ))
+        .await
+        .unwrap();
 
     // Second snapshot — scores persist (not cleared)
-    let resp = app.clone().oneshot(json_request(
-        "POST",
-        "/boards/board/snapshot",
-        Some(serde_json::json!({ "note": "snap 2" })),
-    )).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(json_request(
+            "POST",
+            "/boards/board/snapshot",
+            Some(serde_json::json!({ "note": "snap 2" })),
+        ))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), 201);
     let v2 = json_body(resp).await;
     assert_eq!(v2["version_number"], 2);
@@ -2379,11 +2977,11 @@ async fn accumulative_multiple_snapshots() {
     assert_eq!(placements[1]["score"], 150.0);
 
     // Version listing should show both
-    let resp = app.clone().oneshot(json_request(
-        "GET",
-        "/boards/board/versions",
-        None,
-    )).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(json_request("GET", "/boards/board/versions", None))
+        .await
+        .unwrap();
     let versions = json_body(resp).await;
     assert_eq!(versions["items"].as_array().unwrap().len(), 2);
 
@@ -2395,32 +2993,46 @@ async fn accumulative_board_delete_cascades() {
     let schema = "test_accum_cascade";
     let (state, app) = setup(schema).await;
 
-    app.clone().oneshot(json_request(
-        "POST",
-        "/boards",
-        Some(serde_json::json!({
-            "slug": "board",
-            "name": "Board",
-            "board_type": "scored",
-            "accumulative": true
-        })),
-    )).await.unwrap();
+    app.clone()
+        .oneshot(json_request(
+            "POST",
+            "/boards",
+            Some(serde_json::json!({
+                "slug": "board",
+                "name": "Board",
+                "board_type": "scored",
+                "accumulative": true
+            })),
+        ))
+        .await
+        .unwrap();
 
-    app.clone().oneshot(json_request(
-        "POST",
-        "/boards/board/scores",
-        Some(serde_json::json!({
-            "entry_slug": "player",
-            "entry_name": "Player",
-            "score": 100.0
-        })),
-    )).await.unwrap();
+    app.clone()
+        .oneshot(json_request(
+            "POST",
+            "/boards/board/scores",
+            Some(serde_json::json!({
+                "entry_slug": "player",
+                "entry_name": "Player",
+                "score": 100.0
+            })),
+        ))
+        .await
+        .unwrap();
 
     // Delete board — accumulated_scores should cascade
-    let resp = app.clone().oneshot(json_request("DELETE", "/boards/board", None)).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(json_request("DELETE", "/boards/board", None))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), 204);
 
-    let resp = app.clone().oneshot(json_request("GET", "/boards/board", None)).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(json_request("GET", "/boards/board", None))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), 404);
 
     cleanup(&state, schema).await;
@@ -2432,31 +3044,44 @@ async fn accumulative_non_scored_board_rejected() {
     let (state, app) = setup(schema).await;
 
     // Accumulative ordered board should be rejected
-    let resp = app.clone().oneshot(json_request(
-        "POST",
-        "/boards",
-        Some(serde_json::json!({
-            "slug": "board",
-            "name": "Board",
-            "board_type": "ordered",
-            "accumulative": true
-        })),
-    )).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(json_request(
+            "POST",
+            "/boards",
+            Some(serde_json::json!({
+                "slug": "board",
+                "name": "Board",
+                "board_type": "ordered",
+                "accumulative": true
+            })),
+        ))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), 400);
     let body = json_body(resp).await;
-    assert!(body["error"].as_str().unwrap().contains("accumulative boards must have board_type 'scored'"));
+    assert!(
+        body["error"]
+            .as_str()
+            .unwrap()
+            .contains("accumulative boards must have board_type 'scored'")
+    );
 
     // Accumulative tiered board should also be rejected
-    let resp = app.clone().oneshot(json_request(
-        "POST",
-        "/boards",
-        Some(serde_json::json!({
-            "slug": "board2",
-            "name": "Board2",
-            "board_type": "tiered",
-            "accumulative": true
-        })),
-    )).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(json_request(
+            "POST",
+            "/boards",
+            Some(serde_json::json!({
+                "slug": "board2",
+                "name": "Board2",
+                "board_type": "tiered",
+                "accumulative": true
+            })),
+        ))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), 400);
 
     cleanup(&state, schema).await;
@@ -2527,7 +3152,8 @@ async fn sync_ordered_board_creates_version() {
 name = "Best Sandwiches in DC"
 board_type = "ordered"
 "#,
-        Some(r#"
+        Some(
+            r#"
 [[entries]]
 slug = "crunchy-boi"
 name = "Compliments Only Crunchy Boi"
@@ -2542,7 +3168,8 @@ position = 2
 slug = "a-litteri"
 name = "A. Litteri Italian"
 position = 3
-"#),
+"#,
+        ),
     );
 
     let results = riley_leaderboards_core::sync::execute::sync_dir(
@@ -2568,8 +3195,9 @@ position = 3
     assert_eq!(board.board_type, "ordered");
 
     // Verify version has correct placements
-    let version =
-        riley_leaderboards_core::repo::versions::get_latest(&state.pool, board.id).await.unwrap();
+    let version = riley_leaderboards_core::repo::versions::get_latest(&state.pool, board.id)
+        .await
+        .unwrap();
     assert_eq!(version.version.version_number, 1);
     assert_eq!(version.placements.len(), 3);
     assert_eq!(version.placements[0].entry_slug, "crunchy-boi");
@@ -2601,7 +3229,8 @@ label = "Elite (Top 5 Pick)"
 key = "first_round"
 label = "First Round"
 "#,
-        Some(r#"
+        Some(
+            r#"
 [[entries]]
 slug = "travis-hunter"
 name = "Travis Hunter"
@@ -2619,16 +3248,13 @@ slug = "tetairoa-mcmillan"
 name = "Tetairoa McMillan"
 tier = "first_round"
 position = 1
-"#),
+"#,
+        ),
     );
 
-    let results = riley_leaderboards_core::sync::execute::sync_dir(
-        &state.pool,
-        tmp.path(),
-        None,
-    )
-    .await
-    .unwrap();
+    let results = riley_leaderboards_core::sync::execute::sync_dir(&state.pool, tmp.path(), None)
+        .await
+        .unwrap();
 
     assert_eq!(results.len(), 1);
     assert!(matches!(
@@ -2642,8 +3268,9 @@ position = 1
     assert_eq!(board.board_type, "tiered");
     assert!(board.tier_config.is_some());
 
-    let version =
-        riley_leaderboards_core::repo::versions::get_latest(&state.pool, board.id).await.unwrap();
+    let version = riley_leaderboards_core::repo::versions::get_latest(&state.pool, board.id)
+        .await
+        .unwrap();
     assert_eq!(version.placements.len(), 3);
     assert_eq!(version.placements[0].entry_slug, "travis-hunter");
     assert_eq!(version.placements[0].tier.as_deref(), Some("elite"));
@@ -2665,7 +3292,8 @@ name = "Best Programming Languages"
 board_type = "scored"
 sort_direction = "desc"
 "#,
-        Some(r#"
+        Some(
+            r#"
 [[entries]]
 slug = "rust"
 name = "Rust"
@@ -2680,23 +3308,21 @@ score = 88.0
 slug = "go"
 name = "Go"
 score = 82.0
-"#),
+"#,
+        ),
     );
 
-    let results = riley_leaderboards_core::sync::execute::sync_dir(
-        &state.pool,
-        tmp.path(),
-        None,
-    )
-    .await
-    .unwrap();
+    let results = riley_leaderboards_core::sync::execute::sync_dir(&state.pool, tmp.path(), None)
+        .await
+        .unwrap();
 
     assert_eq!(results.len(), 1);
     let board = riley_leaderboards_core::repo::boards::get_by_slug(&state.pool, "prog-langs")
         .await
         .unwrap();
-    let version =
-        riley_leaderboards_core::repo::versions::get_latest(&state.pool, board.id).await.unwrap();
+    let version = riley_leaderboards_core::repo::versions::get_latest(&state.pool, board.id)
+        .await
+        .unwrap();
     assert_eq!(version.placements.len(), 3);
     // Positions derived: Rust #1 (95), Python #2 (88), Go #3 (82)
     assert_eq!(version.placements[0].entry_slug, "rust");
@@ -2732,26 +3358,18 @@ position = 2
     write_board_files(tmp.path(), "board", board_toml, Some(rankings_toml));
 
     // First sync — creates version 1
-    let results = riley_leaderboards_core::sync::execute::sync_dir(
-        &state.pool,
-        tmp.path(),
-        None,
-    )
-    .await
-    .unwrap();
+    let results = riley_leaderboards_core::sync::execute::sync_dir(&state.pool, tmp.path(), None)
+        .await
+        .unwrap();
     assert!(matches!(
         results[0].action,
         riley_leaderboards_core::sync::execute::SyncAction::Created { version_number: 1 }
     ));
 
     // Second sync with same content — should be NoChange
-    let results = riley_leaderboards_core::sync::execute::sync_dir(
-        &state.pool,
-        tmp.path(),
-        None,
-    )
-    .await
-    .unwrap();
+    let results = riley_leaderboards_core::sync::execute::sync_dir(&state.pool, tmp.path(), None)
+        .await
+        .unwrap();
     assert!(matches!(
         results[0].action,
         riley_leaderboards_core::sync::execute::SyncAction::NoChange
@@ -2784,7 +3402,8 @@ board_type = "ordered"
         tmp.path(),
         "board",
         board_toml,
-        Some(r#"
+        Some(
+            r#"
 [[entries]]
 slug = "alpha"
 name = "Alpha"
@@ -2794,7 +3413,8 @@ position = 1
 slug = "beta"
 name = "Beta"
 position = 2
-"#),
+"#,
+        ),
     );
 
     // First sync
@@ -2807,7 +3427,8 @@ position = 2
         tmp.path(),
         "board",
         board_toml,
-        Some(r#"
+        Some(
+            r#"
 [[entries]]
 slug = "beta"
 name = "Beta"
@@ -2817,7 +3438,8 @@ position = 1
 slug = "alpha"
 name = "Alpha"
 position = 2
-"#),
+"#,
+        ),
     );
 
     // Second sync
@@ -2837,8 +3459,9 @@ position = 2
     let board = riley_leaderboards_core::repo::boards::get_by_slug(&state.pool, "board")
         .await
         .unwrap();
-    let version =
-        riley_leaderboards_core::repo::versions::get_latest(&state.pool, board.id).await.unwrap();
+    let version = riley_leaderboards_core::repo::versions::get_latest(&state.pool, board.id)
+        .await
+        .unwrap();
     assert_eq!(version.version.version_number, 2);
     assert_eq!(version.placements[0].entry_slug, "beta");
     assert_eq!(version.placements[0].position, Some(1));
@@ -2861,21 +3484,19 @@ name = "Game Scores"
 board_type = "scored"
 accumulative = true
 "#,
-        Some(r#"
+        Some(
+            r#"
 [[entries]]
 slug = "player1"
 name = "Player 1"
 score = 100.0
-"#),
+"#,
+        ),
     );
 
-    let results = riley_leaderboards_core::sync::execute::sync_dir(
-        &state.pool,
-        tmp.path(),
-        None,
-    )
-    .await
-    .unwrap();
+    let results = riley_leaderboards_core::sync::execute::sync_dir(&state.pool, tmp.path(), None)
+        .await
+        .unwrap();
 
     assert_eq!(results.len(), 1);
     assert!(matches!(
@@ -2903,7 +3524,8 @@ board_type = "ordered"
 description = "A definitive ranking."
 author = "Riley"
 "#,
-        Some(r#"
+        Some(
+            r#"
 [[entries]]
 slug = "crunchy-boi"
 name = "Crunchy Boi"
@@ -2912,16 +3534,13 @@ position = 1
 [entries.metadata]
 address = "1026 Vermont Ave NW"
 image_url = "https://example.com/crunchy.jpg"
-"#),
+"#,
+        ),
     );
 
-    let results = riley_leaderboards_core::sync::execute::sync_dir(
-        &state.pool,
-        tmp.path(),
-        None,
-    )
-    .await
-    .unwrap();
+    let results = riley_leaderboards_core::sync::execute::sync_dir(&state.pool, tmp.path(), None)
+        .await
+        .unwrap();
     assert_eq!(results.len(), 1);
 
     let board = riley_leaderboards_core::repo::boards::get_by_slug(&state.pool, "sandwiches")
@@ -2931,8 +3550,9 @@ image_url = "https://example.com/crunchy.jpg"
     assert_eq!(meta["description"], "A definitive ranking.");
     assert_eq!(meta["author"], "Riley");
 
-    let version =
-        riley_leaderboards_core::repo::versions::get_latest(&state.pool, board.id).await.unwrap();
+    let version = riley_leaderboards_core::repo::versions::get_latest(&state.pool, board.id)
+        .await
+        .unwrap();
     let entry_meta = version.placements[0].metadata.as_ref().unwrap();
     assert_eq!(entry_meta["address"], "1026 Vermont Ave NW");
 
@@ -2952,12 +3572,14 @@ async fn sync_multiple_boards() {
 name = "Board A"
 board_type = "ordered"
 "#,
-        Some(r#"
+        Some(
+            r#"
 [[entries]]
 slug = "item"
 name = "Item"
 position = 1
-"#),
+"#,
+        ),
     );
 
     write_board_files(
@@ -2967,21 +3589,19 @@ position = 1
 name = "Board B"
 board_type = "ordered"
 "#,
-        Some(r#"
+        Some(
+            r#"
 [[entries]]
 slug = "item"
 name = "Item"
 position = 1
-"#),
+"#,
+        ),
     );
 
-    let results = riley_leaderboards_core::sync::execute::sync_dir(
-        &state.pool,
-        tmp.path(),
-        None,
-    )
-    .await
-    .unwrap();
+    let results = riley_leaderboards_core::sync::execute::sync_dir(&state.pool, tmp.path(), None)
+        .await
+        .unwrap();
 
     assert_eq!(results.len(), 2);
 
@@ -3131,12 +3751,14 @@ async fn webhook_valid_signature_triggers_sync() {
 name = "Webhook Board"
 board_type = "ordered"
 "#,
-        Some(r#"
+        Some(
+            r#"
 [[entries]]
 slug = "item"
 name = "Item"
 position = 1
-"#),
+"#,
+        ),
     );
 
     // Commit and push
@@ -3353,8 +3975,7 @@ async fn auth_api_token_write_requires_token() {
     let token_hash = {
         use hmac::{Hmac, Mac};
         use sha2::Sha256;
-        let mut mac =
-            Hmac::<Sha256>::new_from_slice(b"riley-leaderboards-api-token").unwrap();
+        let mut mac = Hmac::<Sha256>::new_from_slice(b"riley-leaderboards-api-token").unwrap();
         mac.update(b"test-api-secret-123");
         mac.finalize().into_bytes().to_vec()
     };
@@ -3475,8 +4096,7 @@ async fn auth_jwt_valid_token_allows_write() {
     let pool = db::connect(&config.database).await.expect("connect failed");
     db::migrate(&pool).await.expect("migrate failed");
 
-    let (state, app) =
-        setup_jwt_auth_state(pool.clone(), config, Some("admin".to_string()));
+    let (state, app) = setup_jwt_auth_state(pool.clone(), config, Some("admin".to_string()));
 
     let token = make_test_jwt(&["admin"], 3600);
 
@@ -3538,8 +4158,7 @@ async fn auth_jwt_expired_token_rejected() {
     let pool = db::connect(&config.database).await.expect("connect failed");
     db::migrate(&pool).await.expect("migrate failed");
 
-    let (_state, app) =
-        setup_jwt_auth_state(pool.clone(), config, Some("admin".to_string()));
+    let (_state, app) = setup_jwt_auth_state(pool.clone(), config, Some("admin".to_string()));
 
     // Create an expired JWT (exp = 1 second ago)
     // Offset must exceed jsonwebtoken's 60-second leeway
@@ -3592,8 +4211,7 @@ async fn auth_jwt_wrong_role_rejected() {
     let pool = db::connect(&config.database).await.expect("connect failed");
     db::migrate(&pool).await.expect("migrate failed");
 
-    let (_state, app) =
-        setup_jwt_auth_state(pool.clone(), config, Some("admin".to_string()));
+    let (_state, app) = setup_jwt_auth_state(pool.clone(), config, Some("admin".to_string()));
 
     // Create a JWT with the wrong role
     let token = make_test_jwt(&["viewer"], 3600);
@@ -3619,10 +4237,12 @@ async fn auth_jwt_wrong_role_rejected() {
         .unwrap();
     assert_eq!(resp.status(), 401);
     let body = json_body(resp).await;
-    assert!(body["error"]
-        .as_str()
-        .unwrap()
-        .contains("insufficient permissions"));
+    assert!(
+        body["error"]
+            .as_str()
+            .unwrap()
+            .contains("insufficient permissions")
+    );
 
     sqlx::query(&format!("DROP SCHEMA IF EXISTS \"{schema}\" CASCADE"))
         .execute(&pool)
@@ -3721,8 +4341,7 @@ async fn auth_jwt_missing_token_returns_401() {
     let pool = db::connect(&config.database).await.expect("connect failed");
     db::migrate(&pool).await.expect("migrate failed");
 
-    let (_state, app) =
-        setup_jwt_auth_state(pool.clone(), config, Some("admin".to_string()));
+    let (_state, app) = setup_jwt_auth_state(pool.clone(), config, Some("admin".to_string()));
 
     // POST without Authorization header → 401
     let resp = app
@@ -3739,10 +4358,7 @@ async fn auth_jwt_missing_token_returns_401() {
         .unwrap();
     assert_eq!(resp.status(), 401);
     let body = json_body(resp).await;
-    assert!(body["error"]
-        .as_str()
-        .unwrap()
-        .contains("missing"));
+    assert!(body["error"].as_str().unwrap().contains("missing"));
 
     sqlx::query(&format!("DROP SCHEMA IF EXISTS \"{schema}\" CASCADE"))
         .execute(&pool)
@@ -3788,10 +4404,8 @@ async fn auth_jwks_fetch_from_mock_server() {
             async move { axum::Json(jwks) }
         }
     };
-    let mock_app = axum::Router::new().route(
-        "/.well-known/jwks.json",
-        axum::routing::get(jwks_handler),
-    );
+    let mock_app =
+        axum::Router::new().route("/.well-known/jwks.json", axum::routing::get(jwks_handler));
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let mock_addr = listener.local_addr().unwrap();
     tokio::spawn(async move {
@@ -3801,8 +4415,9 @@ async fn auth_jwks_fetch_from_mock_server() {
     let jwks_url = format!("http://{mock_addr}/.well-known/jwks.json");
 
     // Create JwksCache from real HTTP fetch
-    let jwks_cache =
-        riley_leaderboards_api::auth::JwksCache::new(&jwks_url).await.unwrap();
+    let jwks_cache = riley_leaderboards_api::auth::JwksCache::new(&jwks_url)
+        .await
+        .unwrap();
     let jwks_cache = Arc::new(jwks_cache);
 
     let auth_mode = riley_leaderboards_api::auth::AuthMode::Jwt {
@@ -3864,30 +4479,46 @@ async fn pagination_boards_list() {
 
     // Create 3 boards
     for i in 0..3 {
-        let resp = app.clone().oneshot(json_request(
-            "POST", "/boards",
-            Some(serde_json::json!({
-                "slug": format!("page-b{i}"),
-                "name": format!("Page Board {i}"),
-                "board_type": "ordered"
-            })),
-        )).await.unwrap();
+        let resp = app
+            .clone()
+            .oneshot(json_request(
+                "POST",
+                "/boards",
+                Some(serde_json::json!({
+                    "slug": format!("page-b{i}"),
+                    "name": format!("Page Board {i}"),
+                    "board_type": "ordered"
+                })),
+            ))
+            .await
+            .unwrap();
         assert_eq!(resp.status(), 201, "create board {i}");
     }
 
     // Fetch with limit=2
-    let resp = app.clone().oneshot(json_request("GET", "/boards?limit=2", None)).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(json_request("GET", "/boards?limit=2", None))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), 200);
     let body = json_body(resp).await;
     let items = body["items"].as_array().unwrap();
     assert_eq!(items.len(), 2, "first page should have 2 items");
-    assert!(body["next_cursor"].as_str().is_some(), "should have a next_cursor");
+    assert!(
+        body["next_cursor"].as_str().is_some(),
+        "should have a next_cursor"
+    );
 
     // Fetch second page using cursor
     let cursor = body["next_cursor"].as_str().unwrap();
     let encoded_cursor = urlencoding::encode(cursor);
     let uri = format!("/boards?limit=2&cursor={encoded_cursor}");
-    let resp = app.clone().oneshot(json_request("GET", &uri, None)).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(json_request("GET", &uri, None))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), 200);
     let body2 = json_body(resp).await;
     let items2 = body2["items"].as_array().unwrap();
@@ -3903,30 +4534,44 @@ async fn pagination_entries_list() {
     let (state, app) = setup(schema).await;
 
     // Create board
-    let resp = app.clone().oneshot(json_request(
-        "POST", "/boards",
-        Some(serde_json::json!({
-            "slug": "paged",
-            "name": "Paged Board",
-            "board_type": "ordered"
-        })),
-    )).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(json_request(
+            "POST",
+            "/boards",
+            Some(serde_json::json!({
+                "slug": "paged",
+                "name": "Paged Board",
+                "board_type": "ordered"
+            })),
+        ))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), 201);
 
     // Create 3 entries
     for i in 0..3 {
-        let resp = app.clone().oneshot(json_request(
-            "POST", "/boards/paged/entries",
-            Some(serde_json::json!({
-                "slug": format!("e{i}"),
-                "name": format!("Entry {i}")
-            })),
-        )).await.unwrap();
+        let resp = app
+            .clone()
+            .oneshot(json_request(
+                "POST",
+                "/boards/paged/entries",
+                Some(serde_json::json!({
+                    "slug": format!("e{i}"),
+                    "name": format!("Entry {i}")
+                })),
+            ))
+            .await
+            .unwrap();
         assert_eq!(resp.status(), 201);
     }
 
     // Fetch with limit=1
-    let resp = app.clone().oneshot(json_request("GET", "/boards/paged/entries?limit=1", None)).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(json_request("GET", "/boards/paged/entries?limit=1", None))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), 200);
     let body = json_body(resp).await;
     let items = body["items"].as_array().unwrap();
@@ -3937,7 +4582,11 @@ async fn pagination_entries_list() {
     let cursor = body["next_cursor"].as_str().unwrap();
     let encoded_cursor = urlencoding::encode(cursor);
     let uri = format!("/boards/paged/entries?limit=1&cursor={encoded_cursor}");
-    let resp = app.clone().oneshot(json_request("GET", &uri, None)).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(json_request("GET", &uri, None))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), 200);
     let body2 = json_body(resp).await;
     let items2 = body2["items"].as_array().unwrap();
@@ -3953,44 +4602,59 @@ async fn export_import_round_trip() {
     let (state, app) = setup(schema).await;
 
     // Create board with entries and a version
-    let resp = app.clone().oneshot(json_request(
-        "POST", "/boards",
-        Some(serde_json::json!({
-            "slug": "export-test",
-            "name": "Export Test",
-            "board_type": "scored",
-            "sort_direction": "desc"
-        })),
-    )).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(json_request(
+            "POST",
+            "/boards",
+            Some(serde_json::json!({
+                "slug": "export-test",
+                "name": "Export Test",
+                "board_type": "scored",
+                "sort_direction": "desc"
+            })),
+        ))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), 201);
 
     for i in 0..2 {
-        let resp = app.clone().oneshot(json_request(
-            "POST", "/boards/export-test/entries",
-            Some(serde_json::json!({
-                "slug": format!("exp-e{i}"),
-                "name": format!("Export Entry {i}")
-            })),
-        )).await.unwrap();
+        let resp = app
+            .clone()
+            .oneshot(json_request(
+                "POST",
+                "/boards/export-test/entries",
+                Some(serde_json::json!({
+                    "slug": format!("exp-e{i}"),
+                    "name": format!("Export Entry {i}")
+                })),
+            ))
+            .await
+            .unwrap();
         assert_eq!(resp.status(), 201);
     }
 
     // Create a version with placements
-    let resp = app.clone().oneshot(json_request(
-        "POST", "/boards/export-test/versions",
-        Some(serde_json::json!({
-            "placements": [
-                { "entry_slug": "exp-e0", "score": 100.0, "position": 1 },
-                { "entry_slug": "exp-e1", "score": 200.0, "position": 2 }
-            ]
-        })),
-    )).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(json_request(
+            "POST",
+            "/boards/export-test/versions",
+            Some(serde_json::json!({
+                "placements": [
+                    { "entry_slug": "exp-e0", "score": 100.0, "position": 1 },
+                    { "entry_slug": "exp-e1", "score": 200.0, "position": 2 }
+                ]
+            })),
+        ))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), 201);
 
     // Export
-    let export = riley_leaderboards_core::repo::export::export_board(
-        &state.pool, "export-test",
-    ).await.expect("export failed");
+    let export = riley_leaderboards_core::repo::export::export_board(&state.pool, "export-test")
+        .await
+        .expect("export failed");
     assert_eq!(export.board.slug, "export-test");
     assert_eq!(export.versions.len(), 1);
     assert_eq!(export.versions[0].placements.len(), 2);
@@ -4002,28 +4666,35 @@ async fn export_import_round_trip() {
     assert_eq!(reimported.board.slug, "export-test");
 
     // Delete the original board
-    let resp = app.clone().oneshot(json_request(
-        "DELETE", "/boards/export-test", None,
-    )).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(json_request("DELETE", "/boards/export-test", None))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), 204);
 
     // Import from the deserialized export
     riley_leaderboards_core::repo::export::import_board(&state.pool, &reimported)
-        .await.expect("import failed");
+        .await
+        .expect("import failed");
 
     // Verify the board exists again
-    let resp = app.clone().oneshot(json_request(
-        "GET", "/boards/export-test", None,
-    )).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(json_request("GET", "/boards/export-test", None))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), 200);
     let body = json_body(resp).await;
     assert_eq!(body["slug"], "export-test");
     assert_eq!(body["board_type"], "scored");
 
     // Verify version was imported
-    let resp = app.clone().oneshot(json_request(
-        "GET", "/boards/export-test/versions/1", None,
-    )).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(json_request("GET", "/boards/export-test/versions/1", None))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), 200);
 
     cleanup(&state, schema).await;
@@ -4037,70 +4708,103 @@ async fn version_metadata_create_and_fetch() {
     let (state, app) = setup(schema).await;
 
     // Create board + entry
-    app.clone().oneshot(json_request(
-        "POST", "/boards",
-        Some(serde_json::json!({
-            "slug": "meta-board",
-            "name": "Metadata Board",
-            "board_type": "ordered"
-        })),
-    )).await.unwrap();
-    app.clone().oneshot(json_request(
-        "POST", "/boards/meta-board/entries",
-        Some(serde_json::json!({ "slug": "item-a", "name": "Item A" })),
-    )).await.unwrap();
+    app.clone()
+        .oneshot(json_request(
+            "POST",
+            "/boards",
+            Some(serde_json::json!({
+                "slug": "meta-board",
+                "name": "Metadata Board",
+                "board_type": "ordered"
+            })),
+        ))
+        .await
+        .unwrap();
+    app.clone()
+        .oneshot(json_request(
+            "POST",
+            "/boards/meta-board/entries",
+            Some(serde_json::json!({ "slug": "item-a", "name": "Item A" })),
+        ))
+        .await
+        .unwrap();
 
     // Create version WITH metadata
-    let resp = app.clone().oneshot(json_request(
-        "POST", "/boards/meta-board/versions",
-        Some(serde_json::json!({
-            "note": "February update",
-            "metadata": {
-                "blog_post_url": "https://example.com/blog/feb-update",
-                "changelog": "Added Item A"
-            },
-            "placements": [
-                { "entry_slug": "item-a", "position": 1 }
-            ]
-        })),
-    )).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(json_request(
+            "POST",
+            "/boards/meta-board/versions",
+            Some(serde_json::json!({
+                "note": "February update",
+                "metadata": {
+                    "blog_post_url": "https://example.com/blog/feb-update",
+                    "changelog": "Added Item A"
+                },
+                "placements": [
+                    { "entry_slug": "item-a", "position": 1 }
+                ]
+            })),
+        ))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), 201);
     let version = json_body(resp).await;
     assert_eq!(version["version_number"], 1);
-    assert_eq!(version["metadata"]["blog_post_url"], "https://example.com/blog/feb-update");
+    assert_eq!(
+        version["metadata"]["blog_post_url"],
+        "https://example.com/blog/feb-update"
+    );
     assert_eq!(version["metadata"]["changelog"], "Added Item A");
 
     // Fetch by number — metadata persists
-    let resp = app.clone().oneshot(json_request(
-        "GET", "/boards/meta-board/versions/1", None,
-    )).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(json_request("GET", "/boards/meta-board/versions/1", None))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), 200);
     let fetched = json_body(resp).await;
-    assert_eq!(fetched["metadata"]["blog_post_url"], "https://example.com/blog/feb-update");
+    assert_eq!(
+        fetched["metadata"]["blog_post_url"],
+        "https://example.com/blog/feb-update"
+    );
 
     // Fetch latest — metadata persists
-    let resp = app.clone().oneshot(json_request(
-        "GET", "/boards/meta-board/latest", None,
-    )).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(json_request("GET", "/boards/meta-board/latest", None))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), 200);
     let latest = json_body(resp).await;
     assert_eq!(latest["metadata"]["changelog"], "Added Item A");
 
     // List versions — metadata visible
-    let resp = app.clone().oneshot(json_request(
-        "GET", "/boards/meta-board/versions", None,
-    )).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(json_request("GET", "/boards/meta-board/versions", None))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), 200);
     let list = json_body(resp).await;
-    assert_eq!(list["items"][0]["metadata"]["blog_post_url"], "https://example.com/blog/feb-update");
+    assert_eq!(
+        list["items"][0]["metadata"]["blog_post_url"],
+        "https://example.com/blog/feb-update"
+    );
 
     // Since endpoint — metadata visible
-    let resp = app.clone().oneshot(json_request(
-        "GET", "/boards/meta-board/since/0", None,
-    )).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(json_request("GET", "/boards/meta-board/since/0", None))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), 200);
     let since = json_body(resp).await;
-    assert_eq!(since[0]["metadata"]["blog_post_url"], "https://example.com/blog/feb-update");
+    assert_eq!(
+        since[0]["metadata"]["blog_post_url"],
+        "https://example.com/blog/feb-update"
+    );
 
     cleanup(&state, schema).await;
 }
@@ -4111,27 +4815,40 @@ async fn version_metadata_null_is_fine() {
     let (state, app) = setup(schema).await;
 
     // Create board + entry
-    app.clone().oneshot(json_request(
-        "POST", "/boards",
-        Some(serde_json::json!({
-            "slug": "board",
-            "name": "Board",
-            "board_type": "ordered"
-        })),
-    )).await.unwrap();
-    app.clone().oneshot(json_request(
-        "POST", "/boards/board/entries",
-        Some(serde_json::json!({ "slug": "item", "name": "Item" })),
-    )).await.unwrap();
+    app.clone()
+        .oneshot(json_request(
+            "POST",
+            "/boards",
+            Some(serde_json::json!({
+                "slug": "board",
+                "name": "Board",
+                "board_type": "ordered"
+            })),
+        ))
+        .await
+        .unwrap();
+    app.clone()
+        .oneshot(json_request(
+            "POST",
+            "/boards/board/entries",
+            Some(serde_json::json!({ "slug": "item", "name": "Item" })),
+        ))
+        .await
+        .unwrap();
 
     // Create version WITHOUT metadata
-    let resp = app.clone().oneshot(json_request(
-        "POST", "/boards/board/versions",
-        Some(serde_json::json!({
-            "note": "No metadata",
-            "placements": [{ "entry_slug": "item", "position": 1 }]
-        })),
-    )).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(json_request(
+            "POST",
+            "/boards/board/versions",
+            Some(serde_json::json!({
+                "note": "No metadata",
+                "placements": [{ "entry_slug": "item", "position": 1 }]
+            })),
+        ))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), 201);
     let version = json_body(resp).await;
     assert!(version["metadata"].is_null());
@@ -4145,46 +4862,61 @@ async fn snapshot_with_metadata() {
     let (state, app) = setup(schema).await;
 
     // Create accumulative board
-    app.clone().oneshot(json_request(
-        "POST", "/boards",
-        Some(serde_json::json!({
-            "slug": "game",
-            "name": "Game Scores",
-            "board_type": "scored",
-            "accumulative": true
-        })),
-    )).await.unwrap();
+    app.clone()
+        .oneshot(json_request(
+            "POST",
+            "/boards",
+            Some(serde_json::json!({
+                "slug": "game",
+                "name": "Game Scores",
+                "board_type": "scored",
+                "accumulative": true
+            })),
+        ))
+        .await
+        .unwrap();
 
     // Submit score
-    app.clone().oneshot(json_request(
-        "POST", "/boards/game/scores",
-        Some(serde_json::json!({
-            "entry_slug": "player1",
-            "entry_name": "Player 1",
-            "score": 100.0
-        })),
-    )).await.unwrap();
+    app.clone()
+        .oneshot(json_request(
+            "POST",
+            "/boards/game/scores",
+            Some(serde_json::json!({
+                "entry_slug": "player1",
+                "entry_name": "Player 1",
+                "score": 100.0
+            })),
+        ))
+        .await
+        .unwrap();
 
     // Snapshot WITH metadata
-    let resp = app.clone().oneshot(json_request(
-        "POST", "/boards/game/snapshot",
-        Some(serde_json::json!({
-            "note": "End of round 1",
-            "metadata": {
-                "round": 1,
-                "tournament": "Summer 2026"
-            }
-        })),
-    )).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(json_request(
+            "POST",
+            "/boards/game/snapshot",
+            Some(serde_json::json!({
+                "note": "End of round 1",
+                "metadata": {
+                    "round": 1,
+                    "tournament": "Summer 2026"
+                }
+            })),
+        ))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), 201);
     let version = json_body(resp).await;
     assert_eq!(version["metadata"]["round"], 1);
     assert_eq!(version["metadata"]["tournament"], "Summer 2026");
 
     // Fetch latest — metadata persists
-    let resp = app.clone().oneshot(json_request(
-        "GET", "/boards/game/latest", None,
-    )).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(json_request("GET", "/boards/game/latest", None))
+        .await
+        .unwrap();
     let latest = json_body(resp).await;
     assert_eq!(latest["metadata"]["tournament"], "Summer 2026");
 
@@ -4197,43 +4929,63 @@ async fn export_import_preserves_version_metadata() {
     let (state, app) = setup(schema).await;
 
     // Create board + entry + version with metadata
-    app.clone().oneshot(json_request(
-        "POST", "/boards",
-        Some(serde_json::json!({
-            "slug": "export-meta",
-            "name": "Export Meta Test",
-            "board_type": "ordered"
-        })),
-    )).await.unwrap();
-    app.clone().oneshot(json_request(
-        "POST", "/boards/export-meta/entries",
-        Some(serde_json::json!({ "slug": "item", "name": "Item" })),
-    )).await.unwrap();
-    app.clone().oneshot(json_request(
-        "POST", "/boards/export-meta/versions",
-        Some(serde_json::json!({
-            "note": "v1",
-            "metadata": { "source": "test", "url": "https://example.com" },
-            "placements": [{ "entry_slug": "item", "position": 1 }]
-        })),
-    )).await.unwrap();
+    app.clone()
+        .oneshot(json_request(
+            "POST",
+            "/boards",
+            Some(serde_json::json!({
+                "slug": "export-meta",
+                "name": "Export Meta Test",
+                "board_type": "ordered"
+            })),
+        ))
+        .await
+        .unwrap();
+    app.clone()
+        .oneshot(json_request(
+            "POST",
+            "/boards/export-meta/entries",
+            Some(serde_json::json!({ "slug": "item", "name": "Item" })),
+        ))
+        .await
+        .unwrap();
+    app.clone()
+        .oneshot(json_request(
+            "POST",
+            "/boards/export-meta/versions",
+            Some(serde_json::json!({
+                "note": "v1",
+                "metadata": { "source": "test", "url": "https://example.com" },
+                "placements": [{ "entry_slug": "item", "position": 1 }]
+            })),
+        ))
+        .await
+        .unwrap();
 
     // Export
     use riley_leaderboards_core::repo::export;
-    let exported = export::export_board(&state.pool, "export-meta").await.unwrap();
-    assert_eq!(exported.versions[0].metadata.as_ref().unwrap()["source"], "test");
+    let exported = export::export_board(&state.pool, "export-meta")
+        .await
+        .unwrap();
+    assert_eq!(
+        exported.versions[0].metadata.as_ref().unwrap()["source"],
+        "test"
+    );
 
     // Delete the board, then re-import
-    app.clone().oneshot(json_request(
-        "DELETE", "/boards/export-meta", None,
-    )).await.unwrap();
+    app.clone()
+        .oneshot(json_request("DELETE", "/boards/export-meta", None))
+        .await
+        .unwrap();
 
     export::import_board(&state.pool, &exported).await.unwrap();
 
     // Verify metadata survived the round-trip
-    let resp = app.clone().oneshot(json_request(
-        "GET", "/boards/export-meta/versions/1", None,
-    )).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(json_request("GET", "/boards/export-meta/versions/1", None))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), 200);
     let version = json_body(resp).await;
     assert_eq!(version["metadata"]["source"], "test");
@@ -4255,7 +5007,8 @@ async fn sync_with_version_metadata() {
 name = "Meta Sync Test"
 board_type = "ordered"
 "#,
-        Some(r#"
+        Some(
+            r#"
 [version_metadata]
 blog_post_url = "https://example.com/post"
 author = "test"
@@ -4264,7 +5017,8 @@ author = "test"
 slug = "item-a"
 name = "Item A"
 position = 1
-"#),
+"#,
+        ),
     );
 
     let results = riley_leaderboards_core::sync::execute::sync_dir(
@@ -4285,9 +5039,13 @@ position = 1
     let board = riley_leaderboards_core::repo::boards::get_by_slug(&state.pool, "meta-sync")
         .await
         .unwrap();
-    let version =
-        riley_leaderboards_core::repo::versions::get_latest(&state.pool, board.id).await.unwrap();
-    let meta = version.version.metadata.expect("version metadata should be set");
+    let version = riley_leaderboards_core::repo::versions::get_latest(&state.pool, board.id)
+        .await
+        .unwrap();
+    let meta = version
+        .version
+        .metadata
+        .expect("version metadata should be set");
     assert_eq!(meta["blog_post_url"], "https://example.com/post");
     assert_eq!(meta["author"], "test");
 
@@ -4805,7 +5563,10 @@ async fn auth_from_config_legacy_api_token_works() {
     let result = riley_leaderboards_api::auth::AuthMode::from_config(Some(&config)).await;
     let mode = result.expect("from_config should succeed with api_token");
     assert!(
-        matches!(mode, riley_leaderboards_api::auth::AuthMode::ApiToken { .. }),
+        matches!(
+            mode,
+            riley_leaderboards_api::auth::AuthMode::ApiToken { .. }
+        ),
         "expected ApiToken mode"
     );
 }
@@ -4826,7 +5587,10 @@ async fn auth_from_config_read_tokens_without_admin_is_error() {
     };
 
     let result = riley_leaderboards_api::auth::AuthMode::from_config(Some(&config)).await;
-    let err_msg = result.err().expect("read_tokens without admin auth should fail").to_string();
+    let err_msg = result
+        .err()
+        .expect("read_tokens without admin auth should fail")
+        .to_string();
     assert!(
         err_msg.contains("no auth mechanism"),
         "expected misconfig error, got: {err_msg}"
@@ -4928,7 +5692,10 @@ async fn auth_from_config_jwks_and_admin_token_mutual_exclusion() {
     };
 
     let result = riley_leaderboards_api::auth::AuthMode::from_config(Some(&config)).await;
-    let err_msg = result.err().expect("jwks_url + admin_token should fail").to_string();
+    let err_msg = result
+        .err()
+        .expect("jwks_url + admin_token should fail")
+        .to_string();
     assert!(
         err_msg.contains("mutually exclusive"),
         "expected mutual exclusion error, got: {err_msg}"
@@ -4939,7 +5706,10 @@ async fn auth_from_config_jwks_and_admin_token_mutual_exclusion() {
 
 /// Helper: start a TCP listener on a random port and return (url, receiver).
 /// The receiver yields each request body as a String.
-async fn start_webhook_receiver() -> (String, tokio::sync::mpsc::Receiver<(String, std::collections::HashMap<String, String>)>) {
+async fn start_webhook_receiver() -> (
+    String,
+    tokio::sync::mpsc::Receiver<(String, std::collections::HashMap<String, String>)>,
+) {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     let url = format!("http://{addr}/webhook");
@@ -4947,7 +5717,9 @@ async fn start_webhook_receiver() -> (String, tokio::sync::mpsc::Receiver<(Strin
 
     tokio::spawn(async move {
         loop {
-            let Ok((mut stream, _)) = listener.accept().await else { break };
+            let Ok((mut stream, _)) = listener.accept().await else {
+                break;
+            };
             let tx = tx.clone();
             tokio::spawn(async move {
                 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -5018,37 +5790,53 @@ async fn outbound_webhook_fires_on_version_created() {
     let app = build_router(state);
 
     // Create board
-    let resp = app.clone().oneshot(
-        Request::post("/boards")
-            .header("content-type", "application/json")
-            .body(Body::from(r#"{"slug":"wh-test","name":"Webhook Test","board_type":"ordered"}"#))
-            .unwrap(),
-    ).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::post("/boards")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    r#"{"slug":"wh-test","name":"Webhook Test","board_type":"ordered"}"#,
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
     assert_eq!(resp.status(), 201);
 
     // Create entry
-    let resp = app.clone().oneshot(
-        Request::post("/boards/wh-test/entries")
-            .header("content-type", "application/json")
-            .body(Body::from(r#"{"slug":"e1","name":"Entry 1"}"#))
-            .unwrap(),
-    ).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::post("/boards/wh-test/entries")
+                .header("content-type", "application/json")
+                .body(Body::from(r#"{"slug":"e1","name":"Entry 1"}"#))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
     assert_eq!(resp.status(), 201);
 
     // Create version — should fire webhook
-    let resp = app.clone().oneshot(
-        Request::post("/boards/wh-test/versions")
-            .header("content-type", "application/json")
-            .body(Body::from(r#"{"placements":[{"entry_slug":"e1"}],"note":"test note"}"#))
-            .unwrap(),
-    ).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::post("/boards/wh-test/versions")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    r#"{"placements":[{"entry_slug":"e1"}],"note":"test note"}"#,
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
     assert_eq!(resp.status(), 201);
 
     // Wait for webhook delivery
-    let (body, headers) = tokio::time::timeout(
-        std::time::Duration::from_secs(5),
-        rx.recv(),
-    ).await.expect("webhook timeout").expect("no webhook received");
+    let (body, headers) = tokio::time::timeout(std::time::Duration::from_secs(5), rx.recv())
+        .await
+        .expect("webhook timeout")
+        .expect("no webhook received");
 
     let json: serde_json::Value = serde_json::from_str(&body).unwrap();
     assert_eq!(json["event"], "version.created");
@@ -5109,23 +5897,33 @@ async fn outbound_webhook_hmac_signature() {
     let app = build_router(state);
 
     // Create board — should fire webhook with HMAC signature
-    let resp = app.clone().oneshot(
-        Request::post("/boards")
-            .header("content-type", "application/json")
-            .body(Body::from(r#"{"slug":"hmac-test","name":"HMAC Test","board_type":"ordered"}"#))
-            .unwrap(),
-    ).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::post("/boards")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    r#"{"slug":"hmac-test","name":"HMAC Test","board_type":"ordered"}"#,
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
     assert_eq!(resp.status(), 201);
 
     // Wait for webhook delivery
-    let (body, headers) = tokio::time::timeout(
-        std::time::Duration::from_secs(5),
-        rx.recv(),
-    ).await.expect("webhook timeout").expect("no webhook received");
+    let (body, headers) = tokio::time::timeout(std::time::Duration::from_secs(5), rx.recv())
+        .await
+        .expect("webhook timeout")
+        .expect("no webhook received");
 
     // Verify signature header exists and is correct
-    let sig_header = headers.get("x-webhook-signature-256").expect("missing signature header");
-    let hex_sig = sig_header.strip_prefix("sha256=").expect("signature should start with sha256=");
+    let sig_header = headers
+        .get("x-webhook-signature-256")
+        .expect("missing signature header");
+    let hex_sig = sig_header
+        .strip_prefix("sha256=")
+        .expect("signature should start with sha256=");
 
     // Verify HMAC
     use hmac::{Hmac, Mac};
@@ -5177,38 +5975,50 @@ async fn outbound_webhook_board_filter() {
     let app = build_router(state);
 
     // Create board that DOES NOT match filter — should NOT fire webhook
-    let resp = app.clone().oneshot(
-        Request::post("/boards")
-            .header("content-type", "application/json")
-            .body(Body::from(r#"{"slug":"nfl-rankings","name":"NFL Rankings","board_type":"ordered"}"#))
-            .unwrap(),
-    ).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::post("/boards")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    r#"{"slug":"nfl-rankings","name":"NFL Rankings","board_type":"ordered"}"#,
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
     assert_eq!(resp.status(), 201);
 
     // Create board that DOES match filter — should fire webhook
-    let resp = app.clone().oneshot(
-        Request::post("/boards")
-            .header("content-type", "application/json")
-            .body(Body::from(r#"{"slug":"dc-sandwiches","name":"DC Sandwiches","board_type":"ordered"}"#))
-            .unwrap(),
-    ).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::post("/boards")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    r#"{"slug":"dc-sandwiches","name":"DC Sandwiches","board_type":"ordered"}"#,
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
     assert_eq!(resp.status(), 201);
 
     // Should receive exactly one webhook (for dc-sandwiches, not nfl-rankings)
-    let (body, _) = tokio::time::timeout(
-        std::time::Duration::from_secs(5),
-        rx.recv(),
-    ).await.expect("webhook timeout").expect("no webhook received");
+    let (body, _) = tokio::time::timeout(std::time::Duration::from_secs(5), rx.recv())
+        .await
+        .expect("webhook timeout")
+        .expect("no webhook received");
 
     let json: serde_json::Value = serde_json::from_str(&body).unwrap();
     assert_eq!(json["board"]["slug"], "dc-sandwiches");
 
     // Verify no second webhook arrived (for nfl-rankings)
-    let result = tokio::time::timeout(
-        std::time::Duration::from_millis(500),
-        rx.recv(),
-    ).await;
-    assert!(result.is_err(), "should not have received a webhook for nfl-rankings");
+    let result = tokio::time::timeout(std::time::Duration::from_millis(500), rx.recv()).await;
+    assert!(
+        result.is_err(),
+        "should not have received a webhook for nfl-rankings"
+    );
 
     cleanup_schema(&pool, schema).await;
 }
@@ -5252,27 +6062,37 @@ async fn outbound_webhook_fires_on_board_delete() {
     let app = build_router(state);
 
     // Create board (no webhook for create since we're only listening for delete)
-    let resp = app.clone().oneshot(
-        Request::post("/boards")
-            .header("content-type", "application/json")
-            .body(Body::from(r#"{"slug":"del-test","name":"Delete Test","board_type":"ordered"}"#))
-            .unwrap(),
-    ).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::post("/boards")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    r#"{"slug":"del-test","name":"Delete Test","board_type":"ordered"}"#,
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
     assert_eq!(resp.status(), 201);
 
     // Delete board — should fire webhook
-    let resp = app.clone().oneshot(
-        Request::delete("/boards/del-test")
-            .body(Body::empty())
-            .unwrap(),
-    ).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::delete("/boards/del-test")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
     assert_eq!(resp.status(), 204);
 
     // Wait for webhook delivery
-    let (body, _) = tokio::time::timeout(
-        std::time::Duration::from_secs(5),
-        rx.recv(),
-    ).await.expect("webhook timeout").expect("no webhook received");
+    let (body, _) = tokio::time::timeout(std::time::Duration::from_secs(5), rx.recv())
+        .await
+        .expect("webhook timeout")
+        .expect("no webhook received");
 
     let json: serde_json::Value = serde_json::from_str(&body).unwrap();
     assert_eq!(json["event"], "board.deleted");
@@ -5291,11 +6111,19 @@ async fn collection_create_list_get_update_delete() {
     let (state, app) = setup(schema).await;
 
     // Create collection
-    let resp = app.clone().oneshot(json_request("POST", "/collections", Some(serde_json::json!({
-        "slug": "food-rankings",
-        "name": "Riley's Food Rankings",
-        "metadata": { "description": "All my DC food lists" }
-    })))).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(json_request(
+            "POST",
+            "/collections",
+            Some(serde_json::json!({
+                "slug": "food-rankings",
+                "name": "Riley's Food Rankings",
+                "metadata": { "description": "All my DC food lists" }
+            })),
+        ))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), 201);
     let body = json_body(resp).await;
     assert_eq!(body["slug"], "food-rankings");
@@ -5303,33 +6131,57 @@ async fn collection_create_list_get_update_delete() {
     assert_eq!(body["metadata"]["description"], "All my DC food lists");
 
     // List collections
-    let resp = app.clone().oneshot(json_request("GET", "/collections", None)).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(json_request("GET", "/collections", None))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), 200);
     let body = json_body(resp).await;
     assert_eq!(body["items"].as_array().unwrap().len(), 1);
 
     // Get collection (empty boards)
-    let resp = app.clone().oneshot(json_request("GET", "/collections/food-rankings", None)).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(json_request("GET", "/collections/food-rankings", None))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), 200);
     let body = json_body(resp).await;
     assert_eq!(body["slug"], "food-rankings");
     assert_eq!(body["boards"].as_array().unwrap().len(), 0);
 
     // Update collection
-    let resp = app.clone().oneshot(json_request("PATCH", "/collections/food-rankings", Some(serde_json::json!({
-        "name": "DC Food Rankings"
-    })))).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(json_request(
+            "PATCH",
+            "/collections/food-rankings",
+            Some(serde_json::json!({
+                "name": "DC Food Rankings"
+            })),
+        ))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), 200);
     let body = json_body(resp).await;
     assert_eq!(body["name"], "DC Food Rankings");
     assert_eq!(body["metadata"]["description"], "All my DC food lists");
 
     // Delete collection
-    let resp = app.clone().oneshot(json_request("DELETE", "/collections/food-rankings", None)).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(json_request("DELETE", "/collections/food-rankings", None))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), 204);
 
     // Verify deleted
-    let resp = app.clone().oneshot(json_request("GET", "/collections/food-rankings", None)).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(json_request("GET", "/collections/food-rankings", None))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), 404);
 
     cleanup(&state, schema).await;
@@ -5340,15 +6192,30 @@ async fn collection_duplicate_slug_returns_409() {
     let schema = "test_collection_dup";
     let (state, app) = setup(schema).await;
 
-    app.clone().oneshot(json_request("POST", "/collections", Some(serde_json::json!({
-        "slug": "dupes",
-        "name": "Test"
-    })))).await.unwrap();
+    app.clone()
+        .oneshot(json_request(
+            "POST",
+            "/collections",
+            Some(serde_json::json!({
+                "slug": "dupes",
+                "name": "Test"
+            })),
+        ))
+        .await
+        .unwrap();
 
-    let resp = app.clone().oneshot(json_request("POST", "/collections", Some(serde_json::json!({
-        "slug": "dupes",
-        "name": "Test 2"
-    })))).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(json_request(
+            "POST",
+            "/collections",
+            Some(serde_json::json!({
+                "slug": "dupes",
+                "name": "Test 2"
+            })),
+        ))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), 409);
 
     cleanup(&state, schema).await;
@@ -5359,10 +6226,18 @@ async fn collection_invalid_slug_returns_400() {
     let schema = "test_collection_slug";
     let (state, app) = setup(schema).await;
 
-    let resp = app.clone().oneshot(json_request("POST", "/collections", Some(serde_json::json!({
-        "slug": "INVALID SLUG",
-        "name": "Test"
-    })))).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(json_request(
+            "POST",
+            "/collections",
+            Some(serde_json::json!({
+                "slug": "INVALID SLUG",
+                "name": "Test"
+            })),
+        ))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), 400);
 
     cleanup(&state, schema).await;
@@ -5373,10 +6248,18 @@ async fn collection_empty_name_returns_400() {
     let schema = "test_collection_name";
     let (state, app) = setup(schema).await;
 
-    let resp = app.clone().oneshot(json_request("POST", "/collections", Some(serde_json::json!({
-        "slug": "test",
-        "name": ""
-    })))).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(json_request(
+            "POST",
+            "/collections",
+            Some(serde_json::json!({
+                "slug": "test",
+                "name": ""
+            })),
+        ))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), 400);
 
     cleanup(&state, schema).await;
@@ -5387,15 +6270,30 @@ async fn collection_patch_can_clear_metadata_to_null() {
     let schema = "test_collection_meta_null";
     let (state, app) = setup(schema).await;
 
-    app.clone().oneshot(json_request("POST", "/collections", Some(serde_json::json!({
-        "slug": "meta-test",
-        "name": "Meta Test",
-        "metadata": { "key": "value" }
-    })))).await.unwrap();
+    app.clone()
+        .oneshot(json_request(
+            "POST",
+            "/collections",
+            Some(serde_json::json!({
+                "slug": "meta-test",
+                "name": "Meta Test",
+                "metadata": { "key": "value" }
+            })),
+        ))
+        .await
+        .unwrap();
 
-    let resp = app.clone().oneshot(json_request("PATCH", "/collections/meta-test", Some(serde_json::json!({
-        "metadata": null
-    })))).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(json_request(
+            "PATCH",
+            "/collections/meta-test",
+            Some(serde_json::json!({
+                "metadata": null
+            })),
+        ))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), 200);
     let body = json_body(resp).await;
     assert!(body["metadata"].is_null());
@@ -5410,38 +6308,79 @@ async fn collection_add_remove_boards() {
     let schema = "test_collection_boards";
     let (state, app) = setup(schema).await;
 
-    app.clone().oneshot(json_request("POST", "/collections", Some(serde_json::json!({
-        "slug": "food",
-        "name": "Food Rankings"
-    })))).await.unwrap();
+    app.clone()
+        .oneshot(json_request(
+            "POST",
+            "/collections",
+            Some(serde_json::json!({
+                "slug": "food",
+                "name": "Food Rankings"
+            })),
+        ))
+        .await
+        .unwrap();
 
-    app.clone().oneshot(json_request("POST", "/boards", Some(serde_json::json!({
-        "slug": "sandwiches",
-        "name": "Best Sandwiches",
-        "board_type": "ordered"
-    })))).await.unwrap();
+    app.clone()
+        .oneshot(json_request(
+            "POST",
+            "/boards",
+            Some(serde_json::json!({
+                "slug": "sandwiches",
+                "name": "Best Sandwiches",
+                "board_type": "ordered"
+            })),
+        ))
+        .await
+        .unwrap();
 
-    app.clone().oneshot(json_request("POST", "/boards", Some(serde_json::json!({
-        "slug": "pizza",
-        "name": "Best Pizza",
-        "board_type": "ordered"
-    })))).await.unwrap();
+    app.clone()
+        .oneshot(json_request(
+            "POST",
+            "/boards",
+            Some(serde_json::json!({
+                "slug": "pizza",
+                "name": "Best Pizza",
+                "board_type": "ordered"
+            })),
+        ))
+        .await
+        .unwrap();
 
     // Add boards
-    let resp = app.clone().oneshot(json_request("POST", "/collections/food/boards", Some(serde_json::json!({
-        "board_slug": "sandwiches",
-        "display_order": 1
-    })))).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(json_request(
+            "POST",
+            "/collections/food/boards",
+            Some(serde_json::json!({
+                "board_slug": "sandwiches",
+                "display_order": 1
+            })),
+        ))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), 201);
 
-    let resp = app.clone().oneshot(json_request("POST", "/collections/food/boards", Some(serde_json::json!({
-        "board_slug": "pizza",
-        "display_order": 2
-    })))).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(json_request(
+            "POST",
+            "/collections/food/boards",
+            Some(serde_json::json!({
+                "board_slug": "pizza",
+                "display_order": 2
+            })),
+        ))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), 201);
 
     // Get collection with boards (ordered by display_order)
-    let resp = app.clone().oneshot(json_request("GET", "/collections/food", None)).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(json_request("GET", "/collections/food", None))
+        .await
+        .unwrap();
     let body = json_body(resp).await;
     let boards = body["boards"].as_array().unwrap();
     assert_eq!(boards.len(), 2);
@@ -5451,10 +6390,22 @@ async fn collection_add_remove_boards() {
     assert_eq!(boards[1]["display_order"], 2);
 
     // Remove a board
-    let resp = app.clone().oneshot(json_request("DELETE", "/collections/food/boards/sandwiches", None)).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(json_request(
+            "DELETE",
+            "/collections/food/boards/sandwiches",
+            None,
+        ))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), 204);
 
-    let resp = app.clone().oneshot(json_request("GET", "/collections/food", None)).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(json_request("GET", "/collections/food", None))
+        .await
+        .unwrap();
     let body = json_body(resp).await;
     assert_eq!(body["boards"].as_array().unwrap().len(), 1);
     assert_eq!(body["boards"][0]["slug"], "pizza");
@@ -5467,24 +6418,53 @@ async fn collection_add_duplicate_board_returns_409() {
     let schema = "test_collection_dup_board";
     let (state, app) = setup(schema).await;
 
-    app.clone().oneshot(json_request("POST", "/collections", Some(serde_json::json!({
-        "slug": "col",
-        "name": "Collection"
-    })))).await.unwrap();
+    app.clone()
+        .oneshot(json_request(
+            "POST",
+            "/collections",
+            Some(serde_json::json!({
+                "slug": "col",
+                "name": "Collection"
+            })),
+        ))
+        .await
+        .unwrap();
 
-    app.clone().oneshot(json_request("POST", "/boards", Some(serde_json::json!({
-        "slug": "board-a",
-        "name": "Board A",
-        "board_type": "ordered"
-    })))).await.unwrap();
+    app.clone()
+        .oneshot(json_request(
+            "POST",
+            "/boards",
+            Some(serde_json::json!({
+                "slug": "board-a",
+                "name": "Board A",
+                "board_type": "ordered"
+            })),
+        ))
+        .await
+        .unwrap();
 
-    app.clone().oneshot(json_request("POST", "/collections/col/boards", Some(serde_json::json!({
-        "board_slug": "board-a"
-    })))).await.unwrap();
+    app.clone()
+        .oneshot(json_request(
+            "POST",
+            "/collections/col/boards",
+            Some(serde_json::json!({
+                "board_slug": "board-a"
+            })),
+        ))
+        .await
+        .unwrap();
 
-    let resp = app.clone().oneshot(json_request("POST", "/collections/col/boards", Some(serde_json::json!({
-        "board_slug": "board-a"
-    })))).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(json_request(
+            "POST",
+            "/collections/col/boards",
+            Some(serde_json::json!({
+                "board_slug": "board-a"
+            })),
+        ))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), 409);
 
     cleanup(&state, schema).await;
@@ -5495,14 +6475,29 @@ async fn collection_add_nonexistent_board_returns_404() {
     let schema = "test_collection_no_board";
     let (state, app) = setup(schema).await;
 
-    app.clone().oneshot(json_request("POST", "/collections", Some(serde_json::json!({
-        "slug": "col",
-        "name": "Collection"
-    })))).await.unwrap();
+    app.clone()
+        .oneshot(json_request(
+            "POST",
+            "/collections",
+            Some(serde_json::json!({
+                "slug": "col",
+                "name": "Collection"
+            })),
+        ))
+        .await
+        .unwrap();
 
-    let resp = app.clone().oneshot(json_request("POST", "/collections/col/boards", Some(serde_json::json!({
-        "board_slug": "nonexistent"
-    })))).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(json_request(
+            "POST",
+            "/collections/col/boards",
+            Some(serde_json::json!({
+                "board_slug": "nonexistent"
+            })),
+        ))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), 404);
 
     cleanup(&state, schema).await;
@@ -5513,18 +6508,40 @@ async fn collection_remove_nonexistent_membership_returns_404() {
     let schema = "test_collection_no_member";
     let (state, app) = setup(schema).await;
 
-    app.clone().oneshot(json_request("POST", "/collections", Some(serde_json::json!({
-        "slug": "col",
-        "name": "Collection"
-    })))).await.unwrap();
+    app.clone()
+        .oneshot(json_request(
+            "POST",
+            "/collections",
+            Some(serde_json::json!({
+                "slug": "col",
+                "name": "Collection"
+            })),
+        ))
+        .await
+        .unwrap();
 
-    app.clone().oneshot(json_request("POST", "/boards", Some(serde_json::json!({
-        "slug": "board-a",
-        "name": "Board A",
-        "board_type": "ordered"
-    })))).await.unwrap();
+    app.clone()
+        .oneshot(json_request(
+            "POST",
+            "/boards",
+            Some(serde_json::json!({
+                "slug": "board-a",
+                "name": "Board A",
+                "board_type": "ordered"
+            })),
+        ))
+        .await
+        .unwrap();
 
-    let resp = app.clone().oneshot(json_request("DELETE", "/collections/col/boards/board-a", None)).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(json_request(
+            "DELETE",
+            "/collections/col/boards/board-a",
+            None,
+        ))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), 404);
 
     cleanup(&state, schema).await;
@@ -5537,35 +6554,78 @@ async fn board_in_multiple_collections() {
     let schema = "test_multi_collection";
     let (state, app) = setup(schema).await;
 
-    app.clone().oneshot(json_request("POST", "/collections", Some(serde_json::json!({
-        "slug": "food",
-        "name": "Food"
-    })))).await.unwrap();
+    app.clone()
+        .oneshot(json_request(
+            "POST",
+            "/collections",
+            Some(serde_json::json!({
+                "slug": "food",
+                "name": "Food"
+            })),
+        ))
+        .await
+        .unwrap();
 
-    app.clone().oneshot(json_request("POST", "/collections", Some(serde_json::json!({
-        "slug": "dc",
-        "name": "DC Things"
-    })))).await.unwrap();
+    app.clone()
+        .oneshot(json_request(
+            "POST",
+            "/collections",
+            Some(serde_json::json!({
+                "slug": "dc",
+                "name": "DC Things"
+            })),
+        ))
+        .await
+        .unwrap();
 
-    app.clone().oneshot(json_request("POST", "/boards", Some(serde_json::json!({
-        "slug": "sandwiches",
-        "name": "Best Sandwiches",
-        "board_type": "ordered"
-    })))).await.unwrap();
+    app.clone()
+        .oneshot(json_request(
+            "POST",
+            "/boards",
+            Some(serde_json::json!({
+                "slug": "sandwiches",
+                "name": "Best Sandwiches",
+                "board_type": "ordered"
+            })),
+        ))
+        .await
+        .unwrap();
 
-    app.clone().oneshot(json_request("POST", "/collections/food/boards", Some(serde_json::json!({
-        "board_slug": "sandwiches"
-    })))).await.unwrap();
+    app.clone()
+        .oneshot(json_request(
+            "POST",
+            "/collections/food/boards",
+            Some(serde_json::json!({
+                "board_slug": "sandwiches"
+            })),
+        ))
+        .await
+        .unwrap();
 
-    app.clone().oneshot(json_request("POST", "/collections/dc/boards", Some(serde_json::json!({
-        "board_slug": "sandwiches"
-    })))).await.unwrap();
+    app.clone()
+        .oneshot(json_request(
+            "POST",
+            "/collections/dc/boards",
+            Some(serde_json::json!({
+                "board_slug": "sandwiches"
+            })),
+        ))
+        .await
+        .unwrap();
 
-    let resp = app.clone().oneshot(json_request("GET", "/collections/food", None)).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(json_request("GET", "/collections/food", None))
+        .await
+        .unwrap();
     let body = json_body(resp).await;
     assert_eq!(body["boards"].as_array().unwrap().len(), 1);
 
-    let resp = app.clone().oneshot(json_request("GET", "/collections/dc", None)).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(json_request("GET", "/collections/dc", None))
+        .await
+        .unwrap();
     let body = json_body(resp).await;
     assert_eq!(body["boards"].as_array().unwrap().len(), 1);
 
@@ -5579,25 +6639,54 @@ async fn collection_delete_does_not_delete_boards() {
     let schema = "test_collection_cascade";
     let (state, app) = setup(schema).await;
 
-    app.clone().oneshot(json_request("POST", "/collections", Some(serde_json::json!({
-        "slug": "temp",
-        "name": "Temporary"
-    })))).await.unwrap();
+    app.clone()
+        .oneshot(json_request(
+            "POST",
+            "/collections",
+            Some(serde_json::json!({
+                "slug": "temp",
+                "name": "Temporary"
+            })),
+        ))
+        .await
+        .unwrap();
 
-    app.clone().oneshot(json_request("POST", "/boards", Some(serde_json::json!({
-        "slug": "keeper",
-        "name": "Should Survive",
-        "board_type": "ordered"
-    })))).await.unwrap();
+    app.clone()
+        .oneshot(json_request(
+            "POST",
+            "/boards",
+            Some(serde_json::json!({
+                "slug": "keeper",
+                "name": "Should Survive",
+                "board_type": "ordered"
+            })),
+        ))
+        .await
+        .unwrap();
 
-    app.clone().oneshot(json_request("POST", "/collections/temp/boards", Some(serde_json::json!({
-        "board_slug": "keeper"
-    })))).await.unwrap();
+    app.clone()
+        .oneshot(json_request(
+            "POST",
+            "/collections/temp/boards",
+            Some(serde_json::json!({
+                "board_slug": "keeper"
+            })),
+        ))
+        .await
+        .unwrap();
 
-    let resp = app.clone().oneshot(json_request("DELETE", "/collections/temp", None)).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(json_request("DELETE", "/collections/temp", None))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), 204);
 
-    let resp = app.clone().oneshot(json_request("GET", "/boards/keeper", None)).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(json_request("GET", "/boards/keeper", None))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), 200);
 
     cleanup(&state, schema).await;
@@ -5608,25 +6697,54 @@ async fn board_delete_removes_from_collections() {
     let schema = "test_board_del_collection";
     let (state, app) = setup(schema).await;
 
-    app.clone().oneshot(json_request("POST", "/collections", Some(serde_json::json!({
-        "slug": "col",
-        "name": "Collection"
-    })))).await.unwrap();
+    app.clone()
+        .oneshot(json_request(
+            "POST",
+            "/collections",
+            Some(serde_json::json!({
+                "slug": "col",
+                "name": "Collection"
+            })),
+        ))
+        .await
+        .unwrap();
 
-    app.clone().oneshot(json_request("POST", "/boards", Some(serde_json::json!({
-        "slug": "board-a",
-        "name": "Board A",
-        "board_type": "ordered"
-    })))).await.unwrap();
+    app.clone()
+        .oneshot(json_request(
+            "POST",
+            "/boards",
+            Some(serde_json::json!({
+                "slug": "board-a",
+                "name": "Board A",
+                "board_type": "ordered"
+            })),
+        ))
+        .await
+        .unwrap();
 
-    app.clone().oneshot(json_request("POST", "/collections/col/boards", Some(serde_json::json!({
-        "board_slug": "board-a"
-    })))).await.unwrap();
+    app.clone()
+        .oneshot(json_request(
+            "POST",
+            "/collections/col/boards",
+            Some(serde_json::json!({
+                "board_slug": "board-a"
+            })),
+        ))
+        .await
+        .unwrap();
 
-    let resp = app.clone().oneshot(json_request("DELETE", "/boards/board-a", None)).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(json_request("DELETE", "/boards/board-a", None))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), 204);
 
-    let resp = app.clone().oneshot(json_request("GET", "/collections/col", None)).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(json_request("GET", "/collections/col", None))
+        .await
+        .unwrap();
     let body = json_body(resp).await;
     assert_eq!(body["boards"].as_array().unwrap().len(), 0);
 
@@ -5641,21 +6759,39 @@ async fn pagination_collections_list() {
     let (state, app) = setup(schema).await;
 
     for i in 0..3 {
-        app.clone().oneshot(json_request("POST", "/collections", Some(serde_json::json!({
-            "slug": format!("col-{i}"),
-            "name": format!("Collection {i}")
-        })))).await.unwrap();
+        app.clone()
+            .oneshot(json_request(
+                "POST",
+                "/collections",
+                Some(serde_json::json!({
+                    "slug": format!("col-{i}"),
+                    "name": format!("Collection {i}")
+                })),
+            ))
+            .await
+            .unwrap();
     }
 
-    let resp = app.clone().oneshot(json_request("GET", "/collections?limit=2", None)).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(json_request("GET", "/collections?limit=2", None))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), 200);
     let body = json_body(resp).await;
     assert_eq!(body["items"].as_array().unwrap().len(), 2);
     assert!(body["next_cursor"].is_string());
 
     let cursor = body["next_cursor"].as_str().unwrap();
-    let url = format!("/collections?limit=2&cursor={}", urlencoding::encode(cursor));
-    let resp = app.clone().oneshot(json_request("GET", &url, None)).await.unwrap();
+    let url = format!(
+        "/collections?limit=2&cursor={}",
+        urlencoding::encode(cursor)
+    );
+    let resp = app
+        .clone()
+        .oneshot(json_request("GET", &url, None))
+        .await
+        .unwrap();
     assert_eq!(resp.status(), 200);
     let body = json_body(resp).await;
     assert_eq!(body["items"].as_array().unwrap().len(), 1);
@@ -5671,39 +6807,89 @@ async fn collection_board_shows_latest_version() {
     let schema = "test_collection_latest_ver";
     let (state, app) = setup(schema).await;
 
-    app.clone().oneshot(json_request("POST", "/collections", Some(serde_json::json!({
-        "slug": "food",
-        "name": "Food"
-    })))).await.unwrap();
+    app.clone()
+        .oneshot(json_request(
+            "POST",
+            "/collections",
+            Some(serde_json::json!({
+                "slug": "food",
+                "name": "Food"
+            })),
+        ))
+        .await
+        .unwrap();
 
-    app.clone().oneshot(json_request("POST", "/boards", Some(serde_json::json!({
-        "slug": "sandwiches",
-        "name": "Best Sandwiches",
-        "board_type": "scored"
-    })))).await.unwrap();
+    app.clone()
+        .oneshot(json_request(
+            "POST",
+            "/boards",
+            Some(serde_json::json!({
+                "slug": "sandwiches",
+                "name": "Best Sandwiches",
+                "board_type": "scored"
+            })),
+        ))
+        .await
+        .unwrap();
 
-    app.clone().oneshot(json_request("POST", "/boards/sandwiches/entries", Some(serde_json::json!({
-        "slug": "bobs",
-        "name": "Bob's Subs"
-    })))).await.unwrap();
+    app.clone()
+        .oneshot(json_request(
+            "POST",
+            "/boards/sandwiches/entries",
+            Some(serde_json::json!({
+                "slug": "bobs",
+                "name": "Bob's Subs"
+            })),
+        ))
+        .await
+        .unwrap();
 
-    app.clone().oneshot(json_request("POST", "/boards/sandwiches/versions", Some(serde_json::json!({
-        "placements": [{"entry_slug": "bobs", "score": 9.5}]
-    })))).await.unwrap();
+    app.clone()
+        .oneshot(json_request(
+            "POST",
+            "/boards/sandwiches/versions",
+            Some(serde_json::json!({
+                "placements": [{"entry_slug": "bobs", "score": 9.5}]
+            })),
+        ))
+        .await
+        .unwrap();
 
-    app.clone().oneshot(json_request("POST", "/collections/food/boards", Some(serde_json::json!({
-        "board_slug": "sandwiches"
-    })))).await.unwrap();
+    app.clone()
+        .oneshot(json_request(
+            "POST",
+            "/collections/food/boards",
+            Some(serde_json::json!({
+                "board_slug": "sandwiches"
+            })),
+        ))
+        .await
+        .unwrap();
 
-    let resp = app.clone().oneshot(json_request("GET", "/collections/food", None)).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(json_request("GET", "/collections/food", None))
+        .await
+        .unwrap();
     let body = json_body(resp).await;
     assert_eq!(body["boards"][0]["latest_version"], 1);
 
-    app.clone().oneshot(json_request("POST", "/boards/sandwiches/versions", Some(serde_json::json!({
-        "placements": [{"entry_slug": "bobs", "score": 10.0}]
-    })))).await.unwrap();
+    app.clone()
+        .oneshot(json_request(
+            "POST",
+            "/boards/sandwiches/versions",
+            Some(serde_json::json!({
+                "placements": [{"entry_slug": "bobs", "score": 10.0}]
+            })),
+        ))
+        .await
+        .unwrap();
 
-    let resp = app.clone().oneshot(json_request("GET", "/collections/food", None)).await.unwrap();
+    let resp = app
+        .clone()
+        .oneshot(json_request("GET", "/collections/food", None))
+        .await
+        .unwrap();
     let body = json_body(resp).await;
     assert_eq!(body["boards"][0]["latest_version"], 2);
 

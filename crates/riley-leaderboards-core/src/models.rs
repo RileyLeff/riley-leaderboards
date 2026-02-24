@@ -9,15 +9,13 @@ use uuid::Uuid;
 /// - `None` = field absent from JSON → keep existing value
 /// - `Some(None)` = field present as `null` → clear to NULL
 /// - `Some(Some(v))` = field present with value → set to new value
-#[derive(Debug, Clone)]
-#[derive(Default)]
+#[derive(Debug, Clone, Default)]
 pub enum Nullable<T> {
     #[default]
     Absent,
     Null,
     Value(T),
 }
-
 
 impl<'de, T: Deserialize<'de>> Deserialize<'de> for Nullable<T> {
     fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>

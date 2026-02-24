@@ -2,9 +2,8 @@ use sqlx::PgPool;
 
 use crate::error::{Error, Result};
 use crate::models::{
-    AddBoardToCollection, Collection, CollectionBoardEntry, CollectionWithBoards,
-    CreateCollection, Nullable, PaginatedResponse, PaginationParams, UpdateCollection,
-    encode_cursor,
+    AddBoardToCollection, Collection, CollectionBoardEntry, CollectionWithBoards, CreateCollection,
+    Nullable, PaginatedResponse, PaginationParams, UpdateCollection, encode_cursor,
 };
 
 pub async fn create(pool: &PgPool, input: &CreateCollection) -> Result<Collection> {
@@ -22,9 +21,10 @@ pub async fn create(pool: &PgPool, input: &CreateCollection) -> Result<Collectio
     .fetch_one(pool)
     .await
     .map_err(|e| match &e {
-        sqlx::Error::Database(db_err) if db_err.is_unique_violation() => {
-            Error::Conflict(format!("collection with slug '{}' already exists", input.slug))
-        }
+        sqlx::Error::Database(db_err) if db_err.is_unique_violation() => Error::Conflict(format!(
+            "collection with slug '{}' already exists",
+            input.slug
+        )),
         _ => Error::Database(e),
     })?;
 
@@ -70,9 +70,7 @@ pub async fn list_paginated(
     let has_more = collections.len() as i64 > limit;
     let items: Vec<Collection> = collections.into_iter().take(limit as usize).collect();
     let next_cursor = if has_more {
-        items
-            .last()
-            .map(|c| encode_cursor(&c.created_at, &c.id))
+        items.last().map(|c| encode_cursor(&c.created_at, &c.id))
     } else {
         None
     };
@@ -195,21 +193,16 @@ pub async fn add_board(
     Ok(())
 }
 
-pub async fn remove_board(
-    pool: &PgPool,
-    collection_slug: &str,
-    board_slug: &str,
-) -> Result<()> {
+pub async fn remove_board(pool: &PgPool, collection_slug: &str, board_slug: &str) -> Result<()> {
     let collection = get_by_slug(pool, collection_slug).await?;
     let board = crate::repo::boards::get_by_slug(pool, board_slug).await?;
 
-    let result = sqlx::query(
-        "DELETE FROM collection_boards WHERE collection_id = $1 AND board_id = $2",
-    )
-    .bind(collection.id)
-    .bind(board.id)
-    .execute(pool)
-    .await?;
+    let result =
+        sqlx::query("DELETE FROM collection_boards WHERE collection_id = $1 AND board_id = $2")
+            .bind(collection.id)
+            .bind(board.id)
+            .execute(pool)
+            .await?;
 
     if result.rows_affected() == 0 {
         return Err(Error::NotFound(format!(
