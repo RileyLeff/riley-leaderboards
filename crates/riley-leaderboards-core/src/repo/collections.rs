@@ -111,7 +111,15 @@ pub async fn update(pool: &PgPool, slug: &str, input: &UpdateCollection) -> Resu
         super::validate_name(name)?;
     }
 
-    let collection = get_by_slug(pool, slug).await?;
+    let mut tx = pool.begin().await?;
+
+    // Lock the row to prevent lost updates from concurrent PATCHes
+    let collection =
+        sqlx::query_as::<_, Collection>("SELECT * FROM collections WHERE slug = $1 FOR UPDATE")
+            .bind(slug)
+            .fetch_optional(&mut *tx)
+            .await?
+            .ok_or_else(|| Error::NotFound(format!("collection '{slug}' not found")))?;
 
     // No-op guard: skip the UPDATE when nothing changed.
     if input.name.is_none() && matches!(input.metadata, Nullable::Absent) {
@@ -136,8 +144,10 @@ pub async fn update(pool: &PgPool, slug: &str, input: &UpdateCollection) -> Resu
     .bind(name)
     .bind(metadata)
     .bind(collection.id)
-    .fetch_one(pool)
+    .fetch_one(&mut *tx)
     .await?;
+
+    tx.commit().await?;
 
     Ok(updated)
 }

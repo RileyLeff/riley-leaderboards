@@ -72,7 +72,8 @@ impl AuthMode {
             (Some(url), None) => {
                 let cache = JwksCache::new(url).await?;
                 let cache = Arc::new(cache);
-                cache.spawn_refresh_task();
+                // Note: spawn_refresh_task is deferred until start_background_tasks() is called
+                // with a TaskTracker, so the task participates in graceful shutdown.
                 Ok(Self::Jwt {
                     jwks_cache: cache,
                     required_role: auth.required_role.clone(),
@@ -102,6 +103,16 @@ impl AuthMode {
                 }
                 Ok(Self::NoAuth)
             }
+        }
+    }
+}
+
+impl AuthMode {
+    /// Start any background tasks associated with this auth mode.
+    /// Must be called after the TaskTracker is available so tasks participate in graceful shutdown.
+    pub fn start_background_tasks(&self, tracker: &tokio_util::task::TaskTracker) {
+        if let AuthMode::Jwt { jwks_cache, .. } = self {
+            jwks_cache.spawn_refresh_task(Some(tracker));
         }
     }
 }
@@ -225,9 +236,13 @@ impl JwksCache {
     }
 
     /// Spawn a background task that refreshes the JWKS every 60 minutes.
-    pub fn spawn_refresh_task(self: &Arc<Self>) {
+    /// When a `TaskTracker` is provided, the task is registered for graceful shutdown.
+    pub fn spawn_refresh_task(
+        self: &Arc<Self>,
+        tracker: Option<&tokio_util::task::TaskTracker>,
+    ) {
         let cache = Arc::clone(self);
-        tokio::spawn(async move {
+        let fut = async move {
             let mut interval = tokio::time::interval(std::time::Duration::from_secs(3600));
             interval.tick().await; // skip the initial tick (already fetched in new())
             loop {
@@ -236,7 +251,12 @@ impl JwksCache {
                     tracing::error!("JWKS refresh failed: {e}");
                 }
             }
-        });
+        };
+        if let Some(tracker) = tracker {
+            tracker.spawn(fut);
+        } else {
+            tokio::spawn(fut);
+        }
     }
 }
 

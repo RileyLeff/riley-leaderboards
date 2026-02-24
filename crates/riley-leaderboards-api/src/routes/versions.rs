@@ -225,7 +225,7 @@ pub async fn diff(
         LimitParam,
     ),
     responses(
-        (status = 200, description = "Versions since given number", body = Vec<VersionWithPlacements>),
+        (status = 200, description = "Versions since given number", body = Vec<Version>),
         (status = 404, description = "Board not found"),
     ),
     security(("bearer_auth" = [])),

@@ -1,8 +1,8 @@
 # v1 Workflow State
 
-**Current Phase:** 9 — Docker + Integration Tests (COMPLETE)
-**Current Step:** Done
-**Status:** All 9 phases complete. 84 Rust integration tests + 14 Docker smoke tests passing. Exhaustive review converged (2 rounds, 0 majors in R2). Ready for deployment.
+**Current Phase:** PR — Production Readiness (IN PROGRESS)
+**Current Step:** Exhaustive review
+**Status:** All 4 production readiness steps complete (config docs, graceful shutdown, Prometheus metrics, OpenAPI/Swagger). Running exhaustive review.
 
 ## Progress
 
@@ -60,6 +60,11 @@
 | 9 | 9.3 | Integration tests (14 smoke tests) | Done |
 | 9 | 9.4 | Caddy config snippet | Done |
 | 9 | review | Exhaustive review (2 rounds, converged) | Done |
+| PR | PR.1 | Document undocumented config fields | Done |
+| PR | PR.2 | Graceful shutdown with TaskTracker | Done |
+| PR | PR.3 | Prometheus metrics endpoint | Done |
+| PR | PR.4 | OpenAPI spec via utoipa + Swagger UI | Done |
+| PR | review | Exhaustive review | In Progress |
 
 ## Blockers
 
@@ -67,8 +72,8 @@ None.
 
 ## Recent Activity
 
-- Phase 9: Multi-stage Dockerfile (acd7c47)
-- Phase 9: Deploy docker-compose + Caddy config (616f7d9)
-- Phase 9: Integration tests + Docker config fix (a719851)
-- Phase 9 R1 major fixes: Caddy handle_path, webhook sync_mutex (392346c)
-- Phase 9 exhaustive review converged: 2 rounds, 0 majors in R2
+- PR.1: Document undocumented config fields (aafbffe)
+- PR.2: Graceful shutdown with TaskTracker webhook drain (1d6f19f)
+- PR.3: Prometheus metrics endpoint and instrumentation (d6f5a52)
+- PR.4: OpenAPI spec via utoipa with Swagger UI (8b9b2e4)
+- Running exhaustive review for Production Readiness phase

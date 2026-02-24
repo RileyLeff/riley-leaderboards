@@ -223,3 +223,37 @@ require a panic during HashMap insert — extremely unlikely. Using
 `unwrap_or_else(|e| e.into_inner())` would recover from poisoning but could mask
 bugs. The unwrap() approach is acceptable for a service that should restart on
 panic.
+
+## Phase 8: Production Readiness (Metrics, OpenAPI, Shutdown)
+
+### /metrics and /docs endpoints are intentionally unauthenticated
+
+The Prometheus `/metrics` endpoint and Swagger UI `/docs` + `/api-doc/openapi.json`
+endpoints are served without authentication middleware. This is intentional:
+
+- **Prometheus scraping:** Most Prometheus deployments scrape metrics from internal
+  networks behind firewalls. Adding auth to `/metrics` would require configuring
+  bearer tokens in Prometheus scrape configs, adding operational complexity.
+- **Swagger UI:** Documentation endpoints are developer-facing and useful for
+  onboarding. They don't expose user data.
+- **Reverse proxy protection:** Production deployments should use Caddy/nginx to
+  restrict access to `/metrics` and optionally `/docs` from internal networks only.
+  The example Caddyfile should be updated to show this pattern.
+- The `metrics_enabled` and `docs_enabled` config flags allow operators to disable
+  these endpoints entirely if not needed.
+
+### Board slug as metric label is bounded (accepted)
+
+`scores_submitted_total` and `versions_created_total` use board slug as a label.
+Board count is bounded (typically <100) and board creation requires auth. This is
+not an unbounded cardinality risk. If a deployment has thousands of boards, the
+operator should consider removing the board label.
+
+### OpenAPI error response annotations are approximate (accepted)
+
+Error responses (400, 404, 409) in OpenAPI path annotations use
+`description = "..."` without a `body = ErrorResponse` reference. The
+`ErrorResponse` schema is registered in the OpenAPI doc and documented, but
+individual error responses don't link to it. Fixing this would add verbosity to
+every handler annotation for minimal benefit — the error shape `{"error": string}`
+is self-documenting.

@@ -33,7 +33,7 @@ pub async fn track(request: Request, next: Next) -> Response {
         .extensions()
         .get::<MatchedPath>()
         .map(|mp| mp.as_str().to_string())
-        .unwrap_or_else(|| request.uri().path().to_string());
+        .unwrap_or_else(|| "unmatched".to_string());
 
     let start = Instant::now();
     let response = next.run(request).await;

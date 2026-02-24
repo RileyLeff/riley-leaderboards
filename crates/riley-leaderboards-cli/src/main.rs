@@ -129,6 +129,7 @@ async fn main() -> Result<()> {
                 event_bus,
                 task_tracker: tokio_util::task::TaskTracker::new(),
             });
+            state.auth_mode.start_background_tasks(&state.task_tracker);
             riley_leaderboards_api::serve(state).await?;
         }
         Command::Migrate => {

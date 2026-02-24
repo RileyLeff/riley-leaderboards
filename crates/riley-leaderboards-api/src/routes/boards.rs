@@ -54,7 +54,7 @@ pub async fn create(
     path = "/boards",
     params(PaginationParams),
     responses(
-        (status = 200, description = "Paginated list of boards", body = inline(PaginatedResponse<BoardSummary>)),
+        (status = 200, description = "Paginated list of boards", body = inline(PaginatedResponse<Board>)),
     ),
     security(("bearer_auth" = [])),
     tag = "boards"
