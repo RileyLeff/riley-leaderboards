@@ -22,6 +22,7 @@ pub async fn submit(
     Json(input): Json<SubmitScore>,
 ) -> ApiResult<impl IntoResponse> {
     let board = boards::get_by_slug(&state.pool, &board_slug).await?;
+    metrics::counter!("scores_submitted_total", "board" => board.slug.clone()).increment(1);
 
     if board.realtime {
         let mut redis = state.redis.clone().ok_or(CoreError::ServiceUnavailable(

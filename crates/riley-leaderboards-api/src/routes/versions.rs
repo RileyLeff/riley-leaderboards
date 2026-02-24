@@ -58,6 +58,7 @@ pub async fn create(
         Some(limits.max_versions_per_board),
     )
     .await?;
+    metrics::counter!("versions_created_total", "board" => board.slug.clone()).increment(1);
     let _ = outbound_webhooks::fire(
         &state.config.webhooks,
         WebhookEvent::VersionCreated,

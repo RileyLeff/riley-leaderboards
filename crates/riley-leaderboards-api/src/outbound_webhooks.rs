@@ -161,6 +161,7 @@ async fn deliver(url: &str, body: &[u8], secret: Option<&str>) {
         match request.send().await {
             Ok(resp) if resp.status().is_success() => {
                 tracing::debug!("webhook delivered to {url} (attempt {})", attempt + 1);
+                metrics::counter!("webhook_deliveries_total", "status" => "success").increment(1);
                 return;
             }
             Ok(resp) if resp.status().is_client_error() => {
@@ -168,6 +169,7 @@ async fn deliver(url: &str, body: &[u8], secret: Option<&str>) {
                     "webhook to {url} returned {} (not retrying)",
                     resp.status()
                 );
+                metrics::counter!("webhook_deliveries_total", "status" => "client_error").increment(1);
                 return;
             }
             Ok(resp) => {
@@ -187,6 +189,7 @@ async fn deliver(url: &str, body: &[u8], secret: Option<&str>) {
         }
     }
 
+    metrics::counter!("webhook_deliveries_total", "status" => "retry_exhausted").increment(1);
     tracing::error!("webhook to {url} exhausted all retries");
 }
 

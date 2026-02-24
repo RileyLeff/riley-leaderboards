@@ -14,6 +14,7 @@ use tower_http::trace::TraceLayer;
 
 pub mod auth;
 mod error;
+pub mod metrics;
 pub mod outbound_webhooks;
 mod routes;
 pub mod sse;
@@ -54,6 +55,17 @@ pub fn build_router(state: Arc<AppState>) -> Router {
     }
 
     let mut app = app.with_state(state);
+
+    // Prometheus metrics endpoint + request instrumentation
+    if server_config.metrics_enabled {
+        let prom_handle = metrics::init();
+        app = app
+            .route(
+                "/metrics",
+                get(metrics::handler).with_state(prom_handle),
+            )
+            .layer(axum::middleware::from_fn(metrics::track));
+    }
 
     // Rate limiting (applied before CORS so preflight requests aren't rate-limited)
     if server_config.rate_limit_per_second > 0 {

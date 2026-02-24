@@ -157,6 +157,9 @@ pub struct ServerConfig {
     /// Graceful shutdown timeout in seconds. 0 = wait indefinitely. Default: 30.
     #[serde(default = "default_shutdown_timeout_secs")]
     pub shutdown_timeout_secs: u64,
+    /// Enable Prometheus metrics endpoint at /metrics. Default: false.
+    #[serde(default)]
+    pub metrics_enabled: bool,
 }
 
 impl Default for ServerConfig {
@@ -174,6 +177,7 @@ impl Default for ServerConfig {
             sse_timeout_secs: default_sse_timeout_secs(),
             sse_broadcast_buffer: default_sse_broadcast_buffer(),
             shutdown_timeout_secs: default_shutdown_timeout_secs(),
+            metrics_enabled: false,
         }
     }
 }
