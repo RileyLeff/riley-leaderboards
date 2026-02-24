@@ -93,6 +93,9 @@ tower-http = { version = "0.6", features = ["cors", "trace"] }
 # Temp files (for testing)
 tempfile = "3"
 
+# WebSocket client (for testing)
+tokio-tungstenite = "0.26"
+
 # Internal crates
 riley-leaderboards-core = { path = "crates/riley-leaderboards-core", version = "0.1.1" }
 riley-leaderboards-api = { path = "crates/riley-leaderboards-api", version = "0.1.1" }

@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- **WebSocket streaming**: alternative to SSE for live board updates (`GET /boards/:slug/ws`), configurable via `ws_enabled` and `ws_timeout_secs`
+
+### Changed
+
+- Renamed internal `SseEvent` to `BoardEvent` to reflect transport-agnostic design
+
 ## [0.1.1] - 2026-02-23
 
 ### Fixed

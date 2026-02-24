@@ -52,8 +52,8 @@ async fn handle_socket(
     _guard: ConnectionGuard,
     timeout_secs: u64,
 ) {
-    let stream = BroadcastStream::new(rx);
-    let mut stream = std::pin::pin!(stream);
+    let events = BroadcastStream::new(rx);
+    let mut events = std::pin::pin!(events);
 
     let deadline = if timeout_secs > 0 {
         Duration::from_secs(timeout_secs)
@@ -69,13 +69,21 @@ async fn handle_socket(
                 let _ = socket.send(Message::Close(None)).await;
                 break;
             }
-            Some(result) = stream.next() => {
+            msg = socket.recv() => {
+                match msg {
+                    // Client sent close or connection dropped
+                    Some(Ok(Message::Close(_))) | None | Some(Err(_)) => break,
+                    // Ignore pings/pongs/text from client
+                    _ => {}
+                }
+            }
+            Some(result) = events.next() => {
                 match result {
                     Ok(event) => {
-                        if let Ok(json) = serde_json::to_string(&event) {
-                            if socket.send(Message::Text(json.into())).await.is_err() {
-                                break;
-                            }
+                        if let Ok(json) = serde_json::to_string(&event)
+                            && socket.send(Message::Text(json.into())).await.is_err()
+                        {
+                            break;
                         }
                     }
                     Err(_) => continue, // Lagged — drop missed events

@@ -10,6 +10,8 @@ behind_proxy = false
 # sse_score_debounce_ms = 1000          # min interval between score.updated events per board
 # sse_timeout_secs = 1800               # SSE connection timeout (0 = no timeout, default 30 min)
 # sse_broadcast_buffer = 256            # broadcast channel buffer size per board
+# ws_enabled = false                    # enable WebSocket streaming endpoint
+# ws_timeout_secs = 1800               # WebSocket connection timeout (0 = no timeout, default 30 min)
 # shutdown_timeout_secs = 30            # graceful shutdown timeout for in-flight tasks (0 = wait forever)
 # metrics_enabled = false               # expose Prometheus metrics at /metrics
 # docs_enabled = true                  # expose Swagger UI at /docs and OpenAPI spec at /api-doc/openapi.json
