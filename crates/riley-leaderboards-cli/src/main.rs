@@ -242,7 +242,7 @@ async fn main() -> Result<()> {
             if boards.is_empty() {
                 println!("No boards found.");
             } else {
-                println!("{:<20} {:<10} {:<6} {:<6} {}", "SLUG", "TYPE", "SORT", "ACCUM", "NAME");
+                println!("{:<20} {:<10} {:<6} {:<6} NAME", "SLUG", "TYPE", "SORT", "ACCUM");
                 for b in &boards {
                     println!(
                         "{:<20} {:<10} {:<6} {:<6} {}",
@@ -261,8 +261,8 @@ async fn main() -> Result<()> {
             let board_name = board.name.clone();
 
             // Clean up Redis keys for realtime boards before Postgres delete
-            if board.realtime {
-                if let Some(ref redis_config) = config.redis {
+            if board.realtime
+                && let Some(ref redis_config) = config.redis {
                     let url = redis_config.url.resolve().context("failed to resolve Redis URL")?;
                     let client = redis::Client::open(url.as_str())
                         .context("failed to create Redis client")?;
@@ -272,7 +272,6 @@ async fn main() -> Result<()> {
                     let prefix = config.redis_key_prefix();
                     let _ = repo::realtime::clear(&mut mgr, &slug, prefix).await;
                 }
-            }
 
             repo::boards::delete(&pool, &slug).await?;
             let handles = riley_leaderboards_api::outbound_webhooks::fire(
@@ -294,7 +293,7 @@ async fn main() -> Result<()> {
             if versions.is_empty() {
                 println!("No versions for board '{slug}'.");
             } else {
-                println!("{:<8} {:<28} {}", "VERSION", "CREATED", "NOTE");
+                println!("{:<8} {:<28} NOTE", "VERSION", "CREATED");
                 for v in &versions {
                     println!(
                         "{:<8} {:<28} {}",
@@ -340,7 +339,7 @@ async fn main() -> Result<()> {
             if collections.is_empty() {
                 println!("No collections found.");
             } else {
-                println!("{:<30} {}", "SLUG", "NAME");
+                println!("{:<30} NAME", "SLUG");
                 for c in &collections {
                     println!("{:<30} {}", c.slug, c.name);
                 }

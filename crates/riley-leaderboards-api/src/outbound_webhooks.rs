@@ -152,11 +152,10 @@ async fn deliver(url: &str, body: &[u8], secret: Option<&str>) {
             .header("Content-Type", "application/json")
             .body(body.to_vec());
 
-        if let Some(secret) = secret {
-            if let Some(sig) = compute_signature(secret, body) {
+        if let Some(secret) = secret
+            && let Some(sig) = compute_signature(secret, body) {
                 request = request.header("X-Webhook-Signature-256", format!("sha256={sig}"));
             }
-        }
 
         match request.send().await {
             Ok(resp) if resp.status().is_success() => {

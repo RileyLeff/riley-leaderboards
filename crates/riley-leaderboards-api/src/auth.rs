@@ -438,7 +438,7 @@ async fn validate_jwt(
     let (key, expected_alg) = jwks_cache
         .get_key(kid)
         .await
-        .map_err(|e| auth_error(e))?
+        .map_err(auth_error)?
         .ok_or_else(|| auth_error("unknown signing key"))?;
 
     // Validate algorithm matches

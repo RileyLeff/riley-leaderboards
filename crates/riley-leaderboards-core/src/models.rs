@@ -10,17 +10,14 @@ use uuid::Uuid;
 /// - `Some(None)` = field present as `null` → clear to NULL
 /// - `Some(Some(v))` = field present with value → set to new value
 #[derive(Debug, Clone)]
+#[derive(Default)]
 pub enum Nullable<T> {
+    #[default]
     Absent,
     Null,
     Value(T),
 }
 
-impl<T> Default for Nullable<T> {
-    fn default() -> Self {
-        Nullable::Absent
-    }
-}
 
 impl<'de, T: Deserialize<'de>> Deserialize<'de> for Nullable<T> {
     fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>

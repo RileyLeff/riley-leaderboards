@@ -164,12 +164,11 @@ fn validate_uri(uri: &str) -> Result<()> {
 }
 
 fn validate_label(label: &Option<String>) -> Result<()> {
-    if let Some(l) = label {
-        if l.len() > 256 {
+    if let Some(l) = label
+        && l.len() > 256 {
             return Err(Error::Validation(
                 "label must not exceed 256 characters".to_string(),
             ));
         }
-    }
     Ok(())
 }

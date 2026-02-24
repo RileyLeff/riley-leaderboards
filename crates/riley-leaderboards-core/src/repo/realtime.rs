@@ -144,6 +144,7 @@ pub async fn latest(
 /// Acquires the Postgres FOR UPDATE lock first, then reads Redis to minimize
 /// the TOCTOU window for concurrent score submissions. Optionally clears
 /// the Redis state if `board.clear_on_snapshot` is true.
+#[allow(clippy::too_many_arguments)]
 pub async fn snapshot(
     pool: &PgPool,
     redis: &mut redis::aio::ConnectionManager,
@@ -196,14 +197,13 @@ pub async fn snapshot(
     }
 
     // Safety limit: max entries per version
-    if let Some(max) = max_entries {
-        if entries_with_scores.len() > max {
+    if let Some(max) = max_entries
+        && entries_with_scores.len() > max {
             return Err(Error::Validation(format!(
                 "too many entries to snapshot ({}, max {max})",
                 entries_with_scores.len(),
             )));
         }
-    }
 
     // Get next version number
     let next_number: i32 = sqlx::query_scalar(
@@ -277,8 +277,8 @@ pub async fn snapshot(
     tx.commit().await.map_err(Error::Database)?;
 
     // Clear Redis state if configured (best-effort: Postgres commit is authoritative)
-    if board.clear_on_snapshot {
-        if let Err(e) = redis::pipe()
+    if board.clear_on_snapshot
+        && let Err(e) = redis::pipe()
             .atomic()
             .del(&sk)
             .del(&ek)
@@ -287,7 +287,6 @@ pub async fn snapshot(
         {
             tracing::error!("failed to clear Redis after snapshot for board '{}': {e}", board.slug);
         }
-    }
 
     Ok(VersionWithPlacements {
         version,

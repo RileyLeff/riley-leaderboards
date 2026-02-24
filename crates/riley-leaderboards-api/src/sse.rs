@@ -167,15 +167,14 @@ impl EventBus {
     fn prune_channel(&self, board_slug: &str) {
         let mut channels = self.channels.write().unwrap();
         // Re-check under write lock — a new subscriber may have appeared
-        if let Some(tx) = channels.get(board_slug) {
-            if tx.receiver_count() == 0 {
+        if let Some(tx) = channels.get(board_slug)
+            && tx.receiver_count() == 0 {
                 channels.remove(board_slug);
                 self.last_score_event
                     .write()
                     .unwrap()
                     .remove(board_slug);
             }
-        }
     }
 
     pub fn active_connections(&self) -> usize {

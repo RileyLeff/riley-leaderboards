@@ -129,14 +129,13 @@ pub async fn snapshot(
     }
 
     // Safety limit: max entries per version
-    if let Some(max) = max_entries {
-        if scores.len() > max {
+    if let Some(max) = max_entries
+        && scores.len() > max {
             return Err(Error::Validation(format!(
                 "too many entries to snapshot ({}, max {max})",
                 scores.len(),
             )));
         }
-    }
 
     // Get next version number
     let next_number: i32 = sqlx::query_scalar(
