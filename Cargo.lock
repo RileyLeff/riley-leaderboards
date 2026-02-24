@@ -1987,7 +1987,7 @@ dependencies = [
 
 [[package]]
 name = "riley-leaderboards-api"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "axum",
@@ -2026,7 +2026,7 @@ dependencies = [
 
 [[package]]
 name = "riley-leaderboards-cli"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -2044,7 +2044,7 @@ dependencies = [
 
 [[package]]
 name = "riley-leaderboards-core"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "chrono",
  "redis",

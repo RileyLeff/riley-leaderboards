@@ -7,7 +7,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.1.1"
+version = "0.2.0"
 edition = "2024"
 rust-version = "1.88"
 license = "MIT OR Apache-2.0"
@@ -97,5 +97,5 @@ tempfile = "3"
 tokio-tungstenite = "0.26"
 
 # Internal crates
-riley-leaderboards-core = { path = "crates/riley-leaderboards-core", version = "0.1.1" }
-riley-leaderboards-api = { path = "crates/riley-leaderboards-api", version = "0.1.1" }
+riley-leaderboards-core = { path = "crates/riley-leaderboards-core", version = "0.2.0" }
+riley-leaderboards-api = { path = "crates/riley-leaderboards-api", version = "0.2.0" }
