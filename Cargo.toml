@@ -7,9 +7,17 @@ members = [
 ]
 
 [workspace.package]
+version = "0.1.0"
 edition = "2024"
 rust-version = "1.88"
-license = "MIT"
+license = "MIT OR Apache-2.0"
+description = "A general-purpose versioned ranking service"
+repository = "https://github.com/rileyleff/riley-leaderboards"
+homepage = "https://github.com/rileyleff/riley-leaderboards"
+authors = ["Riley Leff"]
+readme = "README.md"
+keywords = ["leaderboard", "ranking", "versioning", "api"]
+categories = ["web-programming::http-server", "database"]
 
 [workspace.dependencies]
 # Async runtime

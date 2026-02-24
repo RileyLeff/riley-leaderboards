@@ -1,9 +1,12 @@
 [package]
 name = "riley-leaderboards-api"
-version = "0.1.0"
+description = "HTTP API server for riley-leaderboards"
+version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
+repository.workspace = true
+authors.workspace = true
 
 [dependencies]
 riley-leaderboards-core = { workspace = true }
