@@ -1,5 +1,6 @@
 [package]
 name = "riley-leaderboards-cli"
+description = "CLI for riley-leaderboards: serve, migrate, sync, export/import"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
