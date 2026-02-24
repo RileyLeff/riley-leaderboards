@@ -255,6 +255,72 @@ async fn sse_stream_disabled_returns_503() {
     cleanup(&state, schema).await;
 }
 
+// ── Test: SSE stream returns 503 when sse_enabled=false but ws_enabled=true ──
+
+#[tokio::test]
+async fn sse_stream_rejected_when_only_ws_enabled() {
+    let schema = "test_sse_ws_only";
+    let config = RileyLeaderboardsConfig {
+        server: Some(ServerConfig {
+            sse_enabled: false,
+            ws_enabled: true,
+            sse_max_connections: 100,
+            sse_score_debounce_ms: 1000,
+            ..Default::default()
+        }),
+        database: DatabaseConfig {
+            url: ConfigValue::new(test_db_url()),
+            max_connections: 2,
+            schema: Some(schema.to_string()),
+        },
+        redis: Some(RedisConfig {
+            url: ConfigValue::new(test_redis_url()),
+            key_prefix: "rl".to_string(),
+        }),
+        auth: None,
+        sync: None,
+        limits: None,
+        webhooks: vec![],
+    };
+
+    let pool = db::connect(&config.database).await.expect("connect failed");
+    db::migrate(&pool).await.expect("migrate failed");
+
+    let url = test_redis_url();
+    let client = redis::Client::open(url.as_str()).expect("redis client open failed");
+    let redis_conn = redis::aio::ConnectionManager::new(client)
+        .await
+        .expect("redis connect failed");
+
+    let event_bus = EventBus::new(100, 1000, 256);
+    let state = Arc::new(AppState {
+        pool,
+        redis: Some(redis_conn),
+        config,
+        auth_mode: riley_leaderboards_api::auth::AuthMode::NoAuth,
+        sync_mutex: tokio::sync::Mutex::new(()),
+        event_bus: Some(event_bus),
+        task_tracker: tokio_util::task::TaskTracker::new(),
+    });
+    let app = build_router(state.clone());
+    flush_redis(&state).await;
+
+    create_board(&app, "ws-only-sse-test", "WS Only SSE Test").await;
+
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::get("/boards/ws-only-sse-test/stream")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 503);
+
+    cleanup(&state, schema).await;
+}
+
 // ── Test: EventBus publishes version.created events ──────────────────────────
 
 #[tokio::test]

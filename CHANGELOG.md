@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ### Changed
 
 - Renamed internal `SseEvent` to `BoardEvent` to reflect transport-agnostic design
+- Renamed Prometheus metric `sse_active_connections` to `streaming_active_connections`
 
 ## [0.1.1] - 2026-02-23
 

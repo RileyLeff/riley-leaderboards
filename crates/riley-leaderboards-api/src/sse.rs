@@ -200,15 +200,25 @@ pub async fn stream(
     State(state): State<Arc<AppState>>,
     Path(board_slug): Path<String>,
 ) -> ApiResult<Sse<impl futures_util::stream::Stream<Item = Result<Event, Infallible>>>> {
+    // Check SSE is enabled
+    let sse_enabled = state
+        .config
+        .server
+        .as_ref()
+        .is_some_and(|s| s.sse_enabled);
+    if !sse_enabled {
+        return Err(CoreError::ServiceUnavailable(
+            "SSE streaming is not enabled".to_string(),
+        )
+        .into());
+    }
+
     // Verify board exists
     riley_leaderboards_core::repo::boards::get_by_slug(&state.pool, &board_slug).await?;
 
-    let event_bus = state
-        .event_bus
-        .as_ref()
-        .ok_or(CoreError::ServiceUnavailable(
-            "SSE streaming is not enabled".to_string(),
-        ))?;
+    let event_bus = state.event_bus.as_ref().ok_or(CoreError::ServiceUnavailable(
+        "SSE streaming is not enabled".to_string(),
+    ))?;
 
     let (rx, guard) = event_bus.subscribe(&board_slug)?;
 
