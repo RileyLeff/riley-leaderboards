@@ -101,7 +101,7 @@ async fn build_pool(url: &str, schema: &str, max_connections: u32) -> Result<PgP
 /// so the `_sqlx_migrations` table and all created tables land in the correct
 /// schema automatically.
 pub async fn migrate(pool: &PgPool) -> Result<()> {
-    sqlx::migrate!("../../migrations").run(pool).await?;
+    sqlx::migrate!("./migrations").run(pool).await?;
     Ok(())
 }
 
