@@ -3,6 +3,8 @@ host = "0.0.0.0"
 port = 8082
 cors_origins = ["https://rileyleff.com", "https://app.rileyleff.com"]
 behind_proxy = false
+# rate_limit_per_second = 0              # requests per second per IP (0 = disabled)
+# rate_limit_burst = 50                  # burst size when rate limiting is enabled
 # sse_enabled = false                   # enable SSE streaming endpoint
 # sse_max_connections = 1000            # max concurrent SSE connections per server
 # sse_score_debounce_ms = 1000          # min interval between score.updated events per board
@@ -22,6 +24,7 @@ max_connections = 10
 # max_entries_per_version = 10000      # max placements per version (default: 10000)
 # max_versions_per_board = 1000        # max versions per board (default: 1000)
 # max_metadata_size_bytes = 1048576    # max metadata JSON size in bytes (default: 1MB)
+# max_note_size_bytes = 10240           # max note text size in bytes (default: 10KB)
 
 # [auth]
 # # JWT mode (with riley_auth or any JWKS-compatible issuer):
