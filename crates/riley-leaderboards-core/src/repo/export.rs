@@ -85,22 +85,58 @@ impl From<&PlacementWithEntry> for PlacementExport {
 }
 
 /// Export a board and all its versions with placements as a portable JSON structure.
+///
+/// Uses a batch query to fetch all placements across all versions in a single round-trip,
+/// avoiding the N+1 pattern of fetching placements per version.
 pub async fn export_board(pool: &PgPool, slug: &str) -> Result<BoardExport> {
+    use std::collections::HashMap;
+
     let board = super::boards::get_by_slug(pool, slug).await?;
     let versions = super::versions::list(pool, board.id).await?;
 
-    let mut version_exports = Vec::with_capacity(versions.len());
-    for v in &versions {
-        let vwp = super::versions::get_by_number(pool, board.id, v.version_number).await?;
-        version_exports.push(VersionExport {
-            version_number: vwp.version.version_number,
-            note: vwp.version.note.clone(),
-            metadata: vwp.version.metadata.clone(),
-            placements: vwp.placements.iter().map(PlacementExport::from).collect(),
-        });
+    // Fetch all placements for all versions in one query, grouped by version_id
+    let all_placements = sqlx::query_as::<_, PlacementWithEntry>(
+        r#"SELECT p.id, p.version_id, p.entry_id, p.position, p.score, p.tier, p.metadata,
+                  e.slug AS entry_slug, e.name AS entry_name
+           FROM placements p
+           JOIN entries e ON e.id = p.entry_id
+           JOIN versions v ON v.id = p.version_id
+           JOIN boards b ON b.id = v.board_id
+           LEFT JOIN LATERAL (
+               SELECT (t.obj->>'position')::int AS tier_ord
+               FROM jsonb_array_elements(b.tier_config->'tiers') AS t(obj)
+               WHERE t.obj->>'key' = p.tier
+               LIMIT 1
+           ) tc ON true
+           WHERE v.board_id = $1
+           ORDER BY v.version_number ASC,
+                    COALESCE(tc.tier_ord, 2147483647) ASC,
+                    COALESCE(p.position, 2147483647) ASC,
+                    e.name ASC"#,
+    )
+    .bind(board.id)
+    .fetch_all(pool)
+    .await?;
+
+    // Group placements by version_id
+    let mut placements_by_version: HashMap<uuid::Uuid, Vec<PlacementExport>> = HashMap::new();
+    for p in &all_placements {
+        placements_by_version
+            .entry(p.version_id)
+            .or_default()
+            .push(PlacementExport::from(p));
     }
 
-    // Sort by version number ascending for readability
+    // Build version exports sorted by version_number ascending
+    let mut version_exports: Vec<VersionExport> = versions
+        .iter()
+        .map(|v| VersionExport {
+            version_number: v.version_number,
+            note: v.note.clone(),
+            metadata: v.metadata.clone(),
+            placements: placements_by_version.remove(&v.id).unwrap_or_default(),
+        })
+        .collect();
     version_exports.sort_by_key(|v| v.version_number);
 
     Ok(BoardExport {
