@@ -19,6 +19,7 @@ pub mod openapi;
 pub mod outbound_webhooks;
 mod routes;
 pub mod sse;
+pub mod ws;
 
 pub struct AppState {
     pub pool: PgPool,
@@ -203,6 +204,7 @@ fn board_routes(state: Arc<AppState>) -> Router<Arc<AppState>> {
             axum::routing::post(routes::scores::snapshot),
         )
         .route("/{slug}/stream", get(sse::stream))
+        .route("/{slug}/ws", get(ws::stream))
         .layer(middleware::from_fn_with_state(state, auth::require_auth))
 }
 
