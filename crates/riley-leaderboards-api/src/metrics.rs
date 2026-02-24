@@ -1,5 +1,6 @@
 //! Prometheus metrics endpoint and request instrumentation.
 
+use std::sync::OnceLock;
 use std::time::Instant;
 
 use axum::extract::{MatchedPath, Request};
@@ -7,13 +8,21 @@ use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
 use metrics_exporter_prometheus::PrometheusHandle;
 
+/// Global handle — ensures install_recorder() is called at most once,
+/// even if build_router() is called multiple times (e.g. in tests).
+static PROMETHEUS_HANDLE: OnceLock<PrometheusHandle> = OnceLock::new();
+
 /// Install the global Prometheus metrics recorder and return a handle
-/// for rendering the `/metrics` endpoint.
+/// for rendering the `/metrics` endpoint. Idempotent — subsequent calls
+/// return the existing handle.
 pub fn init() -> PrometheusHandle {
-    let builder = metrics_exporter_prometheus::PrometheusBuilder::new();
-    builder
-        .install_recorder()
-        .expect("failed to install Prometheus metrics recorder")
+    PROMETHEUS_HANDLE
+        .get_or_init(|| {
+            metrics_exporter_prometheus::PrometheusBuilder::new()
+                .install_recorder()
+                .expect("failed to install Prometheus metrics recorder")
+        })
+        .clone()
 }
 
 /// Axum handler for `GET /metrics` — renders all registered metrics
