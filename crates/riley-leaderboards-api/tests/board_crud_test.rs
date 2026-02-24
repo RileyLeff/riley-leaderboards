@@ -3214,9 +3214,12 @@ position = 1
         )
         .await
         .unwrap();
-    assert_eq!(resp.status(), 200);
+    assert_eq!(resp.status(), 202);
     let body = json_body(resp).await;
-    assert!(body["synced"].is_array());
+    assert_eq!(body["status"], "sync queued");
+
+    // Wait for the spawned background sync task to complete
+    tokio::time::sleep(std::time::Duration::from_secs(3)).await;
 
     // Verify the board was created
     let board = riley_leaderboards_core::repo::boards::get_by_slug(&pool, "webhook-board")

@@ -179,7 +179,7 @@ async fn openapi_spec_returns_valid_json() {
     // Verify basic OpenAPI structure
     assert_eq!(json["info"]["title"], "Riley Leaderboards API");
     // 28 handlers across 18 unique paths (multiple methods per path are grouped)
-    assert!(json["paths"].as_object().map_or(false, |p| p.len() >= 15),
+    assert!(json["paths"].as_object().is_some_and(|p| p.len() >= 15),
         "expected at least 15 paths in OpenAPI spec, got {}",
         json["paths"].as_object().map_or(0, |p| p.len()));
 
