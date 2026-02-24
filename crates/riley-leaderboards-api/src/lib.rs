@@ -80,7 +80,8 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         );
     }
 
-    // Rate limiting (applied before CORS so preflight requests aren't rate-limited)
+    // Rate limiting (added before CORS layer below; in axum, last .layer() is outermost,
+    // so CORS runs first and handles preflight before rate limiting kicks in)
     if server_config.rate_limit_per_second > 0 {
         if server_config.behind_proxy {
             let governor_conf = Arc::new(

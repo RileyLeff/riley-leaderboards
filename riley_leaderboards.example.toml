@@ -33,6 +33,8 @@ max_connections = 10
 # # JWT mode (with riley_auth or any JWKS-compatible issuer):
 # jwks_url = "https://auth.rileyleff.com/.well-known/jwks.json"
 # required_role = "admin"
+# expected_issuer = "https://auth.rileyleff.com"    # optional: validate JWT iss claim
+# expected_audience = "riley-leaderboards"           # optional: validate JWT aud claim
 #
 # # API token mode (standalone, mutually exclusive with jwks_url):
 # admin_token = "env:LEADERBOARDS_ADMIN_TOKEN"

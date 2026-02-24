@@ -3312,6 +3312,8 @@ fn setup_jwt_auth_state(
     let auth_mode = riley_leaderboards_api::auth::AuthMode::Jwt {
         jwks_cache: Arc::new(jwks_cache),
         required_role,
+        expected_issuer: None,
+        expected_audience: None,
         read_token_hashes: vec![],
         require_read_auth: false,
     };
@@ -3806,6 +3808,8 @@ async fn auth_jwks_fetch_from_mock_server() {
     let auth_mode = riley_leaderboards_api::auth::AuthMode::Jwt {
         jwks_cache,
         required_role: Some("admin".to_string()),
+        expected_issuer: None,
+        expected_audience: None,
         read_token_hashes: vec![],
         require_read_auth: false,
     };
@@ -4570,6 +4574,8 @@ async fn auth_jwt_read_token_can_read_but_not_write() {
     let auth_mode = riley_leaderboards_api::auth::AuthMode::Jwt {
         jwks_cache: Arc::new(jwks_cache),
         required_role: Some("admin".to_string()),
+        expected_issuer: None,
+        expected_audience: None,
         read_token_hashes: vec![read_token_hash],
         require_read_auth: false,
     };
@@ -4693,6 +4699,8 @@ async fn auth_jwt_require_read_auth() {
     let auth_mode = riley_leaderboards_api::auth::AuthMode::Jwt {
         jwks_cache: Arc::new(jwks_cache),
         required_role: Some("admin".to_string()),
+        expected_issuer: None,
+        expected_audience: None,
         read_token_hashes: vec![read_token_hash],
         require_read_auth: true,
     };
@@ -4763,6 +4771,8 @@ async fn auth_from_config_admin_token_and_api_token_mutual_exclusion() {
     let config = AuthConfig {
         jwks_url: None,
         required_role: None,
+        expected_issuer: None,
+        expected_audience: None,
         admin_token: Some(ConfigValue::new("secret-admin")),
         api_token: Some(ConfigValue::new("secret-api")),
         read_tokens: vec![],
@@ -4784,6 +4794,8 @@ async fn auth_from_config_legacy_api_token_works() {
     let config = AuthConfig {
         jwks_url: None,
         required_role: None,
+        expected_issuer: None,
+        expected_audience: None,
         admin_token: None,
         api_token: Some(ConfigValue::new("legacy-secret")),
         read_tokens: vec![],
@@ -4805,6 +4817,8 @@ async fn auth_from_config_read_tokens_without_admin_is_error() {
     let config = AuthConfig {
         jwks_url: None,
         required_role: None,
+        expected_issuer: None,
+        expected_audience: None,
         admin_token: None,
         api_token: None,
         read_tokens: vec![ConfigValue::new("read-only-token")],
@@ -4826,6 +4840,8 @@ async fn auth_from_config_require_read_auth_without_admin_is_error() {
     let config = AuthConfig {
         jwks_url: None,
         required_role: None,
+        expected_issuer: None,
+        expected_audience: None,
         admin_token: None,
         api_token: None,
         read_tokens: vec![],
@@ -4857,6 +4873,8 @@ async fn auth_from_config_empty_auth_section_is_no_auth() {
     let config = AuthConfig {
         jwks_url: None,
         required_role: None,
+        expected_issuer: None,
+        expected_audience: None,
         admin_token: None,
         api_token: None,
         read_tokens: vec![],
@@ -4879,6 +4897,8 @@ async fn auth_from_config_required_role_without_auth_mode_is_error() {
     let config = AuthConfig {
         jwks_url: None,
         required_role: Some("admin".to_string()),
+        expected_issuer: None,
+        expected_audience: None,
         admin_token: None,
         api_token: None,
         read_tokens: vec![],
@@ -4899,6 +4919,8 @@ async fn auth_from_config_jwks_and_admin_token_mutual_exclusion() {
     let config = AuthConfig {
         jwks_url: Some("https://example.com/.well-known/jwks.json".to_string()),
         required_role: None,
+        expected_issuer: None,
+        expected_audience: None,
         admin_token: Some(ConfigValue::new("secret")),
         api_token: None,
         read_tokens: vec![],

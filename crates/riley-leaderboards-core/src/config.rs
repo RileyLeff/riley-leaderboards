@@ -104,6 +104,10 @@ impl WebhookEvent {
 pub struct AuthConfig {
     pub jwks_url: Option<String>,
     pub required_role: Option<String>,
+    /// Expected JWT issuer (`iss` claim). Not enforced if absent.
+    pub expected_issuer: Option<String>,
+    /// Expected JWT audience (`aud` claim). Not enforced if absent.
+    pub expected_audience: Option<String>,
     /// Admin token — full read/write access. Alias: `api_token` (v1 compat).
     pub admin_token: Option<ConfigValue>,
     /// Legacy alias for `admin_token`. If both are set, startup fails.

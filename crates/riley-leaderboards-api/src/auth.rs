@@ -23,6 +23,8 @@ pub enum AuthMode {
     Jwt {
         jwks_cache: Arc<JwksCache>,
         required_role: Option<String>,
+        expected_issuer: Option<String>,
+        expected_audience: Option<String>,
         read_token_hashes: Vec<Vec<u8>>,
         require_read_auth: bool,
     },
@@ -77,6 +79,8 @@ impl AuthMode {
                 Ok(Self::Jwt {
                     jwks_cache: cache,
                     required_role: auth.required_role.clone(),
+                    expected_issuer: auth.expected_issuer.clone(),
+                    expected_audience: auth.expected_audience.clone(),
                     read_token_hashes,
                     require_read_auth,
                 })
@@ -215,8 +219,7 @@ impl JwksCache {
         }
 
         if new_keys.is_empty() {
-            tracing::warn!("JWKS refresh returned zero usable keys — keeping existing cache");
-            return Ok(());
+            anyhow::bail!("JWKS refresh returned zero usable keys from {}", self.url);
         }
 
         tracing::info!("JWKS refreshed: {} keys", new_keys.len());
@@ -377,6 +380,8 @@ pub async fn require_auth(
         AuthMode::Jwt {
             jwks_cache,
             required_role,
+            expected_issuer,
+            expected_audience,
             read_token_hashes,
             require_read_auth,
         } => {
@@ -401,7 +406,14 @@ pub async fn require_auth(
 
             // Validate JWT — for writes, enforce required_role; for reads, any valid JWT
             let role_to_check = if is_read { None } else { required_role.as_deref() };
-            validate_jwt(token, jwks_cache, role_to_check).await?;
+            validate_jwt(
+                token,
+                jwks_cache,
+                role_to_check,
+                expected_issuer.as_deref(),
+                expected_audience.as_deref(),
+            )
+            .await?;
 
             Ok(next.run(request).await)
         }
@@ -425,6 +437,8 @@ async fn validate_jwt(
     token: &str,
     jwks_cache: &JwksCache,
     required_role: Option<&str>,
+    expected_issuer: Option<&str>,
+    expected_audience: Option<&str>,
 ) -> Result<(), Response> {
     // Decode header to get kid
     let header = decode_header(token).map_err(|e| auth_error(&format!("invalid JWT: {e}")))?;
@@ -450,7 +464,15 @@ async fn validate_jwt(
     let mut validation = Validation::new(expected_alg);
     validation.validate_exp = true;
     validation.validate_nbf = true;
-    validation.validate_aud = false; // we don't enforce audience
+
+    if let Some(iss) = expected_issuer {
+        validation.set_issuer(&[iss]);
+    }
+    if let Some(aud) = expected_audience {
+        validation.set_audience(&[aud]);
+    } else {
+        validation.validate_aud = false;
+    }
 
     let token_data = decode::<Claims>(token, &key, &validation)
         .map_err(|e| auth_error(&format!("JWT validation failed: {e}")))?;
