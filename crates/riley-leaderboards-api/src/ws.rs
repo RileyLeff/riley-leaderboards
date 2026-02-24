@@ -24,15 +24,25 @@ pub async fn stream(
     State(state): State<Arc<AppState>>,
     Path(board_slug): Path<String>,
 ) -> ApiResult<Response> {
+    // Check WS is enabled
+    let ws_enabled = state
+        .config
+        .server
+        .as_ref()
+        .is_some_and(|s| s.ws_enabled);
+    if !ws_enabled {
+        return Err(CoreError::ServiceUnavailable(
+            "WebSocket streaming is not enabled".to_string(),
+        )
+        .into());
+    }
+
     // Verify board exists
     riley_leaderboards_core::repo::boards::get_by_slug(&state.pool, &board_slug).await?;
 
-    let event_bus = state
-        .event_bus
-        .as_ref()
-        .ok_or(CoreError::ServiceUnavailable(
-            "WebSocket streaming is not enabled".to_string(),
-        ))?;
+    let event_bus = state.event_bus.as_ref().ok_or(CoreError::ServiceUnavailable(
+        "WebSocket streaming is not enabled".to_string(),
+    ))?;
 
     let (rx, guard) = event_bus.subscribe(&board_slug)?;
 
@@ -73,7 +83,7 @@ async fn handle_socket(
                 match msg {
                     // Client sent close or connection dropped
                     Some(Ok(Message::Close(_))) | None | Some(Err(_)) => break,
-                    // Ignore pings/pongs/text from client
+                    // Ignore unsolicited text/binary; protocol pings handled by axum
                     _ => {}
                 }
             }

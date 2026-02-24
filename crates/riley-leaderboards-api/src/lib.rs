@@ -28,7 +28,7 @@ pub struct AppState {
     pub auth_mode: auth::AuthMode,
     /// Serializes webhook pull+sync operations to prevent concurrent git operations.
     pub sync_mutex: tokio::sync::Mutex<()>,
-    /// SSE event bus for live board updates. None when SSE is disabled.
+    /// Event bus for live board updates (SSE + WebSocket). None when all streaming is disabled.
     pub event_bus: Option<sse::EventBus>,
     /// Tracks in-flight background tasks (webhook delivery, etc.) for graceful shutdown.
     pub task_tracker: tokio_util::task::TaskTracker,

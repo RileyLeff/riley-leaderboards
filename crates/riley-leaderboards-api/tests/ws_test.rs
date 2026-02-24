@@ -153,6 +153,127 @@ async fn serve_no_streaming(schema: &str) -> (Arc<AppState>, SocketAddr) {
     (state, addr)
 }
 
+/// Starts a server with WS enabled but SSE disabled.
+async fn serve_ws_only(schema: &str) -> (Arc<AppState>, SocketAddr) {
+    pre_cleanup(schema).await;
+
+    let config = RileyLeaderboardsConfig {
+        server: Some(ServerConfig {
+            sse_enabled: false,
+            ws_enabled: true,
+            ws_timeout_secs: 30,
+            sse_max_connections: 100,
+            sse_score_debounce_ms: 1000,
+            ..Default::default()
+        }),
+        database: DatabaseConfig {
+            url: ConfigValue::new(test_db_url()),
+            max_connections: 2,
+            schema: Some(schema.to_string()),
+        },
+        redis: Some(RedisConfig {
+            url: ConfigValue::new(test_redis_url()),
+            key_prefix: "rl".to_string(),
+        }),
+        auth: None,
+        sync: None,
+        limits: None,
+        webhooks: vec![],
+    };
+
+    let pool = db::connect(&config.database).await.expect("connect failed");
+    db::migrate(&pool).await.expect("migrate failed");
+
+    let url = test_redis_url();
+    let client = redis::Client::open(url.as_str()).expect("redis client open failed");
+    let redis_conn = redis::aio::ConnectionManager::new(client)
+        .await
+        .expect("redis connect failed");
+
+    let event_bus = EventBus::new(100, 1000, 256);
+
+    let state = Arc::new(AppState {
+        pool,
+        redis: Some(redis_conn),
+        config,
+        auth_mode: riley_leaderboards_api::auth::AuthMode::NoAuth,
+        sync_mutex: tokio::sync::Mutex::new(()),
+        event_bus: Some(event_bus),
+        task_tracker: tokio_util::task::TaskTracker::new(),
+    });
+
+    let router = build_router(state.clone());
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("bind failed");
+    let addr = listener.local_addr().expect("local_addr failed");
+    tokio::spawn(async move {
+        axum::serve(listener, router).await.ok();
+    });
+
+    (state, addr)
+}
+
+/// Starts a server with SSE enabled but WS disabled.
+async fn serve_sse_only(schema: &str) -> (Arc<AppState>, SocketAddr) {
+    pre_cleanup(schema).await;
+
+    let config = RileyLeaderboardsConfig {
+        server: Some(ServerConfig {
+            sse_enabled: true,
+            ws_enabled: false,
+            sse_max_connections: 100,
+            sse_score_debounce_ms: 1000,
+            ..Default::default()
+        }),
+        database: DatabaseConfig {
+            url: ConfigValue::new(test_db_url()),
+            max_connections: 2,
+            schema: Some(schema.to_string()),
+        },
+        redis: Some(RedisConfig {
+            url: ConfigValue::new(test_redis_url()),
+            key_prefix: "rl".to_string(),
+        }),
+        auth: None,
+        sync: None,
+        limits: None,
+        webhooks: vec![],
+    };
+
+    let pool = db::connect(&config.database).await.expect("connect failed");
+    db::migrate(&pool).await.expect("migrate failed");
+
+    let url = test_redis_url();
+    let client = redis::Client::open(url.as_str()).expect("redis client open failed");
+    let redis_conn = redis::aio::ConnectionManager::new(client)
+        .await
+        .expect("redis connect failed");
+
+    let event_bus = EventBus::new(100, 1000, 256);
+
+    let state = Arc::new(AppState {
+        pool,
+        redis: Some(redis_conn),
+        config,
+        auth_mode: riley_leaderboards_api::auth::AuthMode::NoAuth,
+        sync_mutex: tokio::sync::Mutex::new(()),
+        event_bus: Some(event_bus),
+        task_tracker: tokio_util::task::TaskTracker::new(),
+    });
+
+    let router = build_router(state.clone());
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("bind failed");
+    let addr = listener.local_addr().expect("local_addr failed");
+    tokio::spawn(async move {
+        axum::serve(listener, router).await.ok();
+    });
+
+    (state, addr)
+}
+
 async fn cleanup(state: &AppState, schema: &str) {
     sqlx::query(&format!("DROP SCHEMA IF EXISTS \"{}\" CASCADE", schema))
         .execute(&state.pool)
@@ -409,6 +530,45 @@ async fn ws_and_sse_share_connection_count() {
     drop(_ws3);
     drop(ws2);
     drop(_sse_guard);
+
+    cleanup(&state, schema).await;
+}
+
+// ── Test: WS works in WS-only mode (sse_enabled=false, ws_enabled=true) ─────
+
+#[tokio::test]
+async fn ws_works_in_ws_only_mode() {
+    let schema = "test_ws_only_mode";
+    let (state, addr) = serve_ws_only(schema).await;
+    flush_redis(&state).await;
+
+    create_board_via_http(addr, "ws-only-board", "WS-Only Board").await;
+
+    let url = format!("ws://{addr}/boards/ws-only-board/ws");
+    let (ws_stream, resp) =
+        tokio_tungstenite::connect_async(&url).await.expect("WS connect failed in WS-only mode");
+    assert_eq!(resp.status(), 101);
+    drop(ws_stream);
+
+    cleanup(&state, schema).await;
+}
+
+// ── Test: WS rejected when ws_enabled=false but sse_enabled=true ─────────────
+
+#[tokio::test]
+async fn ws_rejected_when_ws_disabled_but_sse_enabled() {
+    let schema = "test_ws_rejected_sse_only";
+    let (state, addr) = serve_sse_only(schema).await;
+    flush_redis(&state).await;
+
+    create_board_via_http(addr, "sse-only-board", "SSE-Only Board").await;
+
+    let url = format!("ws://{addr}/boards/sse-only-board/ws");
+    let result = tokio_tungstenite::connect_async(&url).await;
+    assert!(
+        result.is_err(),
+        "WS should be rejected when ws_enabled=false even if EventBus exists"
+    );
 
     cleanup(&state, schema).await;
 }

@@ -97,7 +97,7 @@ impl EventBus {
             counter: Arc::clone(&self.active_connections),
         };
 
-        metrics::gauge!("sse_active_connections").set((prev + 1) as f64);
+        metrics::gauge!("streaming_active_connections").set((prev + 1) as f64);
 
         Ok((rx, guard))
     }
@@ -191,7 +191,7 @@ pub struct ConnectionGuard {
 impl Drop for ConnectionGuard {
     fn drop(&mut self) {
         let prev = self.counter.fetch_sub(1, Ordering::AcqRel);
-        metrics::gauge!("sse_active_connections").set((prev - 1) as f64);
+        metrics::gauge!("streaming_active_connections").set((prev - 1) as f64);
     }
 }
 
