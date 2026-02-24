@@ -13,7 +13,7 @@ Most systems store a leaderboard as a flat table -- here's the current state, th
 
 - **Board types** -- ordered (explicit positions), scored (auto-ranked by score), tiered (tier lists), and accumulative (streaming score ingestion with snapshots)
 - **Immutable versioning** -- every state is a version, nothing is overwritten, diffs between any two versions
-- **Realtime** -- Redis-backed live scoring with Server-Sent Events for push updates
+- **Realtime** -- Redis-backed live scoring with SSE and bidirectional WebSocket (subscribe to events and submit scores on the same connection)
 - **Collections** -- group boards together for cross-board views
 - **Auth** -- JWT (JWKS) or API token, with optional read-only tokens and per-endpoint auth granularity
 - **Git sync** -- define boards as TOML files in a git repo, sync on push via GitHub webhooks
@@ -93,6 +93,7 @@ POST   /boards/{slug}/versions          Create a version (snapshot of placements
 GET    /boards/{slug}/latest            Get the latest version with placements
 GET    /boards/{slug}/diff?from=1&to=3  Diff between two versions
 GET    /boards/{slug}/stream            SSE stream (realtime boards)
+GET    /boards/{slug}/ws               WebSocket stream (bidirectional: events + score submission)
 POST   /boards/{slug}/scores            Submit a score (accumulative boards)
 POST   /boards/{slug}/snapshot          Snapshot accumulated scores into a version
 ```
@@ -107,7 +108,7 @@ Write operations require a Bearer token. Read operations are public by default (
 
 **Tiered** -- entries are placed into named tiers (S/A/B/C or whatever you configure). Within a tier, entries are unranked.
 
-**Accumulative** -- a scored board that accepts streaming score submissions. Scores accumulate in Redis until you trigger a snapshot, which freezes them into an immutable version. Supports realtime SSE push to connected clients.
+**Accumulative** -- a scored board that accepts streaming score submissions. Scores accumulate in Redis until you trigger a snapshot, which freezes them into an immutable version. Supports realtime push to connected clients via SSE or WebSocket. The WebSocket transport is bidirectional -- clients receive live events and can submit scores on the same connection.
 
 ## License
 
