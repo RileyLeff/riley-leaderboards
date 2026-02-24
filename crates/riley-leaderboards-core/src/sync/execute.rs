@@ -163,6 +163,8 @@ async fn sync_board(
                     } else {
                         crate::models::Nullable::Absent
                     },
+                    realtime: None,
+                    clear_on_snapshot: None,
                 };
                 boards::update(pool, &parsed.slug, &update).await?
             } else {

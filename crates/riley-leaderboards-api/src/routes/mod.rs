@@ -25,3 +25,16 @@ pub fn check_metadata_size(
     }
     Ok(())
 }
+
+/// Validate that a note string does not exceed the configured size limit.
+pub fn check_note_size(note: Option<&str>, max_bytes: usize) -> Result<(), CoreError> {
+    if let Some(n) = note
+        && n.len() > max_bytes
+    {
+        return Err(CoreError::Validation(format!(
+            "note too large ({} bytes, max {max_bytes})",
+            n.len(),
+        )));
+    }
+    Ok(())
+}

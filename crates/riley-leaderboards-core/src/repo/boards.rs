@@ -27,6 +27,11 @@ pub async fn create(pool: &PgPool, input: &CreateBoard) -> Result<Board> {
             "clear_on_snapshot requires realtime to be true".to_string(),
         ));
     }
+    if input.board_type != "scored" && input.sort_direction != "desc" {
+        return Err(Error::Validation(
+            "sort_direction is only meaningful for scored boards".to_string(),
+        ));
+    }
 
     let board = sqlx::query_as::<_, Board>(
         r#"INSERT INTO boards (slug, name, board_type, sort_direction, tier_config, metadata, accumulative, realtime, clear_on_snapshot)
@@ -140,7 +145,21 @@ pub async fn update(pool: &PgPool, slug: &str, input: &UpdateBoard) -> Result<Bo
         validate_sort_direction(sd)?;
     }
 
-    let board = get_by_slug(pool, slug).await?;
+    let mut tx = pool.begin().await?;
+
+    // Lock the row to prevent lost updates from concurrent PATCHes
+    let board = sqlx::query_as::<_, Board>("SELECT * FROM boards WHERE slug = $1 FOR UPDATE")
+        .bind(slug)
+        .fetch_optional(&mut *tx)
+        .await?
+        .ok_or_else(|| Error::NotFound(format!("board '{slug}' not found")))?;
+
+    // Reject sort_direction changes on non-scored boards (it has no effect)
+    if input.sort_direction.is_some() && board.board_type != "scored" {
+        return Err(Error::Validation(
+            "sort_direction is only meaningful for scored boards".to_string(),
+        ));
+    }
 
     // Validate tier_config on tiered boards: reject null (tiered boards require tier_config)
     if board.board_type == "tiered" {
@@ -153,6 +172,21 @@ pub async fn update(pool: &PgPool, slug: &str, input: &UpdateBoard) -> Result<Bo
             }
             Nullable::Absent => {}
         }
+    }
+
+    // Resolve realtime and clear_on_snapshot with cross-field validation
+    let realtime = input.realtime.unwrap_or(board.realtime);
+    let clear_on_snapshot = input.clear_on_snapshot.unwrap_or(board.clear_on_snapshot);
+
+    if realtime && !(board.accumulative && board.board_type == "scored") {
+        return Err(Error::Validation(
+            "realtime boards must be accumulative and scored".to_string(),
+        ));
+    }
+    if clear_on_snapshot && !realtime {
+        return Err(Error::Validation(
+            "clear_on_snapshot requires realtime to be true".to_string(),
+        ));
     }
 
     // Build UPDATE dynamically so Nullable fields can distinguish
@@ -179,17 +213,23 @@ pub async fn update(pool: &PgPool, slug: &str, input: &UpdateBoard) -> Result<Bo
                sort_direction = $2,
                tier_config = $3,
                metadata = $4,
+               realtime = $5,
+               clear_on_snapshot = $6,
                updated_at = now()
-           WHERE id = $5
+           WHERE id = $7
            RETURNING *"#,
     )
     .bind(name)
     .bind(sort_direction)
     .bind(tier_config)
     .bind(metadata)
+    .bind(realtime)
+    .bind(clear_on_snapshot)
     .bind(board.id)
-    .fetch_one(pool)
+    .fetch_one(&mut *tx)
     .await?;
+
+    tx.commit().await?;
 
     Ok(updated)
 }

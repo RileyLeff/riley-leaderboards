@@ -5,7 +5,7 @@ use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use axum::Json;
 
-use riley_leaderboards_core::models::{CreateEntry, Nullable, PaginationParams, UpdateEntry};
+use riley_leaderboards_core::models::{CreateEntry, LimitParam, Nullable, PaginationParams, UpdateEntry};
 use riley_leaderboards_core::repo::{boards, entries};
 
 use crate::AppState;
@@ -70,8 +70,10 @@ pub async fn delete(
 pub async fn history(
     State(state): State<Arc<AppState>>,
     Path((board_slug, entry_slug)): Path<(String, String)>,
+    Query(params): Query<LimitParam>,
 ) -> ApiResult<impl IntoResponse> {
     let board = boards::get_by_slug(&state.pool, &board_slug).await?;
-    let items = entries::history(&state.pool, board.id, &entry_slug).await?;
+    let items =
+        entries::history(&state.pool, board.id, &entry_slug, params.effective_limit()).await?;
     Ok(Json(items))
 }

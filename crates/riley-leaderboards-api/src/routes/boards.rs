@@ -60,6 +60,8 @@ pub async fn update(
         && input.sort_direction.is_none()
         && matches!(input.tier_config, Nullable::Absent)
         && matches!(input.metadata, Nullable::Absent)
+        && input.realtime.is_none()
+        && input.clear_on_snapshot.is_none()
     {
         let board = boards::get_by_slug(&state.pool, &slug).await?;
         return Ok(Json(board));

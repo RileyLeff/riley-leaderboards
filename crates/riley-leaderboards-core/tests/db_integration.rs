@@ -6,6 +6,7 @@
 
 use riley_leaderboards_core::config::{ConfigValue, DatabaseConfig};
 use riley_leaderboards_core::db;
+use sqlx::postgres::PgPoolOptions;
 
 fn test_db_url() -> String {
     std::env::var("TEST_DATABASE_URL").unwrap_or_else(|_| {
@@ -19,6 +20,20 @@ fn make_config(schema: Option<&str>) -> DatabaseConfig {
         max_connections: 2,
         schema: schema.map(String::from),
     }
+}
+
+/// Defensive cleanup: drop a test schema if it exists from a previous run.
+/// This prevents leaked schemas from accumulating if a test panics.
+async fn drop_schema_if_exists(schema: &str) {
+    let pool = PgPoolOptions::new()
+        .max_connections(1)
+        .connect(&test_db_url())
+        .await
+        .expect("bootstrap connect for cleanup failed");
+    let _ = sqlx::query(&format!("DROP SCHEMA IF EXISTS \"{}\" CASCADE", schema))
+        .execute(&pool)
+        .await;
+    pool.close().await;
 }
 
 #[tokio::test]
@@ -37,6 +52,8 @@ async fn connect_default_schema() {
 #[tokio::test]
 async fn connect_custom_schema() {
     let schema_name = "test_custom_schema_connect";
+    drop_schema_if_exists(schema_name).await;
+
     let config = make_config(Some(schema_name));
     let pool = db::connect(&config).await.expect("connect failed");
 
@@ -72,6 +89,8 @@ async fn connect_custom_schema() {
 async fn migrate_default_schema() {
     // Use a dedicated schema so we don't pollute the public schema
     let schema_name = "test_migrate_default";
+    drop_schema_if_exists(schema_name).await;
+
     let config = make_config(Some(schema_name));
     let pool = db::connect(&config).await.expect("connect failed");
 
@@ -116,6 +135,8 @@ async fn migrate_default_schema() {
 async fn two_schemas_coexist() {
     let schema_a = "test_coexist_a";
     let schema_b = "test_coexist_b";
+    drop_schema_if_exists(schema_a).await;
+    drop_schema_if_exists(schema_b).await;
 
     let config_a = make_config(Some(schema_a));
     let config_b = make_config(Some(schema_b));
@@ -170,4 +191,16 @@ async fn two_schemas_coexist() {
         .expect("test cleanup: failed to drop schema b");
     pool_a.close().await;
     pool_b.close().await;
+}
+
+#[tokio::test]
+async fn connect_readonly_validates_schema_exists() {
+    let config = make_config(Some("nonexistent_schema_xyz"));
+    let result = db::connect_readonly(&config).await;
+    assert!(result.is_err(), "should fail for nonexistent schema");
+    let err = result.unwrap_err().to_string();
+    assert!(
+        err.contains("does not exist"),
+        "error should mention schema doesn't exist, got: {err}"
+    );
 }

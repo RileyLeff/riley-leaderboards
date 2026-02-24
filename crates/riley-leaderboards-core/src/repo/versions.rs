@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use sqlx::PgPool;
 use uuid::Uuid;
 
@@ -73,22 +75,35 @@ pub async fn create(
     .fetch_one(&mut *tx)
     .await?;
 
-    // Resolve entry slugs to IDs and create placements
-    let mut placements = Vec::with_capacity(input.placements.len());
-    for (i, p) in input.placements.iter().enumerate() {
-        let entry = sqlx::query_as::<_, (Uuid, String, String)>(
-            "SELECT id, slug, name FROM entries WHERE board_id = $1 AND slug = $2",
-        )
-        .bind(board.id)
-        .bind(&p.entry_slug)
-        .fetch_optional(&mut *tx)
-        .await?
-        .ok_or_else(|| {
-            Error::Validation(format!(
+    // Batch-resolve all entry slugs to IDs in a single query
+    let slugs: Vec<&str> = input.placements.iter().map(|p| p.entry_slug.as_str()).collect();
+    let entries = sqlx::query_as::<_, (Uuid, String, String)>(
+        "SELECT id, slug, name FROM entries WHERE board_id = $1 AND slug = ANY($2)",
+    )
+    .bind(board.id)
+    .bind(&slugs)
+    .fetch_all(&mut *tx)
+    .await?;
+
+    let entry_map: HashMap<&str, (Uuid, &str, &str)> = entries
+        .iter()
+        .map(|(id, slug, name)| (slug.as_str(), (*id, slug.as_str(), name.as_str())))
+        .collect();
+
+    // Validate all slugs were found
+    for p in &input.placements {
+        if !entry_map.contains_key(p.entry_slug.as_str()) {
+            return Err(Error::Validation(format!(
                 "entry '{}' not found on board '{}'",
                 p.entry_slug, board.slug
-            ))
-        })?;
+            )));
+        }
+    }
+
+    // Create placements
+    let mut placements = Vec::with_capacity(input.placements.len());
+    for (i, p) in input.placements.iter().enumerate() {
+        let (entry_id, entry_slug, entry_name) = entry_map[p.entry_slug.as_str()];
 
         // For ordered boards, use explicit position or derive from array order
         let position = match board.board_type.as_str() {
@@ -108,13 +123,13 @@ pub async fn create(
                    $7::text AS entry_slug, $8::text AS entry_name"#,
         )
         .bind(version.id)
-        .bind(entry.0)
+        .bind(entry_id)
         .bind(position)
         .bind(p.score)
         .bind(&p.tier)
         .bind(&p.metadata)
-        .bind(&entry.1)
-        .bind(&entry.2)
+        .bind(entry_slug)
+        .bind(entry_name)
         .fetch_one(&mut *tx)
         .await?;
 
@@ -297,14 +312,17 @@ pub async fn since(
     pool: &PgPool,
     board_id: Uuid,
     after_version: i32,
+    limit: i64,
 ) -> Result<Vec<Version>> {
     let versions = sqlx::query_as::<_, Version>(
         r#"SELECT * FROM versions
            WHERE board_id = $1 AND version_number > $2
-           ORDER BY version_number ASC"#,
+           ORDER BY version_number ASC
+           LIMIT $3"#,
     )
     .bind(board_id)
     .bind(after_version)
+    .bind(limit)
     .fetch_all(pool)
     .await?;
     Ok(versions)

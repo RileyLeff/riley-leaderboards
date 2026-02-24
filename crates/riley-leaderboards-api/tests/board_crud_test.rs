@@ -10,6 +10,7 @@ use http_body_util::BodyExt;
 use riley_leaderboards_api::{AppState, build_router};
 use riley_leaderboards_core::config::{ConfigValue, DatabaseConfig, RileyLeaderboardsConfig};
 use riley_leaderboards_core::db;
+use sqlx::postgres::PgPoolOptions;
 use tower::ServiceExt;
 
 fn test_db_url() -> String {
@@ -18,7 +19,21 @@ fn test_db_url() -> String {
     })
 }
 
+/// Defensive cleanup: drop a test schema if it exists from a previous panicked run.
+async fn drop_schema_if_exists(schema: &str) {
+    let pool = PgPoolOptions::new()
+        .max_connections(1)
+        .connect(&test_db_url())
+        .await
+        .expect("bootstrap connect for cleanup failed");
+    let _ = sqlx::query(&format!("DROP SCHEMA IF EXISTS \"{}\" CASCADE", schema))
+        .execute(&pool)
+        .await;
+    pool.close().await;
+}
+
 async fn setup(schema: &str) -> (Arc<AppState>, axum::Router) {
+    drop_schema_if_exists(schema).await;
     let config = RileyLeaderboardsConfig {
         server: None,
         database: DatabaseConfig {
@@ -4968,7 +4983,7 @@ async fn outbound_webhook_fires_on_version_created() {
     let resp = app.clone().oneshot(
         Request::post("/boards")
             .header("content-type", "application/json")
-            .body(Body::from(r#"{"slug":"wh-test","name":"Webhook Test","board_type":"ordered","sort_direction":"asc"}"#))
+            .body(Body::from(r#"{"slug":"wh-test","name":"Webhook Test","board_type":"ordered"}"#))
             .unwrap(),
     ).await.unwrap();
     assert_eq!(resp.status(), 201);
@@ -5058,7 +5073,7 @@ async fn outbound_webhook_hmac_signature() {
     let resp = app.clone().oneshot(
         Request::post("/boards")
             .header("content-type", "application/json")
-            .body(Body::from(r#"{"slug":"hmac-test","name":"HMAC Test","board_type":"ordered","sort_direction":"asc"}"#))
+            .body(Body::from(r#"{"slug":"hmac-test","name":"HMAC Test","board_type":"ordered"}"#))
             .unwrap(),
     ).await.unwrap();
     assert_eq!(resp.status(), 201);
@@ -5125,7 +5140,7 @@ async fn outbound_webhook_board_filter() {
     let resp = app.clone().oneshot(
         Request::post("/boards")
             .header("content-type", "application/json")
-            .body(Body::from(r#"{"slug":"nfl-rankings","name":"NFL Rankings","board_type":"ordered","sort_direction":"asc"}"#))
+            .body(Body::from(r#"{"slug":"nfl-rankings","name":"NFL Rankings","board_type":"ordered"}"#))
             .unwrap(),
     ).await.unwrap();
     assert_eq!(resp.status(), 201);
@@ -5134,7 +5149,7 @@ async fn outbound_webhook_board_filter() {
     let resp = app.clone().oneshot(
         Request::post("/boards")
             .header("content-type", "application/json")
-            .body(Body::from(r#"{"slug":"dc-sandwiches","name":"DC Sandwiches","board_type":"ordered","sort_direction":"asc"}"#))
+            .body(Body::from(r#"{"slug":"dc-sandwiches","name":"DC Sandwiches","board_type":"ordered"}"#))
             .unwrap(),
     ).await.unwrap();
     assert_eq!(resp.status(), 201);
@@ -5199,7 +5214,7 @@ async fn outbound_webhook_fires_on_board_delete() {
     let resp = app.clone().oneshot(
         Request::post("/boards")
             .header("content-type", "application/json")
-            .body(Body::from(r#"{"slug":"del-test","name":"Delete Test","board_type":"ordered","sort_direction":"asc"}"#))
+            .body(Body::from(r#"{"slug":"del-test","name":"Delete Test","board_type":"ordered"}"#))
             .unwrap(),
     ).await.unwrap();
     assert_eq!(resp.status(), 201);

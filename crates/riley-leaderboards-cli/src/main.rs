@@ -314,7 +314,8 @@ async fn main() -> Result<()> {
                 .with_context(|| format!("failed to parse {}", file.display()))?;
             let pool = db::connect(&config.database).await?;
             db::migrate(&pool).await?;
-            repo::export::import_board(&pool, &export).await?;
+            let import_result = repo::export::import_board(&pool, &export).await?;
+            let _ = import_result; // version_numbers available for future SSE publishing
             let handles = riley_leaderboards_api::outbound_webhooks::fire(
                 &config.webhooks,
                 riley_leaderboards_core::config::WebhookEvent::BoardCreated,

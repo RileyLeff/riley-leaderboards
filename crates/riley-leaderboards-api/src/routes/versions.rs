@@ -9,14 +9,14 @@ use serde::Deserialize;
 
 use riley_leaderboards_core::config::WebhookEvent;
 use riley_leaderboards_core::error::Error as CoreError;
-use riley_leaderboards_core::models::{CreateVersion, PaginationParams};
+use riley_leaderboards_core::models::{CreateVersion, LimitParam, PaginationParams};
 use riley_leaderboards_core::repo::{boards, realtime, versions};
 
 use crate::AppState;
 use crate::error::ApiResult;
 use crate::outbound_webhooks;
 
-use super::check_metadata_size;
+use super::{check_metadata_size, check_note_size};
 
 #[derive(Deserialize)]
 pub struct DiffParams {
@@ -41,7 +41,8 @@ pub async fn create(
         .into());
     }
 
-    // Safety limit: metadata size (version-level and per-placement)
+    // Safety limits: note size, metadata size (version-level and per-placement)
+    check_note_size(input.note.as_deref(), limits.max_note_size_bytes)?;
     check_metadata_size(input.metadata.as_ref(), limits.max_metadata_size_bytes)?;
     for p in &input.placements {
         check_metadata_size(p.metadata.as_ref(), limits.max_metadata_size_bytes)?;
@@ -146,8 +147,10 @@ pub async fn diff(
 pub async fn since(
     State(state): State<Arc<AppState>>,
     Path((board_slug, version_number)): Path<(String, i32)>,
+    Query(params): Query<LimitParam>,
 ) -> ApiResult<impl IntoResponse> {
     let board = boards::get_by_slug(&state.pool, &board_slug).await?;
-    let versions = versions::since(&state.pool, board.id, version_number).await?;
+    let versions =
+        versions::since(&state.pool, board.id, version_number, params.effective_limit()).await?;
     Ok(Json(versions))
 }

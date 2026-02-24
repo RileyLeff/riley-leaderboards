@@ -109,6 +109,12 @@ pub async fn export_board(pool: &PgPool, slug: &str) -> Result<BoardExport> {
     })
 }
 
+/// Result of importing a board — the board slug and all version numbers created.
+pub struct ImportResult {
+    pub board_slug: String,
+    pub version_numbers: Vec<i32>,
+}
+
 /// Import a board from an export. Creates the board, entries, and all versions
 /// inside a single transaction (atomic — all-or-nothing).
 ///
@@ -116,7 +122,7 @@ pub async fn export_board(pool: &PgPool, slug: &str) -> Result<BoardExport> {
 /// board check, but validates placement data before inserting.
 ///
 /// Fails if a board with the same slug already exists.
-pub async fn import_board(pool: &PgPool, export: &BoardExport) -> Result<()> {
+pub async fn import_board(pool: &PgPool, export: &BoardExport) -> Result<ImportResult> {
     use crate::models::{CreateBoard, CreatePlacement};
     use std::collections::HashMap;
 
@@ -294,7 +300,12 @@ pub async fn import_board(pool: &PgPool, export: &BoardExport) -> Result<()> {
         }
     }
 
+    let version_numbers: Vec<i32> = sorted_versions.iter().map(|v| v.version_number).collect();
+
     tx.commit().await.map_err(Error::Database)?;
 
-    Ok(())
+    Ok(ImportResult {
+        board_slug: board.slug.clone(),
+        version_numbers,
+    })
 }

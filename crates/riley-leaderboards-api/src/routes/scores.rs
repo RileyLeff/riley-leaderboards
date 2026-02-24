@@ -14,7 +14,7 @@ use crate::AppState;
 use crate::error::ApiResult;
 use crate::outbound_webhooks;
 
-use super::check_metadata_size;
+use super::{check_metadata_size, check_note_size};
 
 pub async fn submit(
     State(state): State<Arc<AppState>>,
@@ -54,7 +54,8 @@ pub async fn snapshot(
 ) -> ApiResult<impl IntoResponse> {
     let limits = state.config.effective_limits();
 
-    // Safety limit: metadata size
+    // Safety limits: note size, metadata size
+    check_note_size(input.note.as_deref(), limits.max_note_size_bytes)?;
     check_metadata_size(input.metadata.as_ref(), limits.max_metadata_size_bytes)?;
 
     let board = boards::get_by_slug(&state.pool, &board_slug).await?;

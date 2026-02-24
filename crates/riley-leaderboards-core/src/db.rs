@@ -2,7 +2,7 @@ use sqlx::postgres::PgPoolOptions;
 use sqlx::{Executor, PgPool};
 
 use crate::config::DatabaseConfig;
-use crate::error::Result;
+use crate::error::{Error, Result};
 
 /// Connect to Postgres with optional schema isolation.
 ///
@@ -45,6 +45,7 @@ pub async fn connect(config: &DatabaseConfig) -> Result<PgPool> {
 /// Connect to Postgres in read-only mode (no schema creation side effects).
 ///
 /// Used by commands like `validate` that should not mutate database state.
+/// Verifies the configured schema exists before returning.
 pub async fn connect_readonly(config: &DatabaseConfig) -> Result<PgPool> {
     let url = config.url.resolve()?;
     let schema = config
@@ -53,6 +54,23 @@ pub async fn connect_readonly(config: &DatabaseConfig) -> Result<PgPool> {
         .unwrap_or_else(|| "public".to_string());
 
     let pool = build_pool(&url, &schema, config.max_connections).await?;
+
+    // Verify the schema actually exists (search_path silently accepts nonexistent schemas)
+    if schema != "public" {
+        let exists: (bool,) = sqlx::query_as(
+            "SELECT EXISTS(SELECT 1 FROM information_schema.schemata WHERE schema_name = $1)",
+        )
+        .bind(&schema)
+        .fetch_one(&pool)
+        .await?;
+        if !exists.0 {
+            pool.close().await;
+            return Err(Error::Config(format!(
+                "configured schema '{schema}' does not exist"
+            )));
+        }
+    }
+
     Ok(pool)
 }
 

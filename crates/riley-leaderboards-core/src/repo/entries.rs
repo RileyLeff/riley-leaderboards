@@ -107,7 +107,17 @@ pub async fn update(
         super::validate_name(name)?;
     }
 
-    let entry = get_by_slug(pool, board_id, slug).await?;
+    let mut tx = pool.begin().await?;
+
+    // Lock the row to prevent lost updates from concurrent PATCHes
+    let entry = sqlx::query_as::<_, Entry>(
+        "SELECT * FROM entries WHERE board_id = $1 AND slug = $2 FOR UPDATE",
+    )
+    .bind(board_id)
+    .bind(slug)
+    .fetch_optional(&mut *tx)
+    .await?
+    .ok_or_else(|| Error::NotFound(format!("entry '{slug}' not found")))?;
 
     let name = input.name.as_deref().unwrap_or(&entry.name);
     let metadata = match &input.metadata {
@@ -127,8 +137,10 @@ pub async fn update(
     .bind(name)
     .bind(metadata)
     .bind(entry.id)
-    .fetch_one(pool)
+    .fetch_one(&mut *tx)
     .await?;
+
+    tx.commit().await?;
 
     Ok(updated)
 }
@@ -183,6 +195,7 @@ pub async fn history(
     pool: &PgPool,
     board_id: Uuid,
     entry_slug: &str,
+    limit: i64,
 ) -> Result<Vec<EntryHistoryItem>> {
     let entry = get_by_slug(pool, board_id, entry_slug).await?;
 
@@ -192,9 +205,11 @@ pub async fn history(
            FROM placements p
            JOIN versions v ON v.id = p.version_id
            WHERE p.entry_id = $1
-           ORDER BY v.version_number ASC"#,
+           ORDER BY v.version_number ASC
+           LIMIT $2"#,
     )
     .bind(entry.id)
+    .bind(limit)
     .fetch_all(pool)
     .await?;
 

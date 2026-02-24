@@ -50,6 +50,9 @@ pub struct LimitsConfig {
     /// Maximum metadata JSON size in bytes. Default: 1MB.
     #[serde(default = "default_max_metadata_size_bytes")]
     pub max_metadata_size_bytes: usize,
+    /// Maximum note (text) size in bytes. Default: 10KB.
+    #[serde(default = "default_max_note_size_bytes")]
+    pub max_note_size_bytes: usize,
 }
 
 impl Default for LimitsConfig {
@@ -58,6 +61,7 @@ impl Default for LimitsConfig {
             max_entries_per_version: default_max_entries_per_version(),
             max_versions_per_board: default_max_versions_per_board(),
             max_metadata_size_bytes: default_max_metadata_size_bytes(),
+            max_note_size_bytes: default_max_note_size_bytes(),
         }
     }
 }
@@ -204,6 +208,10 @@ fn default_max_versions_per_board() -> i64 {
 
 fn default_max_metadata_size_bytes() -> usize {
     1_048_576 // 1 MB
+}
+
+fn default_max_note_size_bytes() -> usize {
+    10_240 // 10 KB
 }
 
 #[derive(Debug, Clone, Deserialize)]

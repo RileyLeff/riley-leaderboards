@@ -83,6 +83,8 @@ pub struct UpdateBoard {
     pub tier_config: Nullable<serde_json::Value>,
     #[serde(default)]
     pub metadata: Nullable<serde_json::Value>,
+    pub realtime: Option<bool>,
+    pub clear_on_snapshot: Option<bool>,
 }
 
 fn default_sort_direction() -> String {
@@ -342,8 +344,22 @@ pub struct SnapshotInput {
 
 // ── Pagination ──────────────────────────────────────────────────────────
 
-const DEFAULT_PAGE_LIMIT: i64 = 50;
-const MAX_PAGE_LIMIT: i64 = 200;
+pub const DEFAULT_PAGE_LIMIT: i64 = 50;
+pub const MAX_PAGE_LIMIT: i64 = 200;
+
+/// Simple limit-only parameter for endpoints that don't need cursor pagination.
+#[derive(Debug, Deserialize)]
+pub struct LimitParam {
+    pub limit: Option<i64>,
+}
+
+impl LimitParam {
+    pub fn effective_limit(&self) -> i64 {
+        self.limit
+            .unwrap_or(DEFAULT_PAGE_LIMIT)
+            .clamp(1, MAX_PAGE_LIMIT)
+    }
+}
 
 /// Cursor-based pagination parameters.
 #[derive(Debug, Deserialize)]
