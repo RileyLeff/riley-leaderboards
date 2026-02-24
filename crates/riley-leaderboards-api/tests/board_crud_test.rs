@@ -3806,7 +3806,7 @@ position = 1
         event_bus: None,
         task_tracker: tokio_util::task::TaskTracker::new(),
     });
-    let app = build_router(state);
+    let app = build_router(state.clone());
 
     // Compute valid HMAC signature
     let body_bytes = serde_json::to_vec(&serde_json::json!({
@@ -3841,7 +3841,13 @@ position = 1
     assert_eq!(body["status"], "sync queued");
 
     // Wait for the spawned background sync task to complete
-    tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+    state.task_tracker.close();
+    tokio::time::timeout(
+        std::time::Duration::from_secs(30),
+        state.task_tracker.wait(),
+    )
+    .await
+    .expect("background sync task timed out");
 
     // Verify the board was created
     let board = riley_leaderboards_core::repo::boards::get_by_slug(&pool, "webhook-board")
