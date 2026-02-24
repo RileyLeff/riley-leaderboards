@@ -20,10 +20,10 @@ use crate::AppState;
 use crate::error::ApiResult;
 use riley_leaderboards_core::error::Error as CoreError;
 
-/// Events published to SSE subscribers.
+/// Events published to streaming subscribers (SSE and WebSocket).
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "type")]
-pub enum SseEvent {
+pub enum BoardEvent {
     #[serde(rename = "version.created")]
     VersionCreated {
         version_number: i32,
@@ -37,7 +37,7 @@ pub enum SseEvent {
     },
 }
 
-impl SseEvent {
+impl BoardEvent {
     fn event_type(&self) -> &'static str {
         match self {
             Self::VersionCreated { .. } => "version.created",
@@ -48,7 +48,7 @@ impl SseEvent {
 
 /// Per-board broadcast channel registry with connection tracking and debouncing.
 pub struct EventBus {
-    channels: RwLock<HashMap<String, broadcast::Sender<SseEvent>>>,
+    channels: RwLock<HashMap<String, broadcast::Sender<BoardEvent>>>,
     active_connections: Arc<AtomicUsize>,
     max_connections: usize,
     broadcast_buffer: usize,
@@ -73,13 +73,13 @@ impl EventBus {
     pub fn subscribe(
         &self,
         board_slug: &str,
-    ) -> Result<(broadcast::Receiver<SseEvent>, ConnectionGuard), CoreError> {
+    ) -> Result<(broadcast::Receiver<BoardEvent>, ConnectionGuard), CoreError> {
         // Atomically reserve a connection slot (fetch_add first, undo if over limit)
         let prev = self.active_connections.fetch_add(1, Ordering::AcqRel);
         if prev >= self.max_connections {
             self.active_connections.fetch_sub(1, Ordering::AcqRel);
             return Err(CoreError::ServiceUnavailable(
-                "SSE connection limit reached".to_string(),
+                "streaming connection limit reached".to_string(),
             ));
         }
 
@@ -107,7 +107,7 @@ impl EventBus {
         let should_prune = {
             let channels = self.channels.read().unwrap();
             if let Some(tx) = channels.get(board_slug) {
-                let _ = tx.send(SseEvent::VersionCreated {
+                let _ = tx.send(BoardEvent::VersionCreated {
                     version_number,
                     note,
                 });
@@ -148,7 +148,7 @@ impl EventBus {
                 last_events.insert(board_slug.to_string(), now);
             }
 
-            let _ = tx.send(SseEvent::ScoreUpdated {
+            let _ = tx.send(BoardEvent::ScoreUpdated {
                 entry_slug,
                 entry_name,
                 score,
